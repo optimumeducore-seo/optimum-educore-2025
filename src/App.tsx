@@ -7,6 +7,8 @@ import {
   type User,
 } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore";
+import { db } from "./firebase";
 
 
 /** ================= 유틸: 시간 계산 ================= */
@@ -733,6 +735,30 @@ const toggleDay = (sub: AcademyType, d: number) => {
 
 /** ================= 메인 앱 ================= */
 export default function App() {
+
+// 🔹 테스트 버튼 핸들러 (return 위에 두기)
+async function addAttendanceTest() {
+  try {
+    const docRef = await addDoc(collection(db, "attendance"), {
+      name: "홍길동",
+      status: "출석",
+      time: serverTimestamp(),
+    });
+    console.log("✅ 출결 저장 완료:", docRef.id);
+  } catch (e) {
+    console.error("❌ 출결 저장 실패:", e);
+  }
+}
+
+ async function loadAttendanceTest() {
+  const querySnapshot = await getDocs(collection(db, "attendance"));
+  console.log("📋 출결 목록:");
+  querySnapshot.forEach((doc) => {
+    console.log(doc.id, "=>", doc.data());
+  });
+}
+
+
 
 
   useEffect(() => {
@@ -1694,6 +1720,54 @@ const timeInpTightFocus: React.CSSProperties = {
   const selectedStudent = students.find(s => s.id === selectedStudentId) || null;
 
   return (
+    <>
+    {/* 🔴 Firestore 테스트용 고정 버튼 */}
+<div
+  style={{
+    position: "fixed",
+    top: 10,
+    left: 10,
+    zIndex: 99999,
+    display: "flex",
+    gap: 8,
+    background: "#111",
+    color: "#fff",
+    padding: "6px 8px",
+    borderRadius: 8,
+    boxShadow: "0 4px 12px rgba(0,0,0,.3)",
+  }}
+>
+  <button
+    onClick={addAttendanceTest}
+    style={{
+      padding: "6px 10px",
+      border: "1px solid #333",
+      borderRadius: 8,
+      background: "#fff",
+      color: "#111",
+      fontWeight: 700,
+      cursor: "pointer",
+    }}
+  >
+    출결 1건 추가
+  </button>
+
+  <button
+    onClick={loadAttendanceTest}
+    style={{
+      padding: "6px 10px",
+      border: "1px solid #333",
+      borderRadius: 8,
+      background: "#fff",
+      color: "#111",
+      fontWeight: 700,
+      cursor: "pointer",
+    }}
+  >
+    출결 목록 보기
+  </button>
+</div>
+
     <div className="app-main-container" style={{ minHeight: "100vh", background: "#f5f7fb", color: "#111", padding: 20 }}>
       {/* 전역 스타일: time 숫자 잘림 방지 */}
       <style>{`
@@ -3145,6 +3219,7 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
 })()}
     </div>
     </div>
+    </>
   );
 }
 

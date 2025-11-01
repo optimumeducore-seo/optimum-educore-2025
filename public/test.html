@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>학생 테스트</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { font-family: system-ui, sans-serif; padding:16px; }
+      input { padding:6px 8px; margin-right:6px; }
+      button { padding:6px 10px; }
+      ul { margin-top:16px; }
+    </style>
+  </head>
+  <body>
+    <h2>학생 테스트</h2>
+    <input id="name"   placeholder="이름" />
+    <input id="grade"  placeholder="학년" />
+    <input id="school" placeholder="학교" />
+    <button id="add">추가</button>
+
+    <ul id="list"></ul>
+
+    <!-- ✅ 반드시 CDN 경로로 import -->
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+      import {
+        getFirestore, collection, addDoc, onSnapshot, serverTimestamp
+      } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+      // 🔧 당신 프로젝트 설정
+      const firebaseConfig = {
+        apiKey: "AIzaSyCgMyqtp4Vlg6YWvDbQfRtTkG5xrgUO9x0",
+        authDomain: "optimum-educore-2025.firebaseapp.com",
+        projectId: "optimum-educore-2025",
+        storageBucket: "optimum-educore-2025.appspot.com",
+        messagingSenderId: "717693241717",
+        appId: "1:717693241717:web:ecfd474f41271db992eb3c"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db  = getFirestore(app);
+
+      const listEl = document.getElementById("list");
+
+      // 🔄 실시간 목록
+      onSnapshot(collection(db, "students"), (snap) => {
+        listEl.innerHTML = "";
+        snap.forEach((doc) => {
+          const d = doc.data();
+          const li = document.createElement("li");
+          li.textContent = `${d.name} / ${d.grade} / ${d.school}`;
+          listEl.appendChild(li);
+        });
+      });
+
+      // ➕ 추가
+      document.getElementById("add").addEventListener("click", async () => {
+        const name   = document.getElementById("name").value.trim();
+        const grade  = document.getElementById("grade").value.trim();
+        const school = document.getElementById("school").value.trim();
+        if (!name) return alert("이름은 필수!");
+
+        await addDoc(collection(db, "students"), {
+          name, grade, school, updatedAt: serverTimestamp()
+        });
+
+        document.getElementById("name").value = "";
+      });
+    </script>
+  </body>
+</html>
