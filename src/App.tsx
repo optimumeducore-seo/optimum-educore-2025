@@ -1,14 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { initializeApp } from "firebase/app";
-import {
-  getAuth,
-  onAuthStateChanged,
-  signInAnonymously,
-  type User,
-} from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
-import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore";
 import { db } from "./firebase";
+import {
+  collection,
+  doc,
+  setDoc,
+  addDoc,
+  getDocs,
+  deleteDoc,
+  query,
+  orderBy,
+  where,
+  onSnapshot,
+  serverTimestamp
+} from "firebase/firestore";
+
 
 
 /** ================= 유틸: 시간 계산 ================= */
@@ -347,6 +352,19 @@ function holidayName(dateStr: string): string | undefined {
   const y = new Date(dateStr).getFullYear();
   return getKoreanHolidayMap(y)[dateStr];
 }
+
+type AssignmentStatus = "todo" | "done";
+type AssignmentFS = {
+  id: string;
+  studentId: string;
+  groupId: string;
+  title: string;
+  status: AssignmentStatus;
+  dateStr: string;          // YYYY-MM-DD (오늘 기준 조회용)
+  createdAt?: any;
+  updatedAt?: any;
+};
+
 
 
 type DonutSeg = { label: string; value: number; color: string };
@@ -736,8 +754,11 @@ const toggleDay = (sub: AcademyType, d: number) => {
 /** ================= 메인 앱 ================= */
 export default function App() {
 
+
+
+const [attendanceList, setAttendanceList] = useState<any[]>([]);
 // 🔹 테스트 버튼 핸들러 (return 위에 두기)
-async function addAttendanceTest() {
+/* async function addAttendanceTest() {
   try {
     const docRef = await addDoc(collection(db, "attendance"), {
       name: "홍길동",
@@ -750,13 +771,134 @@ async function addAttendanceTest() {
   }
 }
 
- async function loadAttendanceTest() {
-  const querySnapshot = await getDocs(collection(db, "attendance"));
-  console.log("📋 출결 목록:");
-  querySnapshot.forEach((doc) => {
-    console.log(doc.id, "=>", doc.data());
+const [attendanceList, setAttendanceList] = useState<any[]>([]);
+
+async function loadAttendanceTest() {
+  try {
+    const querySnapshot = await getDocs(collection(db, "attendance"));
+    const list: any[] = [];
+    querySnapshot.forEach((doc) => {
+      list.push({ id: doc.id, ...doc.data() });
+    });
+    setAttendanceList(list);               // ✅ state 업데이트 (한 번만)
+    console.log("📋 출결 목록:", list);
+  } catch (e) {
+    console.error("❌ 출결 목록 불러오기 실패:", e);
+  }
+} */
+
+
+
+// 🟢 실시간 출결 반영
+useEffect(() => {
+  const q = query(collection(db, "students"));
+  const unsub = onSnapshot(q, (snap) => {
+    const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    console.log("📦 Firestore 구독 업데이트:", list);
+
+    setStore((prev) => ({
+      ...prev,
+      groups: prev.groups.map((g) => ({
+        ...g,
+        students: list.filter((s) => s.groupId === g.id && !s.removed),
+      })),
+    }));
   });
+
+  return () => unsub();
+}, []); // ← 꼭 빈 배열 유지
+
+// 🔄 학생 목록 실시간 반영
+useEffect(() => {
+  const q = query(collection(db, "students"));
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      console.log("👀 Firestore 학생 데이터:", list);
+      setStore(prev => ({
+        ...prev,
+        groups: prev.groups.map(g => ({
+          ...g,
+          students: list.filter(s => s.groupId === g.id && !s.removed)
+        })),
+      }));
+    },
+    (err) => console.error("❌ 학생 실시간 구독 오류:", err)
+  );
+  return () => unsub();
+}, []);
+
+
+async function handleCheckIn(studentName: string) {
+  try {
+    await addDoc(collection(db, "attendance"), {
+      name: studentName,
+      status: "출석",
+      time: serverTimestamp(),
+    });
+    console.log("✅ Firestore에 등원 저장:", studentName);
+  } catch (e) {
+    console.error("❌ Firestore 저장 실패:", e);
+  }
 }
+async function handleCheckOut(name: string) {
+  try {
+    await addDoc(collection(db, "attendance"), {
+      name: name,
+      status: "하원",
+      time: serverTimestamp(),
+    });
+    console.log("✅ Firestore에 하원 저장됨:", name);
+  } catch (e) {
+    console.error("❌ Firestore 하원 저장 실패:", e);
+  }
+}
+async function saveStudentToFS(groupId: string, s: any) {
+  try {
+    // undefined 값 제거 (Firestore는 undefined 허용 안 함)
+    const safeData = Object.fromEntries(
+      Object.entries(s).filter(([_, v]) => v !== undefined && v !== "")
+    );
+
+    await setDoc(
+      doc(db, "students", s.id),
+      { ...safeData, groupId, createdAt: serverTimestamp() },
+      { merge: true }
+    );
+
+    console.log("✅ Firestore에 학생 저장 완료:", s.name || "(이름 없음)");
+  } catch (e) {
+    console.error("❌ Firestore 학생 저장 실패:", e);
+  }
+}
+
+// 새 과제 생성(아이디가 이미 있으면 upsert로 동작)
+async function upsertAssignmentFS(a: AssignmentFS) {
+  const payload = sanitize({ ...a, createdAt: a.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
+  await setDoc(doc(db, "assignments", a.id), payload, { merge: true });
+  console.log("✅ 과제 저장/업데이트:", a.title, a.status);
+}
+
+async function toggleAssignmentFS(id: string, next: AssignmentStatus) {
+  await setDoc(doc(db, "assignments", id), sanitize({ status: next, updatedAt: serverTimestamp() }), { merge: true });
+}
+
+async function renameAssignmentFS(id: string, newTitle: string) {
+  await setDoc(doc(db, "assignments", id), sanitize({ title: newTitle, updatedAt: serverTimestamp() }), { merge: true });
+}
+
+async function deleteAssignmentFS(id: string) {
+  await deleteDoc(doc(db, "assignments", id));
+}
+const [assignments, setAssignments] = useState<AssignmentFS[]>([]);
+const today = useMemo(() => todayStr(), []);
+
+
+
+// ✅ 빈 값(undefined, "") 필드 제거 유틸
+const sanitize = (obj: any) =>
+  Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined && v !== ""));
 
 
 
@@ -858,10 +1000,9 @@ async function addAttendanceTest() {
 
   // ✅ 순공 실시간 갱신 (5초마다)
   const [liveTick, setLiveTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setLiveTick(t => t + 1), 5000);
-    return () => clearInterval(id);
-  }, []);
+
+
+
 
   // ✅ 관리자 모드 상태 및 함수
   const [isAdmin, setIsAdmin] = useState<boolean>(() => localStorage.getItem("is_admin") === "1");
@@ -905,6 +1046,24 @@ async function addAttendanceTest() {
     () => store.groups.find(g => g.id === store.currentGroupId) || store.groups[0],
     [store.groups, store.currentGroupId]
   );
+
+  useEffect(() => {
+  if (!currentGroup) return;
+  const q = query(
+    collection(db, "assignments"),
+    where("groupId", "==", currentGroup.id),
+    where("dateStr", "==", today),
+    orderBy("createdAt", "desc")
+  );
+  const unsub = onSnapshot(q, (snap) => {
+    const list: AssignmentFS[] = [];
+    snap.forEach(d => list.push({ id: d.id, ...(d.data() as any) }));
+    setAssignments(list);
+    console.log("📡 과제 실시간 수신:", list.length);
+  }, (err) => console.error("❌ 과제 구독 오류:", err));
+  return () => unsub();
+}, [currentGroup?.id, today]);
+
   const students = useMemo(() => {
     const list = currentGroup?.students ? [...currentGroup.students] : [];
   
@@ -1241,6 +1400,7 @@ const onCSVFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
       return { ...prev, records };
     });
   };
+
   
   const toggleTask = (sid: string, ds: string, taskId: string) => {
     setStore(prev => {
@@ -1297,6 +1457,8 @@ const onCSVFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
             setTimeout(() => alert(`과제를 추가할 대상 학생이 없습니다. (조건: ${grade || '전체 학년'}, ${school || '전체 학교'})`), 0);
             return prev;
         }
+
+
 
         // 🎯 필터링된 학생들에게 과제 추가
         targetStudents.forEach(st => {
@@ -1524,62 +1686,100 @@ const sumPenaltyForRange = (
 
   /** ===== 학생/그룹 관리 ===== */
   const addStudent = () => {
-    const name = (newStu.name || "").trim();
-    if (!name) return;
-    const s: Student = {
-      id: uid(),
-      name,
-      grade: (newStu.grade || "").trim() || undefined,
-      school: (newStu.school || "").trim() || undefined,
-      studentPhone: (newStu.studentPhone || "").trim() || undefined,
-      parentPhone: (newStu.parentPhone || "").trim() || undefined,
-    };
-    setStore(prev => ({
-      ...prev,
-      groups: prev.groups.map(g => g.id === currentGroup.id ? { ...g, students: [...g.students, s] } : g),
-    }));
-    setNewStu({ name: "", grade: "", school: "", studentPhone: "", parentPhone: "" });
+  const name = (newStu.name || "").trim();
+  if (!name) return;
+
+  const s: Student = {
+    id: uid(),
+    name,
+    grade: (newStu.grade || "").trim() || undefined,
+    school: (newStu.school || "").trim() || undefined,
+    studentPhone: (newStu.studentPhone || "").trim() || undefined,
+    parentPhone: (newStu.parentPhone || "").trim() || undefined,
   };
+
+  setStore(prev => ({
+    ...prev,
+    groups: prev.groups.map(g =>
+      g.id === currentGroup.id
+        ? { ...g, students: [...g.students, s] }
+        : g
+    ),
+  }));
+
+  setNewStu({ name: "", grade: "", school: "", studentPhone: "", parentPhone: "" });
+
+  // ✅ Firestore에 학생 정보 저장 (이 한 줄 추가!)
+  saveStudentToFS(currentGroup.id, s).catch(e =>
+    console.error("🔥 Firestore 저장 실패:", e)
+  );
+};
 
   const updateStudent = (sid: string, patch: Partial<Student>) => {
-    setStore(prev => ({
-      ...prev,
-      groups: prev.groups.map(g => {
-        if (prev.currentGroupId && g.id !== prev.currentGroupId) return g;
-        return {
-          ...g,
-          students: g.students.map(s => (s.id === sid ? { ...s, ...patch } : s)),
-        };
-      }),
-    }));
-    // 모달 닫기
-    setEditStudent(null);
+  setStore(prev => ({
+    ...prev,
+    groups: prev.groups.map(g => {
+      if (prev.currentGroupId && g.id !== prev.currentGroupId) return g;
+      return {
+        ...g,
+        students: g.students.map(s => (s.id === sid ? { ...s, ...patch } : s)),
+      };
+    }),
+  }));
 
-    if (patch.personalSchedule) {
-      applyPersonalScheduleForDate(sid, date);
-    }
-  };
-  
-
-
-
-  const removeStudent = (sid: string) => {
-    if (!confirm("이 학생을 목록에서 숨기겠습니까? (기록은 유지됩니다)")) return;
-  
-    setStore(prev => {
-      const groups = prev.groups.map(g =>
-        g.id === currentGroup.id
-          ? {
-              ...g,
-              students: g.students.map(s =>
-                s.id === sid ? { ...s, removed: true } : s
-              ),
-            }
-          : g
-      );
-      return { ...prev, groups };
+  // 🔥 Firestore에도 업서트 (병합 저장)
+  try {
+    const safe = sanitize({
+      id: sid,
+      groupId: currentGroup?.id,
+      ...patch,
+      updatedAt: serverTimestamp(),
     });
-  };
+
+    setDoc(doc(db, "students", sid), safe, { merge: true })
+      .then(() => console.log("✅ Firestore 학생 업데이트 저장:", sid))
+      .catch(e => console.error("🔥 Firestore 학생 업데이트 실패:", e));
+  } catch (e) {
+    console.error("🔥 Firestore 저장 중 오류:", e);
+  }
+
+  // 모달 닫기
+  setEditStudent(null);
+
+  if (patch.personalSchedule) {
+    applyPersonalScheduleForDate(sid, date);
+  }
+};
+  
+
+
+
+  const removeStudent = async (sid: string) => {
+  if (!confirm("이 학생을 목록에서 숨기겠습니까? (기록은 유지됩니다)")) return;
+
+  setStore(prev => {
+    const groups = prev.groups.map(g =>
+      g.id === currentGroup.id
+        ? {
+            ...g,
+            students: g.students.map(s =>
+              s.id === sid ? { ...s, removed: true } : s
+            ),
+          }
+        : g
+    );
+    return { ...prev, groups };
+  });
+
+  // ✅ Firestore에도 removed 상태 반영
+  try {
+    const ref = doc(db, "students", sid);
+    await setDoc(ref, { removed: true }, { merge: true });
+    console.log(`🗑️ 학생 ${sid} 숨김 처리 완료`);
+  } catch (err) {
+    console.error("❌ Firestore 숨김 실패:", err);
+  }
+};
 
   const setAll = (st: StatusKey) => {
     setStore(prev => {
@@ -1717,57 +1917,10 @@ const timeInpTightFocus: React.CSSProperties = {
 };
   /** ===== 학생별 달력 모달 제어 ===== */
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const selectedStudent = students.find(s => s.id === selectedStudentId) || null;
+  const selectedStudent = students.find(s => s.id === selectedStudentId) ?? null;
 
   return (
-    <>
-    {/* 🔴 Firestore 테스트용 고정 버튼 */}
-<div
-  style={{
-    position: "fixed",
-    top: 10,
-    left: 10,
-    zIndex: 99999,
-    display: "flex",
-    gap: 8,
-    background: "#111",
-    color: "#fff",
-    padding: "6px 8px",
-    borderRadius: 8,
-    boxShadow: "0 4px 12px rgba(0,0,0,.3)",
-  }}
->
-  <button
-    onClick={addAttendanceTest}
-    style={{
-      padding: "6px 10px",
-      border: "1px solid #333",
-      borderRadius: 8,
-      background: "#fff",
-      color: "#111",
-      fontWeight: 700,
-      cursor: "pointer",
-    }}
-  >
-    출결 1건 추가
-  </button>
-
-  <button
-    onClick={loadAttendanceTest}
-    style={{
-      padding: "6px 10px",
-      border: "1px solid #333",
-      borderRadius: 8,
-      background: "#fff",
-      color: "#111",
-      fontWeight: 700,
-      cursor: "pointer",
-    }}
-  >
-    출결 목록 보기
-  </button>
-</div>
-
+   
     <div className="app-main-container" style={{ minHeight: "100vh", background: "#f5f7fb", color: "#111", padding: 20 }}>
       {/* 전역 스타일: time 숫자 잘림 방지 */}
       <style>{`
@@ -2191,7 +2344,15 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
                           {/* 등원 줄 */}
                           <div style={{display:"grid", gridTemplateColumns:"1fr auto auto", gap:6, alignItems:"center", marginBottom:6}}>
                             <input type="time" value={cell.time ?? ""} onChange={(e)=>setTime(s.id, e.target.value)} style={timeInp}/>
-                            <button style={btn} onClick={()=>setTimeNow(s.id)}>등원</button>
+                            <button
+  style={btn}
+  onClick={() => {
+    setTimeNow(s.id);              // 기존 로컬 동작 유지
+    handleCheckIn(s.name);         // ✅ Firestore에 기록 추가
+  }}
+>
+  등원
+</button>
                             <button
                               style={btnXS}
                               title="등원 시간 지우기"
@@ -2201,7 +2362,15 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
                           {/* 하원 줄 */}
                           <div style={{display:"grid", gridTemplateColumns:"1fr auto auto", gap:6, alignItems:"center"}}>
                             <input type="time" value={cell.outTime ?? ""} onChange={(e)=>setOutTime(s.id, e.target.value)} style={timeInp}/>
-                            <button style={btn} onClick={()=>setOutTimeNow(s.id)}>하원</button>
+                            <button
+  style={btn}
+  onClick={() => {
+    setOutTimeNow(s.id);      // 기존 기능 유지
+    handleCheckOut(s.name);   // Firestore에 하원 데이터 저장
+  }}
+>
+  하원
+</button>
                             <button
                               style={btnXS}
                               title="하원 시간 지우기"
@@ -3140,7 +3309,7 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
   })}
 </div>
 
-
+ </div>
 
           </div>
 
@@ -3205,7 +3374,7 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
   />
 )}
 
-        {/* 학생 정보 수정 모달 */}
+       {/* 학생 정보 수정 모달 */}
 {editStudent && (() => {
   const st = (currentGroup?.students || []).find(s => s.id === editStudent);
   if (!st) return null;
@@ -3217,10 +3386,9 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
     />
   );
 })()}
-    </div>
-    </div>
-    </>
-  );
+  </div>
+ 
+);
 }
 
 
