@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "./firebase";
+import { GradeModal } from "./components/GradeModal";
+import { GradeChartModal } from "./components/GradeChartModal";
 import {
   collection,
   doc,
@@ -155,6 +157,10 @@ export type Student = {
   parentPhone?: string;
   removed?: boolean;
   personalSchedule?: Partial<Record<AcademyType, WeeklyTime>>;
+  koreanScore?: number;
+  englishScore?: number;
+  mathScore?: number;
+  scienceScore?: number;
 };
 
 export type Records = Record<string, Record<string, DayCell>>;
@@ -493,11 +499,16 @@ function saveStore(s: StoreShape) {
 
 /** ========= 학생 정보 수정 모달 ========= */
 function EditStudentModal({
-  student,  onClose,  onSave,}: {
+  student,
+  onClose,
+  onSave,
+}: {
   student: Student;
   onClose: () => void;
   onSave: (patch: Partial<Student>) => void;
 }) {
+  const [showGradeModal, setShowGradeModal] = React.useState(false);
+const [showGradeChart, setShowGradeChart] = React.useState(false);
   const [form, setForm] = React.useState({
     name: student.name || "",
     grade: student.grade || "",
@@ -505,8 +516,11 @@ function EditStudentModal({
     gradeLevel: (student as any).gradeLevel || "",
     studentPhone: student.studentPhone || "",
     parentPhone: student.parentPhone || "",
+    koreanScore: student.koreanScore ?? 0,
+    englishScore: student.englishScore ?? 0,
+    mathScore: student.mathScore ?? 0,
+    scienceScore: student.scienceScore ?? 0,
   });
- 
 
   const inp: React.CSSProperties = {
     padding: "8px 10px",
@@ -516,6 +530,7 @@ function EditStudentModal({
     width: "100%",
     fontSize: 13,
   };
+
   const btn: React.CSSProperties = {
     padding: "8px 10px",
     border: "1px solid #dde1ea",
@@ -524,6 +539,7 @@ function EditStudentModal({
     cursor: "pointer",
     fontSize: 13,
   };
+
   const btnD: React.CSSProperties = {
     padding: "8px 10px",
     border: "1px solid #111",
@@ -534,21 +550,29 @@ function EditStudentModal({
     fontSize: 13,
   };
 
-  // EditStudentModal 내부, state 옆에 추가
-  const SUBJECTS: AcademyType[] = ["영어","수학","국어","과학","기타","외출"];
+  /** ✅ 공통 입력 핸들러 */
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const key = e.target.name as keyof Student;
+    const value = e.target.type === "number" ? Number(e.target.value) : e.target.value;
+    setForm((f) => ({ ...f, [key]: value }));
+  };
 
+  /** ✅ 개인 시간표용 state */
+  const SUBJECTS: AcademyType[] = ["영어", "수학", "국어", "과학", "기타", "외출"];
   const [sched, setSched] = React.useState<
-  Partial<Record<AcademyType, WeeklyTime>>
->(() => student.personalSchedule ?? {});
+    Partial<Record<AcademyType, WeeklyTime>>
+  >(() => student.personalSchedule ?? {});
 
-const toggleDay = (sub: AcademyType, d: number) => {
-  setSched(s => {
-    const cur = s[sub] || {};
-    const days = new Set(cur.days || []);
-    days.has(d) ? days.delete(d) : days.add(d);
-    return { ...s, [sub]: { ...cur, days: Array.from(days).sort() } };
-  });
-};
+  const toggleDay = (sub: AcademyType, d: number) => {
+    setSched((s) => {
+      const cur = s[sub] || {};
+      const days = new Set(cur.days || []);
+      days.has(d) ? days.delete(d) : days.add(d);
+      return { ...s, [sub]: { ...cur, days: Array.from(days).sort() } };
+    });
+  };
 
   return (
     <div
@@ -564,174 +588,172 @@ const toggleDay = (sub: AcademyType, d: number) => {
       onClick={onClose}
     >
       <div
-        style={{
-          width: 650, 
-          maxWidth: "95vw",
-          background: "#fff",
-          borderRadius: 12,
-          padding: 16,
-          boxShadow: "0 10px 30px rgba(0,0,0,.2)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+  style={{
+    width: 650,
+    maxWidth: "95vw",
+    background: "#f0f9ff", // 💙 아주 연한 하늘색
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: "0 10px 30px rgba(0,0,0,.2)",
+    maxHeight: "90vh",
+    overflow: "auto",
+  }}
+  onClick={(e) => e.stopPropagation()}
+>
         <h3 style={{ marginTop: 0, marginBottom: 12 }}>👤 학생 정보 수정</h3>
+
+        {/* 기본 정보 */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>이름</div>
-            <input
+          <input name="name" value={form.name} onChange={handleChange} style={inp} placeholder="이름" />
+          <select name="grade" value={form.grade} onChange={handleChange} style={inp}>
+            <option value="">학년 선택</option>
+            <option value="중1">중1</option>
+            <option value="중2">중2</option>
+            <option value="중3">중3</option>
+            <option value="고1">고1</option>
+            <option value="고2">고2</option>
+            <option value="고3">고3</option>
+          </select>
+          <input name="school" value={form.school} onChange={handleChange} style={inp} placeholder="학교 이름" />
+          <select name="gradeLevel" value={form.gradeLevel} onChange={handleChange} style={inp}>
+            <option value="">학교급</option>
+            <option value="중학교">중학교</option>
+            <option value="고등학교">고등학교</option>
+          </select>
+          <input name="studentPhone" value={form.studentPhone} onChange={handleChange} style={inp} placeholder="학생 연락처" />
+          <input name="parentPhone" value={form.parentPhone} onChange={handleChange} style={inp} placeholder="부모님 연락처" />
+        </div>
+
+       {/* --- 입학 성적 입력 섹션 --- */}
+<div
+  style={{
+    background: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: "0 4px 10px rgba(0,0,0,0.05)", // ✅ 은은한 그림자
+    marginBottom: 16,
+    marginTop: 20,
+  }}
+>
+  <div
+    style={{
+      fontWeight: 700,
+      fontSize: 16,
+      marginBottom: 12,
+      color: "#1f2937",
+    }}
+  >
+    🎯 입학 성적 입력
+  </div>
+
+  {/* 국어, 영어, 수학, 과학 입력 필드 */}
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(2, 1fr)",
+      gap: 12,
+    }}
+  >
+         <input
+              name="koreanScore"
+              type="number"
+              min="0"
+              max="100"
+              value={form.koreanScore || ""}
+              onChange={handleChange}
               style={inp}
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="이름"
+              placeholder="국어 성적"
             />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>학년</div>
-            <select
-              style={inp}
-              value={form.grade}
-              onChange={(e) => setForm((f) => ({ ...f, grade: e.target.value }))}
-            >
-              <option value="">학년 선택</option>
-              <option value="중1">중1</option>
-              <option value="중2">중2</option>
-              <option value="중3">중3</option>
-              <option value="고1">고1</option>
-              <option value="고2">고2</option>
-              <option value="고3">고3</option>
-            </select>
-          </div>
-          <div style={{ gridColumn: "1 / span 2" }}>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>학교 / 학교급</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <input
-                style={{ ...inp, flex: 2 }}
-                value={form.school}
-                onChange={(e) => setForm((f) => ({ ...f, school: e.target.value }))}
-                placeholder="학교 이름 (예: 부산중앙)"
-              />
-              <select
-                style={{ ...inp, flex: 1 }}
-                value={form.gradeLevel}
-                onChange={(e) => setForm((f) => ({ ...f, gradeLevel: e.target.value }))}
-              >
-                <option value="">학교급</option>
-                <option value="중학교">중학교</option>
-                <option value="고등학교">고등학교</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>학생 연락처</div>
             <input
+              name="englishScore"
+              type="number"
+              min="0"
+              max="100"
+              value={form.englishScore || ""}
+              onChange={handleChange}
               style={inp}
-              value={form.studentPhone}
-              onChange={(e) => setForm((f) => ({ ...f, studentPhone: e.target.value }))}
-              placeholder="010-0000-0000"
+              placeholder="영어 성적"
             />
-          </div>
-          <div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>부모님 연락처</div>
             <input
+              name="mathScore"
+              type="number"
+              min="0"
+              max="100"
+              value={form.mathScore || ""}
+              onChange={handleChange}
               style={inp}
-              value={form.parentPhone}
-              onChange={(e) => setForm((f) => ({ ...f, parentPhone: e.target.value }))}
-              placeholder="010-0000-0000"
+              placeholder="수학 성적"
+            />
+            <input
+              name="scienceScore"
+              type="number"
+              min="0"
+              max="100"
+              value={form.scienceScore || ""}
+              onChange={handleChange}
+              style={inp}
+              placeholder="과학 성적"
             />
           </div>
         </div>
 
-
-        {/* --- 개인시간(기본 시간표) 입력 섹션 --- */}
-        <div style={{ marginTop: 20 }}> {/* 위쪽 여백 조정 */}
-          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12, color: "#1f2937" }}>
-            🗓️ 개인시간(기본 시간표)
-          </div>
-          <div style={{ 
-              display: "grid", 
-              // 🚨 각 과목 카드를 2열로 배치
-              gridTemplateColumns: "repeat(2, 1fr)",
-              gap: 12, // 카드 사이의 간격
-          }}>
-            {SUBJECTS.map(sub=>(
-              <div 
-                key={sub} 
-                style={{ 
-                    background: "#f9fafb", 
-                    border: "1px solid #e5e7eb", 
-                    borderRadius: 12, 
-                    padding: 12, 
-                    boxShadow: "0 1px 2px rgba(0,0,0,0.05)", 
-                    display: "flex", 
-                    flexDirection: "column", 
-                    gap: 8, 
-                    // 🚨 수정 1: 넘치는 내용 숨김 (모달 밖으로 나가지 않도록)
-                    overflow: "hidden", 
+        {/* 개인시간표 입력 */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>🗓️ 개인시간(기본 시간표)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+            {SUBJECTS.map((sub) => (
+              <div
+                key={sub}
+                style={{
+                  background: "#f9fafb",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 12,
+                  padding: 12,
                 }}
               >
-                <div style={{ 
-                    fontSize:14, 
-                    fontWeight: 600, 
-                    color:"#374151",
-                    marginBottom: 4, 
-                }}>{sub}</div>
-                
-                {/* 시간 입력 필드 그룹 */}
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{sub}</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input
-                      type="time" style={{ ...inp, height:34, flex: 1 }} // flex:1로 남은 공간 채우기
-                      value={sched[sub]?.from || ""} placeholder="시작 시간"
-                      onChange={e=>setSched(s=>({ ...s, [sub]: { ...(s[sub]||{}), from:e.target.value||undefined } }))}
-                    />
-                    <span style={{ color: "#6b7280", fontSize: 13 }}>~</span> {/* 구분자 */}
-                    <input
-                      type="time" style={{ ...inp, height:34, flex: 1 }} // flex:1로 남은 공간 채우기
-                      value={sched[sub]?.to || ""} placeholder="종료 시간"
-                      onChange={e=>setSched(s=>({ ...s, [sub]: { ...(s[sub]||{}), to:e.target.value||undefined } }))}
-                    />
+                  <input
+                    type="time"
+                    style={{ ...inp, height: 34, flex: 1 }}
+                    value={sched[sub]?.from || ""}
+                    onChange={(e) =>
+                      setSched((s) => ({ ...s, [sub]: { ...(s[sub] || {}), from: e.target.value } }))
+                    }
+                  />
+                  <span style={{ color: "#6b7280", fontSize: 13 }}>~</span>
+                  <input
+                    type="time"
+                    style={{ ...inp, height: 34, flex: 1 }}
+                    value={sched[sub]?.to || ""}
+                    onChange={(e) =>
+                      setSched((s) => ({ ...s, [sub]: { ...(s[sub] || {}), to: e.target.value } }))
+                    }
+                  />
                 </div>
 
-                {/* 요일 체크 (일~토: 0~6) */}
-                <div 
-                    style={{ 
-                        display:"flex", 
-                        gap:4, 
-                        flexWrap:"nowrap", 
-                        // 🚨 수정 2: minWidth 제거 및 width: 100% 설정
-                        width: "100%", 
-                        marginTop: 8, 
-                        overflowX: "auto", 
-                        paddingBottom: 4,                         
-                        scrollbarWidth: "none", 
-                        msOverflowStyle: "none", 
-                    }}
-                >
-                 {/* Webkit 브라우저(Chrome, Safari) 스크롤바 숨기기 - 스타일 컴포넌트 밖으로 이동하거나 그대로 둡니다. */}
-                  {/* <style>{`div::-webkit-scrollbar { display: none; }`}</style> */}
-                  {["일","월","화","수","목","금","토"].map((label, idx)=>(
-                    <label 
-                        key={idx} 
-                        style={{ 
-                            display:"inline-flex", 
-                            alignItems:"center", 
-                            // 🚨 gap을 4px로 복구합니다.
-                            gap:0.1, 
-                            fontSize:12,
-                            flexShrink: 0, // 줄어들지 않도록 유지
-                            background: (sched[sub]?.days||[]).includes(idx) ? "#e0f2fe" : "#f3f4f6",
-                            color: (sched[sub]?.days||[]).includes(idx) ? "#0d9488" : "#4b5563",
-                            borderRadius: 6,
-                            // 🚨 좌우 패딩을 줄인 4px 6px를 유지하여 너비 확보
-                            padding: "4px 6px", 
-                            cursor: "pointer",
-                            transition: "background 0.2s ease",
-                        }}
+                <div style={{ display: "flex", gap: 4, marginTop: 8 }}>
+                  {["일", "월", "화", "수", "목", "금", "토"].map((label, idx) => (
+                    <label
+                      key={idx}
+                      style={{
+                        fontSize: 12,
+                        background: (sched[sub]?.days || []).includes(idx)
+                          ? "#e0f2fe"
+                          : "#f3f4f6",
+                        color: (sched[sub]?.days || []).includes(idx)
+                          ? "#0d9488"
+                          : "#4b5563",
+                        borderRadius: 6,
+                        padding: "4px 6px",
+                        cursor: "pointer",
+                      }}
                     >
                       <input
                         type="checkbox"
-                        checked={(sched[sub]?.days||[]).includes(idx)}
-                        onChange={()=>toggleDay(sub, idx)}
-                        style={{ margin: 0 }} // 기본 마진 제거
+                        checked={(sched[sub]?.days || []).includes(idx)}
+                        onChange={() => toggleDay(sub, idx)}
+                        style={{ marginRight: 4 }}
                       />
                       {label}
                     </label>
@@ -742,14 +764,91 @@ const toggleDay = (sub: AcademyType, d: number) => {
           </div>
         </div>
 
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 10 }}>
-          <button style={btn} onClick={onClose}>취소</button>
-          <button style={btnD} onClick={() => onSave({ personalSchedule: sched } as Partial<Student>)}>저장</button>
-        </div>
+{/* 버튼 영역 */}
+<div
+  style={{
+    marginTop: 24,
+    paddingTop: 12,
+    borderTop: "1px solid #e5e7eb",
+    background: "#f9fafb",
+    display: "flex",
+    justifyContent: "space-between", // 좌우로 나뉘게!
+    alignItems: "center",
+    paddingBottom: 10,
+    borderRadius: "0 0 12px 12px",
+  }}
+>
+  {/* 👈 왼쪽: 성적 입력 / 그래프 보기 */}
+  <div style={{ display: "flex", gap: 10 }}>
+    <button
+      style={{
+        ...btn,
+        background: "#e0f2fe", // 파스텔 블루
+        color: "#0369a1",
+        borderColor: "#bae6fd",
+      }}
+      onClick={() => setShowGradeModal(true)}
+    >
+      📘 성적 입력
+    </button>
+    <button
+      style={{
+        ...btn,
+        background: "#fef9c3", // 파스텔 옐로
+        color: "#854d0e",
+        borderColor: "#fde68a",
+      }}
+      onClick={() => setShowGradeChart(true)}
+    >
+      📈 그래프 보기
+    </button>
+  </div>
+
+  {/* 👉 오른쪽: 취소 / 저장 */}
+  <div style={{ display: "flex", gap: 10 }}>
+    <button
+      style={{
+        ...btn,
+        background: "#f3f4f6",
+        color: "#374151",
+        borderColor: "#e5e7eb",
+      }}
+      onClick={onClose}
+    >
+      취소
+    </button>
+    <button
+      style={{
+        ...btnD,
+        background: "#2563eb", // 강조 파랑
+        borderColor: "#1d4ed8",
+      }}
+      onClick={() =>
+        onSave({
+          ...form,
+          personalSchedule: sched,
+        } as Partial<Student>)
+      }
+    >
+      저장
+    </button>
+  </div>
+</div>
+
+{/* 모달 연결 */}
+{showGradeModal && (
+  <GradeModal studentId={student.id} onClose={() => setShowGradeModal(false)} />
+)}
+{showGradeChart && (
+  <GradeChartModal studentId={student.id} onClose={() => setShowGradeChart(false)} />
+)}
       </div>
     </div>
   );
+  
+
 }
+
 
 /** ================= 메인 앱 ================= */
 export default function App() {
