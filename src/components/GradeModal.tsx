@@ -1,21 +1,268 @@
-import React from "react";
-import { addDoc, collection } from "firebase/firestore";
-import { db } from "../firebase";
+// src/components/GradeModal.tsx
+import React, { useState, useEffect } from "react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../firebase"; // ✅ firebase.ts에서 export한 db 사용
 
-export function GradeModal({ studentId, onClose }: { studentId: string; onClose: () => void }) {
-  const [scores, setScores] = React.useState({
-    date: new Date().toISOString().slice(0, 10),
-    korean: 0,
-    english: 0,
-    math: 0,
-    science: 0,
+interface GradeModalProps {
+  studentId: string;
+  gradeLevel: string;
+  onClose: () => void;
+}
+
+const subjects = [
+  "국어", "영어", "수학", "과학", "역사", "도덕", "기술가정", "한문", "일본어",
+];
+
+const termOptions = {
+  중1: ["2학기 중간", "2학기 기말"],
+  중2: ["1학기 중간", "1학기 기말", "2학기 중간", "2학기 기말"],
+  중3: ["1학기 중간", "1학기 기말", "2학기 중간", "2학기 기말"],
+  브랜치: Array.from({ length: 8 }, (_, i) => `모의고사 ${i + 1}회`),
+};
+
+const pastelThemes: Record<string, string> = {
+  중1: "#e6f0ff",
+  중2: "#e8f7ef",
+  중3: "#fff2e6",
+  브랜치: "#f5e6f7",
+};
+
+const gradeColors = ["#4caf50", "#8bc34a", "#cddc39", "#ffc107", "#f44336"];
+
+// ✅ 등급 계산
+const getLevel = (my: number, avg: number) => {
+  if (!avg) return 0;
+  const diff = my - avg;
+  if (diff >= 10) return 1;
+  if (diff >= 5) return 2;
+  if (diff >= -5) return 3;
+  if (diff >= -10) return 4;
+  return 5;
+};
+
+// ✅ Firestore 저장 / 불러오기
+const saveGrade = async (studentId: string, data: any) => {
+  await setDoc(doc(db, "grades", studentId), data, { merge: true });
+  console.log("✅ Firestore 저장 완료:", data);
+};
+
+const loadGrade = async (studentId: string) => {
+  const snap = await getDoc(doc(db, "grades", studentId));
+  if (snap.exists()) {
+    console.log("📂 Firestore 불러오기:", snap.data());
+    return snap.data();
+  }
+  return null;
+};
+
+// ✅ AI 피드백
+const generateFeedback = (scores: Record<string, any>) => {
+  const comments: string[] = [];
+  let total = 0;
+  let count = 0;
+
+  for (const [subject, terms] of Object.entries(scores)) {
+    const myAvg =
+      Object.values(terms).reduce((a: number, t: any) => a + (t.my || 0), 0) /
+      Object.keys(terms).length;
+    const schoolAvg =
+      Object.values(terms).reduce((a: number, t: any) => a + (t.avg || 0), 0) /
+      Object.keys(terms).length;
+
+    total += myAvg;
+    count++;
+
+    if (myAvg - schoolAvg >= 5)
+      comments.push(`${subject}은(는) 평균보다 높으며, 우수한 성취를 보이고 있습니다.`);
+    else if (myAvg - schoolAvg >= -5)
+      comments.push(`${subject}은(는) 평균 수준으로 꾸준한 유지가 필요합니다.`);
+    else
+      comments.push(`${subject}은(는) 평균 이하로, 기초 보완이 요구됩니다.`);
+  }
+
+  const overall = total / count;
+  let summary = "";
+  if (overall >= 90)
+    summary = "전반적으로 매우 우수하며, 자기주도적 학습 태도가 잘 형성되어 있습니다.";
+  else if (overall >= 80)
+    summary = "전반적으로 안정적이며, 일부 과목 보완으로 더 성장할 수 있습니다.";
+  else if (overall >= 70)
+    summary = "기초 개념 정리와 복습을 통해 향상 가능성이 있습니다.";
+  else
+    summary = "학습 습관의 재정비와 목표 설정을 통한 동기 강화가 필요합니다.";
+
+  return `📘 ${summary}\n${comments.join(" ")}`;
+};
+
+export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModalProps) {
+  const [activeTab, setActiveTab] = useState<"중1" | "중2" | "중3" | "브랜치">("중1");
+  const [teacherComment, setTeacherComment] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // ✅ 초기 구조 생성
+  const [grades, setGrades] = useState(() => {
+    const allSubjects = {
+      중1: subjects,
+      중2: subjects,
+      중3: subjects,
+      브랜치: ["국어", "수학", "영어", "통합과학", "통합사회", "역사"],
+    };
+    return Object.fromEntries(
+      Object.keys(termOptions).map((year) => [
+        year,
+        Object.fromEntries(
+          allSubjects[year as keyof typeof allSubjects].map((s) => [
+            s,
+            Object.fromEntries(
+              termOptions[year as keyof typeof termOptions].map((t) => [t, { my: 0, avg: 0 }])
+            ),
+          ])
+        ),
+      ])
+    );
   });
 
-  const saveGrade = async () => {
-    await addDoc(collection(db, "students", studentId, "grades"), scores);
-    alert("성적이 저장되었습니다!");
-    onClose();
+  // ✅ Firestore에서 기존 데이터 불러오기
+  useEffect(() => {
+    (async () => {
+      const saved = await loadGrade(studentId);
+      if (saved) {
+        setGrades(saved.scores || grades);
+        setTeacherComment(saved.teacherComment || "");
+      }
+      setLoading(false);
+    })();
+  }, [studentId]);
+
+  // ✅ 입력 변경
+  const handleChange = (year: string, subject: string, term: string, field: "my" | "avg", value: string) => {
+    setGrades((prev) => ({
+      ...prev,
+      [year]: {
+        ...prev[year],
+        [subject]: {
+          ...prev[year][subject],
+          [term]: {
+            ...prev[year][subject][term],
+            [field]: Number(value),
+          },
+        },
+      },
+    }));
   };
+
+  // ✅ Firestore 저장
+  const handleSave = async () => {
+    try {
+      const data = {
+        studentId,
+        gradeLevel,
+        scores: grades,
+        teacherComment,
+        updatedAt: new Date().toISOString(),
+      };
+      await saveGrade(studentId, data);
+      alert("✅ 성적이 Firestore에 저장되었습니다!");
+    } catch (err) {
+      console.error("⚠️ 저장 오류:", err);
+      alert("⚠️ 저장 중 문제가 발생했습니다.");
+    }
+  };
+
+  // ✅ 표 렌더링
+  const renderTable = (year: string) => {
+    const terms = termOptions[year as keyof typeof termOptions];
+    const subjList =
+      year === "브랜치"
+        ? ["국어", "수학", "영어", "통합과학", "통합사회", "역사"]
+        : subjects;
+
+    return (
+      <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "center", fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: pastelThemes[year], color: "#333" }}>
+            <th style={{ padding: "7px 0", border: "1px solid #ddd" }}>과목</th>
+            {terms.map((term) => (
+              <th key={term} colSpan={year === "브랜치" ? 2 : 3} style={{ border: "1px solid #ddd" }}>
+                {term}
+              </th>
+            ))}
+          </tr>
+          <tr style={{ background: "#fafafa" }}>
+            <th></th>
+            {terms.map((term) =>
+              year === "브랜치" ? (
+                <>
+                  <th>내 점수</th>
+                  <th>등급</th>
+                </>
+              ) : (
+                <>
+                  <th>내 점수</th>
+                  <th>평균</th>
+                  <th>등급</th>
+                </>
+              )
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {subjList.map((subject) => (
+            <tr key={subject}>
+              <td style={{ fontWeight: 600, background: "#fdfcfb" }}>{subject}</td>
+              {terms.map((term) => {
+                const { my, avg } = grades[year][subject][term];
+                const level = year === "브랜치" ? Number(avg) : getLevel(my, avg);
+                return (
+                  <>
+                    <td>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={my}
+                        onChange={(e) => handleChange(year, subject, term, "my", e.target.value)}
+                        style={{
+                          width: 45,
+                          height: 26,
+                          border: "1px solid #ddd",
+                          borderRadius: 5,
+                          textAlign: "center",
+                          background: "#fffaf4",
+                        }}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type={year === "브랜치" ? "text" : "number"}
+                        value={avg}
+                        onChange={(e) => handleChange(year, subject, term, "avg", e.target.value)}
+                        style={{
+                          width: 65,
+                          height: 26,
+                          border: "1px solid #ddd",
+                          borderRadius: 5,
+                          textAlign: "center",
+                          background: year === "브랜치" ? "#fffdf5" : "#f9f9f9",
+                        }}
+                      />
+                    </td>
+                    {year !== "브랜치" && (
+                      <td style={{ background: gradeColors[level - 1], color: "#fff", fontWeight: 700 }}>
+                        {level}등급
+                      </td>
+                    )}
+                  </>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
+
+  if (loading) return <div style={{ padding: 20 }}>⏳ 불러오는 중...</div>;
 
   return (
     <div
@@ -24,41 +271,102 @@ export function GradeModal({ studentId, onClose }: { studentId: string; onClose:
         inset: 0,
         background: "rgba(0,0,0,0.4)",
         display: "flex",
-        alignItems: "center",
         justifyContent: "center",
+        alignItems: "center",
         zIndex: 999,
       }}
+      onClick={onClose}
     >
-      <div style={{ background: "#fff", padding: 20, borderRadius: 12, width: 350 }}>
-        <h3>📘 성적 입력</h3>
-        <div style={{ display: "grid", gap: 10 }}>
-          {["korean", "english", "math", "science"].map((subject) => (
-            <div key={subject}>
-              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{subject}</div>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                style={{
-                  width: "100%",
-                  border: "1px solid #ddd",
-                  borderRadius: 6,
-                  padding: "6px 8px",
-                }}
-                value={(scores as any)[subject]}
-                onChange={(e) =>
-                  setScores({ ...scores, [subject]: Number(e.target.value) })
-                }
-              />
-            </div>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff",
+          borderRadius: 12,
+          padding: 20,
+          width: "95%",
+          maxWidth: 1000,
+          overflowX: "auto",
+          boxShadow: "0 8px 20px rgba(0,0,0,0.1)",
+        }}
+      >
+        {/* 헤더 */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 12,
+            borderBottom: "2px solid #d9cba8",
+            paddingBottom: 8,
+          }}
+        >
+          <div style={{ fontSize: 22, fontWeight: 600, color: "#8b6b3c" }}>Optimum Educore</div>
+          <div style={{ fontSize: 12, textAlign: "right" }}>
+            <div>학생: {studentId}</div>
+            <div>학년: {gradeLevel}</div>
+          </div>
+        </div>
+
+        {/* 탭 */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {["중1", "중2", "중3", "브랜치"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab as any)}
+              style={{
+                flex: 1,
+                padding: "8px 0",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: activeTab === tab ? pastelThemes[tab] : "#f9f9f9",
+                color: "#222",
+                fontWeight: 600,
+              }}
+            >
+              {tab}
+            </button>
           ))}
         </div>
-        <button onClick={saveGrade} style={{ marginTop: 16 }}>
-          저장
-        </button>
-        <button onClick={onClose} style={{ marginLeft: 8 }}>
-          닫기
-        </button>
+
+        {/* 표 */}
+        {renderTable(activeTab)}
+
+        {/* 코멘트 */}
+        <div
+          style={{
+            marginTop: 16,
+            border: "1px solid #eee",
+            borderRadius: 10,
+            padding: 12,
+            background: "#fffef8",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>📘 COMMENT</div>
+          <textarea
+            value={teacherComment || generateFeedback(grades[activeTab])}
+            onChange={(e) => setTeacherComment(e.target.value)}
+            placeholder="AI가 생성한 피드백을 수정하거나 직접 입력할 수 있습니다."
+            style={{
+              width: "100%",
+              minHeight: 80,
+              padding: 10,
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              fontSize: 13,
+              lineHeight: 1.5,
+              resize: "vertical",
+            }}
+          />
+        </div>
+
+        {/* 버튼 */}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
+          <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 8, background: "#f3f4f6" }}>
+            닫기
+          </button>
+          <button onClick={handleSave} style={{ padding: "8px 18px", borderRadius: 8, background: "#e6f0ff" }}>
+            저장
+          </button>
+        </div>
       </div>
     </div>
   );

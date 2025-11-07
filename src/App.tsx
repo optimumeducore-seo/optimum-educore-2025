@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "./firebase";
-import { GradeModal } from "./components/GradeModal";
-import { GradeChartModal } from "./components/GradeChartModal";
+import GradeModal from "./components/GradeModal";
+import GradeChartModal from "./components/GradeChartModal";  // ✅ 중괄호 제거
+import EditStudentModal from "./components/EditStudentModal";
 import {
   collection,
   doc,
@@ -13,8 +14,17 @@ import {
   orderBy,
   where,
   onSnapshot,
-  serverTimestamp
+  serverTimestamp,
 } from "firebase/firestore";
+// ✅ Firestore에서 학생 완전 삭제 함수
+async function deleteStudentFromFS(studentId: string) {
+  try {
+    await deleteDoc(doc(db, "students", studentId));
+    console.log("🗑️ Firestore에서 학생 완전 삭제됨:", studentId);
+  } catch (e) {
+    console.error("❌ Firestore 학생 삭제 실패:", e);
+  }
+}
 
 
 
@@ -100,8 +110,14 @@ const style = {
 export type StatusKey = "P" | "L" | "A" | "E";
 export type AcademyType = "영어" | "수학" | "국어" | "과학" | "기타" | "외출";
 
-export type TimeSlot = { from: string; to: string };
-export type WeeklyTime = { from?: string; to?: string; days?: number[] };
+export type TimeSlot = {
+  day: number;
+  from: string;
+  to: string;
+};
+export type WeeklyTime = {
+  slots: TimeSlot[];
+};
 export type SubjectEntry = { from?: string; to?: string; slots?: TimeSlot[] };
 
 export interface DayCell {
@@ -116,11 +132,13 @@ export interface DayCell {
 
   // 과목별 시간
   academyBySubject?: Partial<Record<AcademyType, SubjectEntry>>;
+ overrideAcademyTimes?: Record<string, { subject: string; from: string; to: string; date: string }>;
 
   // 휴식/식사
   restroomCount?: number;
   restroomMin?: number;
   mealMin?: number;
+   commuteMin?: number; // 이동 / 통학 시간(분 단위)
 
   // 메모/과제
   memo?: string;
@@ -497,363 +515,13 @@ function saveStore(s: StoreShape) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 }
 
-/** ========= 학생 정보 수정 모달 ========= */
-function EditStudentModal({
-  student,
-  onClose,
-  onSave,
-}: {
-  student: Student;
-  onClose: () => void;
-  onSave: (patch: Partial<Student>) => void;
-}) {
-  const [showGradeModal, setShowGradeModal] = React.useState(false);
-const [showGradeChart, setShowGradeChart] = React.useState(false);
-  const [form, setForm] = React.useState({
-    name: student.name || "",
-    grade: student.grade || "",
-    school: student.school || "",
-    gradeLevel: (student as any).gradeLevel || "",
-    studentPhone: student.studentPhone || "",
-    parentPhone: student.parentPhone || "",
-    koreanScore: student.koreanScore ?? 0,
-    englishScore: student.englishScore ?? 0,
-    mathScore: student.mathScore ?? 0,
-    scienceScore: student.scienceScore ?? 0,
-  });
 
-  const inp: React.CSSProperties = {
-    padding: "8px 10px",
-    border: "1px solid #dde1ea",
-    borderRadius: 10,
-    background: "#fff",
-    width: "100%",
-    fontSize: 13,
-  };
-
-  const btn: React.CSSProperties = {
-    padding: "8px 10px",
-    border: "1px solid #dde1ea",
-    borderRadius: 10,
-    background: "#fff",
-    cursor: "pointer",
-    fontSize: 13,
-  };
-
-  const btnD: React.CSSProperties = {
-    padding: "8px 10px",
-    border: "1px solid #111",
-    borderRadius: 10,
-    background: "#111",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: 13,
-  };
-
-  /** ✅ 공통 입력 핸들러 */
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const key = e.target.name as keyof Student;
-    const value = e.target.type === "number" ? Number(e.target.value) : e.target.value;
-    setForm((f) => ({ ...f, [key]: value }));
-  };
-
-  /** ✅ 개인 시간표용 state */
-  const SUBJECTS: AcademyType[] = ["영어", "수학", "국어", "과학", "기타", "외출"];
-  const [sched, setSched] = React.useState<
-    Partial<Record<AcademyType, WeeklyTime>>
-  >(() => student.personalSchedule ?? {});
-
-  const toggleDay = (sub: AcademyType, d: number) => {
-    setSched((s) => {
-      const cur = s[sub] || {};
-      const days = new Set(cur.days || []);
-      days.has(d) ? days.delete(d) : days.add(d);
-      return { ...s, [sub]: { ...cur, days: Array.from(days).sort() } };
-    });
-  };
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,.35)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 60,
-      }}
-      onClick={onClose}
-    >
-      <div
-  style={{
-    width: 650,
-    maxWidth: "95vw",
-    background: "#f0f9ff", // 💙 아주 연한 하늘색
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0 10px 30px rgba(0,0,0,.2)",
-    maxHeight: "90vh",
-    overflow: "auto",
-  }}
-  onClick={(e) => e.stopPropagation()}
->
-        <h3 style={{ marginTop: 0, marginBottom: 12 }}>👤 학생 정보 수정</h3>
-
-        {/* 기본 정보 */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-          <input name="name" value={form.name} onChange={handleChange} style={inp} placeholder="이름" />
-          <select name="grade" value={form.grade} onChange={handleChange} style={inp}>
-            <option value="">학년 선택</option>
-            <option value="중1">중1</option>
-            <option value="중2">중2</option>
-            <option value="중3">중3</option>
-            <option value="고1">고1</option>
-            <option value="고2">고2</option>
-            <option value="고3">고3</option>
-          </select>
-          <input name="school" value={form.school} onChange={handleChange} style={inp} placeholder="학교 이름" />
-          <select name="gradeLevel" value={form.gradeLevel} onChange={handleChange} style={inp}>
-            <option value="">학교급</option>
-            <option value="중학교">중학교</option>
-            <option value="고등학교">고등학교</option>
-          </select>
-          <input name="studentPhone" value={form.studentPhone} onChange={handleChange} style={inp} placeholder="학생 연락처" />
-          <input name="parentPhone" value={form.parentPhone} onChange={handleChange} style={inp} placeholder="부모님 연락처" />
-        </div>
-
-       {/* --- 입학 성적 입력 섹션 --- */}
-<div
-  style={{
-    background: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0 4px 10px rgba(0,0,0,0.05)", // ✅ 은은한 그림자
-    marginBottom: 16,
-    marginTop: 20,
-  }}
->
-  <div
-    style={{
-      fontWeight: 700,
-      fontSize: 16,
-      marginBottom: 12,
-      color: "#1f2937",
-    }}
-  >
-    🎯 입학 성적 입력
-  </div>
-
-  {/* 국어, 영어, 수학, 과학 입력 필드 */}
-  <div
-    style={{
-      display: "grid",
-      gridTemplateColumns: "repeat(2, 1fr)",
-      gap: 12,
-    }}
-  >
-         <input
-              name="koreanScore"
-              type="number"
-              min="0"
-              max="100"
-              value={form.koreanScore || ""}
-              onChange={handleChange}
-              style={inp}
-              placeholder="국어 성적"
-            />
-            <input
-              name="englishScore"
-              type="number"
-              min="0"
-              max="100"
-              value={form.englishScore || ""}
-              onChange={handleChange}
-              style={inp}
-              placeholder="영어 성적"
-            />
-            <input
-              name="mathScore"
-              type="number"
-              min="0"
-              max="100"
-              value={form.mathScore || ""}
-              onChange={handleChange}
-              style={inp}
-              placeholder="수학 성적"
-            />
-            <input
-              name="scienceScore"
-              type="number"
-              min="0"
-              max="100"
-              value={form.scienceScore || ""}
-              onChange={handleChange}
-              style={inp}
-              placeholder="과학 성적"
-            />
-          </div>
-        </div>
-
-        {/* 개인시간표 입력 */}
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 12 }}>🗓️ 개인시간(기본 시간표)</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-            {SUBJECTS.map((sub) => (
-              <div
-                key={sub}
-                style={{
-                  background: "#f9fafb",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 12,
-                  padding: 12,
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{sub}</div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    type="time"
-                    style={{ ...inp, height: 34, flex: 1 }}
-                    value={sched[sub]?.from || ""}
-                    onChange={(e) =>
-                      setSched((s) => ({ ...s, [sub]: { ...(s[sub] || {}), from: e.target.value } }))
-                    }
-                  />
-                  <span style={{ color: "#6b7280", fontSize: 13 }}>~</span>
-                  <input
-                    type="time"
-                    style={{ ...inp, height: 34, flex: 1 }}
-                    value={sched[sub]?.to || ""}
-                    onChange={(e) =>
-                      setSched((s) => ({ ...s, [sub]: { ...(s[sub] || {}), to: e.target.value } }))
-                    }
-                  />
-                </div>
-
-                <div style={{ display: "flex", gap: 4, marginTop: 8 }}>
-                  {["일", "월", "화", "수", "목", "금", "토"].map((label, idx) => (
-                    <label
-                      key={idx}
-                      style={{
-                        fontSize: 12,
-                        background: (sched[sub]?.days || []).includes(idx)
-                          ? "#e0f2fe"
-                          : "#f3f4f6",
-                        color: (sched[sub]?.days || []).includes(idx)
-                          ? "#0d9488"
-                          : "#4b5563",
-                        borderRadius: 6,
-                        padding: "4px 6px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={(sched[sub]?.days || []).includes(idx)}
-                        onChange={() => toggleDay(sub, idx)}
-                        style={{ marginRight: 4 }}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-{/* 버튼 영역 */}
-<div
-  style={{
-    marginTop: 24,
-    paddingTop: 12,
-    borderTop: "1px solid #e5e7eb",
-    background: "#f9fafb",
-    display: "flex",
-    justifyContent: "space-between", // 좌우로 나뉘게!
-    alignItems: "center",
-    paddingBottom: 10,
-    borderRadius: "0 0 12px 12px",
-  }}
->
-  {/* 👈 왼쪽: 성적 입력 / 그래프 보기 */}
-  <div style={{ display: "flex", gap: 10 }}>
-    <button
-      style={{
-        ...btn,
-        background: "#e0f2fe", // 파스텔 블루
-        color: "#0369a1",
-        borderColor: "#bae6fd",
-      }}
-      onClick={() => setShowGradeModal(true)}
-    >
-      📘 성적 입력
-    </button>
-    <button
-      style={{
-        ...btn,
-        background: "#fef9c3", // 파스텔 옐로
-        color: "#854d0e",
-        borderColor: "#fde68a",
-      }}
-      onClick={() => setShowGradeChart(true)}
-    >
-      📈 그래프 보기
-    </button>
-  </div>
-
-  {/* 👉 오른쪽: 취소 / 저장 */}
-  <div style={{ display: "flex", gap: 10 }}>
-    <button
-      style={{
-        ...btn,
-        background: "#f3f4f6",
-        color: "#374151",
-        borderColor: "#e5e7eb",
-      }}
-      onClick={onClose}
-    >
-      취소
-    </button>
-    <button
-      style={{
-        ...btnD,
-        background: "#2563eb", // 강조 파랑
-        borderColor: "#1d4ed8",
-      }}
-      onClick={() =>
-        onSave({
-          ...form,
-          personalSchedule: sched,
-        } as Partial<Student>)
-      }
-    >
-      저장
-    </button>
-  </div>
-</div>
-
-{/* 모달 연결 */}
-{showGradeModal && (
-  <GradeModal studentId={student.id} onClose={() => setShowGradeModal(false)} />
-)}
-{showGradeChart && (
-  <GradeChartModal studentId={student.id} onClose={() => setShowGradeChart(false)} />
-)}
-      </div>
-    </div>
-  );
-  
-
-}
 
 
 /** ================= 메인 앱 ================= */
 export default function App() {
 
-
+const [academySchedule, setAcademySchedule] = useState<Record<string, { start: string; end: string }[]>>({});
 
 const [attendanceList, setAttendanceList] = useState<any[]>([]);
 // 🔹 테스트 버튼 핸들러 (return 위에 두기)
@@ -1032,71 +700,98 @@ const sanitize = (obj: any) =>
   const [bulkSchool, setBulkSchool] = useState<string>("");
 
   // 개인시간표를 오늘 날짜(ds)에 반영 (중복 방지 포함, slots 구조)
-  const applyPersonalScheduleForDate = (sid: string, ds: string) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[ds] || {}) };
-  
-      let cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-      if (cell.scheduleAppliedDate === ds) return prev; // 이미 반영했으면 스킵
-  
-      // 학생 찾기
-      const groupId = prev.currentGroupId ?? prev.groups[0]?.id;
-      const st = prev.groups.find(g => g.id === groupId)?.students.find(s => s.id === sid);
-      const personal = st?.personalSchedule || {};
-      const dow = new Date(ds).getDay();
-  
-      // 기존 값 보존
-      const abs: Partial<Record<AcademyType, SubjectEntry>> = {
-        ...(cell.academyBySubject || {})
-      };
-      const enabled = new Set(cell.enabledSubjects || []);
-  
-      // ✅ 개인시간표 기준으로 병합 (요일 필터 포함)
-      (Object.keys(personal) as AcademyType[]).forEach(sub => {
-        const wt = personal[sub];
-        if (!wt) return;
-        if (wt.days && wt.days.length && !wt.days.includes(dow)) return; // 오늘 요일 제외면 스킵
-  
-        // 과목 켜기
-        enabled.add(sub);
-  
-        // 기존 엔트리/슬롯 보존
-        const entry: SubjectEntry = (abs[sub] ?? {}) as SubjectEntry;
-        const prevSlots: TimeSlot[] = Array.isArray(entry.slots) ? [...entry.slots] : [];
-  
-        // from/to는 새 값 우선, 없으면 기존 유지
-        const from = wt.from ?? entry.from;
-        const to   = wt.to   ?? entry.to;
-  
-        // 중복 방지 후 추가
-        if (from && to) {
-          const exists = prevSlots.some(s => s.from === from && s.to === to);
-          if (!exists) prevSlots.push({ from, to });
-        }
-  
-        // 필드 유지 + 슬롯 업데이트
-        abs[sub] = { ...entry, from, to, slots: prevSlots };
-      });
-  
-      // ✅ 최종 병합 및 마킹
-      cell = {
-        ...cell,
-        enabledSubjects: Array.from(enabled),
-        academyBySubject: abs,
-        scheduleAppliedDate: ds,
-      };
-  
-      d0[sid] = cell;
-      records[ds] = d0;
-      return { ...prev, records };
+
+ 
+
+const applyPersonalScheduleForDate = (sid: string, ds: string) => {
+  setStore((prev) => {
+    const records = { ...prev.records };
+    const d0 = { ...(records[ds] || {}) };
+
+    let cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
+   
+    // 현재 그룹에서 학생 찾기
+    const groupId = prev.currentGroupId ?? prev.groups[0]?.id;
+    const st = prev.groups
+      .find((g) => g.id === groupId)
+      ?.students.find((s) => s.id === sid);
+
+    // ✅ personalSchedule에서 current/next 분기
+    const sched = st?.personalSchedule;
+let personal: Partial<Record<AcademyType, WeeklyTime>> = {};
+
+// ✅ old/new 구조 모두 호환
+if (sched) {
+  const s = sched as any;
+  if (s.next && new Date() >= new Date(s.next.effectiveDate)) {
+    personal = s.next.data || {};
+  } else if (s.current) {
+    personal = s.current;
+  } else {
+    // 옛날 구조 (current, next 없이 바로 slots가 들어있는 경우)
+    personal = s;
+  }
+}
+    const dow = new Date(ds).getDay();
+
+    // 기존 데이터 복사
+    const abs: Partial<Record<AcademyType, SubjectEntry>> = {
+      ...(cell.academyBySubject || {}),
+    };
+    const enabled = new Set(cell.enabledSubjects || []);
+
+    // 🎯 개인시간표 기준 병합 (요일 필터 + 중복 제거)
+    (Object.keys(personal) as AcademyType[]).forEach((sub) => {
+      const wt = personal[sub];
+      if (!wt) return;
+
+      // 오늘 요일에 해당 슬롯이 없으면 스킵
+      if (!wt.slots || !wt.slots.some((slot) => slot.day === dow)) return;
+
+      enabled.add(sub);
+
+      // 기존 과목 엔트리
+      const entry: SubjectEntry = (abs[sub] ?? {}) as SubjectEntry;
+      const prevSlots: TimeSlot[] = Array.isArray(entry.slots)
+        ? [...entry.slots]
+        : [];
+
+      // 오늘 해당 요일 슬롯만 추출
+      const todaySlots =
+        wt.slots?.filter((slot) => slot.day === dow) ?? [];
+
+      // 중복 제거 후 병합
+      const merged = [
+        ...prevSlots,
+        ...todaySlots.filter(
+          (slot) =>
+            !prevSlots.some(
+              (s) =>
+                s.day === slot.day &&
+                s.from === slot.from &&
+                s.to === slot.to
+            )
+        ),
+      ];
+
+      // 최종 반영
+      abs[sub] = { ...entry, slots: merged };
     });
-  };
 
- 
- 
+    // ✅ 최종 셀 업데이트
+    cell = {
+      ...cell,
+      enabledSubjects: Array.from(enabled),
+      academyBySubject: abs,
+      scheduleAppliedDate: ds,
+    };
 
-
+    // ✅ records 갱신
+    d0[sid] = cell;
+    records[ds] = d0;
+    return { ...prev, records };
+  });
+}; 
   // ✅ 순공 실시간 갱신 (5초마다)
   const [liveTick, setLiveTick] = useState(0);
 
@@ -1814,19 +1509,9 @@ const sumPenaltyForRange = (
   );
 };
 
-  const updateStudent = (sid: string, patch: Partial<Student>) => {
-  setStore(prev => ({
-    ...prev,
-    groups: prev.groups.map(g => {
-      if (prev.currentGroupId && g.id !== prev.currentGroupId) return g;
-      return {
-        ...g,
-        students: g.students.map(s => (s.id === sid ? { ...s, ...patch } : s)),
-      };
-    }),
-  }));
-
-  // 🔥 Firestore에도 업서트 (병합 저장)
+// ===================== 🧩 updateStudent 함수 =====================
+// ✅ 기존 updateStudent 함수 아래쪽 교체
+const updateStudent = (sid: string, patch: Partial<Student>) => {
   try {
     const safe = sanitize({
       id: sid,
@@ -1835,22 +1520,47 @@ const sumPenaltyForRange = (
       updatedAt: serverTimestamp(),
     });
 
+    // 🔹 Firestore 저장
     setDoc(doc(db, "students", sid), safe, { merge: true })
-      .then(() => console.log("✅ Firestore 학생 업데이트 저장:", sid))
-      .catch(e => console.error("🔥 Firestore 학생 업데이트 실패:", e));
+      .then(() => console.log("✅ Firestore 학생 업데이트 성공"))
+      .catch((e) => console.error("❌ Firestore 학생 업데이트 실패:", e));
   } catch (e) {
-    console.error("🔥 Firestore 저장 중 오류:", e);
+    console.error("⚠️ Firestore 저장 중 오류:", e);
   }
 
-  // 모달 닫기
+  // 🔹 로컬 업데이트
+  setStore((prev) => ({
+    ...prev,
+    groups: prev.groups.map((g) =>
+      g.id === currentGroup?.id
+        ? {
+            ...g,
+            students: g.students.map((s) => {
+              if (s.id !== sid) return s;
+              const nextSchedule = patch.personalSchedule
+                ? patch.personalSchedule
+                : s.personalSchedule;
+              return { ...s, ...patch, personalSchedule: nextSchedule };
+            }),
+          }
+        : g
+    ),
+  }));
+
   setEditStudent(null);
 
-  if (patch.personalSchedule) {
-    applyPersonalScheduleForDate(sid, date);
+  // ✅ personalSchedule.next가 있으면 내일부터 자동 반영
+  const sched = patch.personalSchedule as any;
+  if (sched?.next?.data) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const ds = tomorrow.toISOString().split("T")[0];
+    setTimeout(() => applyPersonalScheduleForDate(sid, ds), 100);
   }
-};
-  
 
+  // ✅ 오늘 날짜도 강제 재적용 (반영 누락 방지)
+  applyPersonalScheduleForDate(sid, date);
+};
 
 
   const removeStudent = async (sid: string) => {
@@ -1975,6 +1685,7 @@ useEffect(() => {
 
 // 요일 한글
 const dayName = (d: Date) => ["일","월","화","수","목","금","토"][d.getDay()];
+
 // 보기 좋은 날짜 문자열 (YYYY.MM.DD (요일))
 const prettyDate = (ds: string) => {
   const d = new Date(ds);
@@ -2574,24 +2285,32 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
       aria-label="영구삭제"
       title="영구삭제 (모든 기록도 삭제)"
       onClick={() => {
-        if (!confirm(`정말로 "${s.name}" 학생을 영구 삭제할까요?\n(모든 기록도 삭제됩니다)`)) return;
-        setStore(prev => {
-          const records = { ...prev.records };
-          Object.keys(records).forEach(dt => {
-            if (records[dt]?.[s.id]) {
-              const d0 = { ...records[dt] };
-              delete d0[s.id];
-              records[dt] = d0;
-            }
-          });
-          const groups = prev.groups.map(g =>
-            g.id === currentGroup.id
-              ? { ...g, students: g.students.filter(x => x.id !== s.id) }
-              : g
-          );
-          return { ...prev, groups, records };
-        });
-      }}
+  if (!confirm(`정말로 "${s.name}" 학생을 영구 삭제할까요?\n(모든 기록도 삭제됩니다)`)) return;
+
+  // 1️⃣ 로컬 기록 삭제
+  setStore(prev => {
+    const records = { ...prev.records };
+    Object.keys(records).forEach(dt => {
+      if (records[dt]?.[s.id]) {
+        const d0 = { ...records[dt] };
+        delete d0[s.id];
+        records[dt] = d0;
+      }
+    });
+    const groups = prev.groups.map(g =>
+      g.id === currentGroup.id
+        ? { ...g, students: g.students.filter(x => x.id !== s.id) }
+        : g
+    );
+    return { ...prev, groups, records };
+  });
+
+  // 2️⃣ Firestore에서도 완전 삭제
+  deleteStudentFromFS(s.id);
+
+  // 3️⃣ 안내
+  alert(`🗑️ "${s.name}" 학생이 완전히 삭제되었습니다.`);
+}}
       style={{
         width: 26,
         height: 60,
@@ -2655,107 +2374,249 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
     alignItems: "stretch",
   }}
 >
-                              {/* 과목 토글 + 시간 입력 */}
-                              <div style={{ background:"#fff", border:"2px solid #1e3a8a", borderRadius:15, padding:7 }}>
-        <div style={sectionTitle}>ACADEMY SUBJECTS</div>
+                        {/* 과목 토글 + 시간 입력 */}
+<div style={{ background: "#fff", border: "2px solid #1e3a8a", borderRadius: 15, padding: 7 }}>
+  <div style={sectionTitle}>ACADEMY SUBJECTS</div>
 
-        <div
-  style={{
-    marginTop: 6,
-    display: "grid",
-    gridTemplateColumns: "repeat(6, 1fr)", // ✅ 영/수/국/과/기/외 6개 균등 분배
-    gap: 6,
-    justifyItems: "center",
-  }}
->
-  {(["영어", "수학", "국어", "과학", "기타", "외출"] as AcademyType[]).map((sub) => {
-    const on = enabled.has(sub);
-    return (
-      <button
-        key={sub}
-        style={{
-          ...chip(on),
-          width: "100%", // ✅ grid 셀 전체 채우기    
-               fontWeight: 500,   fontSize: 12,     borderRadius: 8,    height: 36,     transition: "all 0.2s",
-        }}
-        onClick={() => toggleSubject(s.id, sub)}
-      >
-        {sub}
-      </button>
-    );
-  })}
-</div>
-
-       {/* 오늘 켠 것만 시간칸 (심플 + 누적 표시) */}
-<div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-  {(cell.enabledSubjects || []).map((sub) => {
-    const st = cell.academyBySubject?.[sub] || {};
-    const slots = (cell.academyBySubject?.[sub]?.slots || []) as TimeSlot[];
-    const sumMin = getSubjectSumMin(cell, sub);
-
-    return (
-      <div        key={sub}
-        style={{  display: "flex",   alignItems: "center",   gap: 8,   flexWrap: "wrap",
-        }}
-      >
-        {/* 과목명 */}
-        <span style={subjectLabel(sub)}>{sub}</span>
-
-       
-
-        {/* from */}
-        <input
-          type="time"
-          value={st.from ?? ""}
-          onChange={(e) => setAcademyTime(s.id, sub, "from", e.target.value)}
-          style={{ ...timeInpTight, flex: "1 1 90px" }}
-        />
-
-        <span style={{ fontSize: 12 }}>~</span>
-
-         
-
-        {/* to */}
-        <input
-          type="time"
-          value={st.to ?? ""}
-          onChange={(e) => setAcademyTime(s.id, sub, "to", e.target.value)}
-          style={{ ...timeInpTight, flex: "1 1 90px" }}
-        />
-
-        {/* 누적 */}
-        <div
+  {/* ✅ 과목 버튼들 */}
+  <div
+    style={{
+      marginTop: 6,
+      display: "grid",
+      gridTemplateColumns: "repeat(6, 1fr)",
+      gap: 6,
+      justifyItems: "center",
+    }}
+  >
+    {(["영어", "수학", "국어", "과학", "기타", "외출"] as AcademyType[]).map((sub) => {
+      const on = enabled.has(sub);
+      return (
+        <button
+          key={sub}
           style={{
-            marginLeft: "auto",    fontSize: 12,   color: "#374151",   whiteSpace: "nowrap",
+            ...chip(on),
+            width: "100%",
+            fontWeight: 500,
+            fontSize: 12,
+            borderRadius: 8,
+            height: 36,
+            transition: "all 0.2s",
           }}
+          onClick={() => toggleSubject(s.id, sub)}
         >
-          누적 <b>{minToHM(sumMin)}</b>
+          {sub}
+        </button>
+      );
+    })}
+  </div>
+
+  {/* ✅ 오늘 켠 과목들만 시간칸 표시 */}
+  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+    {(cell.enabledSubjects || []).map((sub) => {
+      const subjectData = cell.academyBySubject?.[sub] || {};
+      const slots = (subjectData.slots || []) as TimeSlot[];
+      const slot = slots[0] || {};
+      const sumMin = getSubjectSumMin(cell, sub);
+
+      return (
+        <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={subjectLabel(sub)}>{sub}</span>
+
+          <input
+            type="time"
+            value={slot.from ?? ""}
+            onChange={(e) => setAcademyTime(s.id, sub, "from", e.target.value)}
+            style={{
+              ...timeInpTight,
+              flex: "1 1 90px",
+              fontWeight: 600,
+              color: "#2b2b2b",
+            }}
+          />
+
+          <span style={{ fontSize: 12, color: "#1f1f1f", fontWeight: 600 }}>~</span>
+
+          <input
+            type="time"
+            value={slot.to ?? ""}
+            onChange={(e) => setAcademyTime(s.id, sub, "to", e.target.value)}
+            style={{
+              ...timeInpTight,
+              flex: "1 1 90px",
+              fontWeight: 600,
+              color: "#2b2b2b",
+            }}
+          />
+
+          <div style={{ marginLeft: "auto", fontSize: 12, color: "#374151" }}>
+            누적 <b>{minToHM(sumMin)}</b>
+          </div>
+
+          <button
+            style={btnXS}
+            title="시간이 있으면 초기화 / 없으면 과목 해제"
+            onClick={() => smartClearOrDisable(s.id, sub)}
+          >
+            ×
+          </button>
+        </div>
+      );
+    })}
+  </div>
+
+  {/* ✅ 학원 보충/연장 등록 (카드 내부 통합) */}
+<div style={{ marginTop: 15, paddingTop: 8, borderTop: "1px dashed #cbd5e1" }}>
+  <div style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 6 }}>
+    🕓 보충 / 연장 등록
+  </div>
+
+  {/* 새 보충 입력줄 */}
+  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+    <select id="supplement-subject" style={{ ...inp, width: 60, fontSize: 12 }} defaultValue="">
+      <option value="">과목</option>
+      {["영어", "수학", "국어", "과학", "기타", "외출"].map((sub) => (
+        <option key={sub} value={sub}>{sub}</option>
+      ))}
+    </select>
+
+    <input
+  type="time"
+  id="supplement-from"
+  style={{
+    ...inp,
+    width: 165,           // ⬅️ 크기 늘림 (기존 85 → 110)
+    height: 32,           // ⬅️ 버튼 안 잘리게 높이 추가
+    background: "#e0f2fe",  // 🌤️ 파스텔 하늘색 (Tailwind sky-100 계열)
+    border: "none",
+    borderRadius: 6,
+    fontWeight: 600,
+    color: "#1e3a8a",       // 글자는 조금 진한 네이비톤
+    textAlign: "center",
+  }}
+/>
+<span style={{ fontSize: 12 }}>~</span>
+<input
+  type="time"
+  id="supplement-to"
+  style={{
+    ...inp,
+    width: 180,           // ⬅️ 동일하게
+    height: 32,
+    background: "#e0f2fe",  // 🌤️ 파스텔 하늘색 (Tailwind sky-100 계열)
+    border: "none",
+    borderRadius: 6,
+    fontWeight: 600,
+    color: "#1e3a8a",       // 글자는 조금 진한 네이비톤
+    textAlign: "center",
+  }}
+/>
+
+    <button
+      style={{
+        ...btn,
+        background: "#93C5FD",
+        color: "#fff",
+        fontSize: 12,
+        padding: "5px 10px",
+        borderRadius: 8,
+      }}
+      onClick={() => {
+        const sub = (document.getElementById("supplement-subject") as HTMLSelectElement)?.value;
+        const from = (document.getElementById("supplement-from") as HTMLInputElement)?.value;
+        const to = (document.getElementById("supplement-to") as HTMLInputElement)?.value;
+        if (!sub || !from || !to) return alert("과목과 시간을 모두 입력하세요.");
+
+        setStore((prev) => {
+          const records = { ...prev.records };
+          const d0 = { ...(records[date] || {}) };
+          const cell = { ...(d0[s.id] ?? { status: "P" }) };
+          cell.overrideAcademyTimes = cell.overrideAcademyTimes || {};
+          cell.overrideAcademyTimes[sub] = {
+  subject: sub,
+  from,
+  to,
+  date, // 📅 오늘 날짜 변수 (이미 상단에 있음)
+};
+          d0[s.id] = cell;
+          records[date] = d0;
+          return { ...prev, records };
+        });
+
+        (document.getElementById("supplement-subject") as HTMLSelectElement).value = "";
+        (document.getElementById("supplement-from") as HTMLInputElement).value = "";
+        (document.getElementById("supplement-to") as HTMLInputElement).value = "";
+      }}
+    >
+      등록
+    </button>
+  </div>
+
+ {/* 등록된 보충 리스트 */}
+<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+  {cell.overrideAcademyTimes && Object.entries(cell.overrideAcademyTimes).length > 0 ? (
+    Object.entries(cell.overrideAcademyTimes).map(([key, t]) => (
+      <div
+        key={key}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          background: "#f0f9ff",  // 💎 연한 하늘색
+          border: "1px solid #bae6fd",
+          borderRadius: 8,
+          padding: "4px 8px",
+          fontSize: 12,
+        }}
+      >
+        <div>
+          <b style={{ color: "#1d4ed8" }}>{t.subject}</b> — {t.from} ~ {t.to}
+          <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 6 }}>
+            ({t.date})
+          </span>
         </div>
 
-        
-
-        {/* 초기화 */}
         <button
-          style={btnXS}
-          title="시간이 있으면 초기화 / 없으면 과목 해제"
-          onClick={() => smartClearOrDisable(s.id, sub)}
+          style={{
+            background: "#fee2e2",
+            border: "1px solid #fecaca",
+            color: "#b91c1c",
+            fontWeight: 700,
+            fontSize: 14,
+            borderRadius: 8,
+            width: 28,
+            height: 28,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+          }}
+          title="삭제"
+          onClick={() => {
+            if (!confirm(`${t.subject} (${t.date}) 보충시간을 삭제할까요?`)) return;
+            setStore((prev) => {
+              const records = { ...prev.records };
+              const d0 = { ...(records[date] || {}) };
+              const cell = { ...(d0[s.id] ?? { status: "P" }) };
+              if (cell.overrideAcademyTimes) delete cell.overrideAcademyTimes[key];
+              d0[s.id] = cell;
+              records[date] = d0;
+              return { ...prev, records };
+            });
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.background = "#fecaca")}
+          onMouseOut={(e) => (e.currentTarget.style.background = "#fee2e2")}
         >
           ×
         </button>
       </div>
-    );
-  })}
-
+    ))
+  ) : (
+    <div style={{ fontSize: 12, color: "#6b7280" }}>등록된 보충이 없습니다.</div>
+  )}
+</div>
+</div>
+</div>
  
-</div>
-
-{/* 과목 합계 */}
-<div style={{ marginTop: 20, fontSize: 13, color: "#555", textAlign: "right" }}>
-  과목 합계 외출: {minToHM(subjectOutingMin(cell))}
-</div>
-        
-      </div>
-     
   
 
                              {/* 화장실/식사/Sleep — RESET ZONE */}
@@ -2796,10 +2657,6 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
       +1회 (+7분)
     </button>
 
-
-   
-
-
     {/* 현재 합계 표시 */}
     <div style={{ fontSize:12, color:"#374151" }}>
       합계: <b>{cell.restroomCount || 0}회</b> / <b>{cell.restroomMin || 0}분</b>
@@ -2809,56 +2666,140 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
   <div style={{ fontSize:11, color:"#6b7280", marginTop:4 }}>
     * 1회 = 7분, 최소 0회 · 최대 5회
   </div>
+
+{/* 이동 / 통학 */}
+<div>
+  <div style={{ fontSize:12, color:"#2563eb", fontWeight:700, marginBottom:6 }}>
+    🚍 이동 / 통학
+  </div>
+
+  <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+    {/* +30분 */}
+    <button
+      style={btn}
+      onClick={() => {
+        const curr = cell.commuteMin || 0;
+        const next = curr + 30;
+        setStore(prev => {
+          const records = { ...prev.records };
+          const d0 = { ...(records[date] || {}) };
+          const newCell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+          (newCell as any).commuteMin = next;
+          d0[s.id] = newCell;
+          records[date] = d0;
+          return { ...prev, records };
+        });
+      }}
+    >
+      +30분
+    </button>
+
+    {/* +60분 */}
+    <button
+      style={btn}
+      onClick={() => {
+        const curr = cell.commuteMin || 0;
+        const next = curr + 60;
+        setStore(prev => {
+          const records = { ...prev.records };
+          const d0 = { ...(records[date] || {}) };
+          const newCell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+          (newCell as any).commuteMin = next;
+          d0[s.id] = newCell;
+          records[date] = d0;
+          return { ...prev, records };
+        });
+      }}
+    >
+      +60분
+    </button>
+
+   
+
+    {/* 직접입력 */}
+    <span style={{ fontSize:12, color:"#6b7280" }}>직접:</span>
+    <input
+      type="number"
+      min={0}
+      placeholder="분"
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          const v = Number((e.target as HTMLInputElement).value);
+          if (Number.isFinite(v) && v > 0) {
+            setStore(prev => {
+              const records = { ...prev.records };
+              const d0 = { ...(records[date] || {}) };
+              const newCell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+              (newCell as any).commuteMin = (newCell as any).commuteMin || 0;
+              (newCell as any).commuteMin += v;
+              d0[s.id] = newCell;
+              records[date] = d0;
+              return { ...prev, records };
+            });
+            (e.target as HTMLInputElement).value = "";
+          }
+        }
+      }}
+      style={{ ...inp, width:80, textAlign:"right" }}
+    />
+
+    {/* 합계 표시 */}
+    <div style={{ fontSize:12, color:"#374151" }}>
+      합계: <b>{cell.commuteMin || 0}분</b>
+    </div>
+  </div>
+</div>
+   
+
+
 </div>
     {/* 식사 — 버튼 + 직접입력(Enter시 합계에 바로 반영) */}
-    <div>
-      <div style={{ fontSize:12, color:"#059669", fontWeight:700, marginBottom:6 }}>
-        ***  식사
-      </div>
-      <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
-        <button style={btn} onClick={()=>addMealMinutes(s.id, 60)}>+60분</button>
-        <button style={btn} onClick={()=>addMealMinutes(s.id, 30)}>+30분</button>
-        <button style={{ ...btn, background:"#FEE2E2", color:"#B91C1C", border:"1px solid #FCA5A5" }}
-      onClick={()=>subtractMealMinutes(s.id, 30)}
+<div>
+  <div style={{ fontSize: 12, color: "#059669", fontWeight: 700, marginBottom: 6 }}>
+    *** 식사
+  </div>
+
+  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+    {/* 단축 버튼 */}
+    <button style={btn} onClick={() => addMealMinutes(s.id, 60)}>+60분</button>
+    <button
+      style={{ ...btn, background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FCA5A5" }}
+      onClick={() => subtractMealMinutes(s.id, 30)}
     >
       −30분
     </button>
-    <button
-      style={{ ...btn, background:"#FEE2E2", color:"#B91C1C", border:"1px solid #FCA5A5" }}
-      onClick={()=>subtractMealMinutes(s.id, 60)}
-    >
-      −60분
-    </button>
-        <span style={{ fontSize:12, color:"#6b7280" }}>직접:</span>
-        <input
-  type="number"
-  min={0}
-  placeholder="분"
-  onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      const el = e.target as HTMLInputElement;
-      const v = Number(el.value);
-      if (Number.isFinite(v) && v > 0) {
-        addMealMinutes(s.id, v);   // 합계 즉시 반영
-        el.value = "";
-      }
-    }
-  }}
-  onBlur={(e) => {
-    // 포커스를 잃을 때도 자동 반영
-    const v = Number(e.currentTarget.value);
-    if (Number.isFinite(v) && v > 0) {
-      addMealMinutes(s.id, v);     // 합계 즉시 반영
-      e.currentTarget.value = "";
-    }
-  }}
-  style={{ ...inp, width: 80, textAlign: "right" }}
-/>
-      </div>
-      <div style={{ fontSize:12, marginTop:6 }}>
-        합계: <b>{cell.mealMin || 0}분</b>
-      </div>
-    </div>
+
+    <span style={{ fontSize: 12, color: "#6b7280" }}>직접:</span>
+
+    <input
+      type="number"
+      min={0}
+      placeholder="분"
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          const el = e.target as HTMLInputElement;
+          const v = Number(el.value);
+          if (Number.isFinite(v) && v > 0) {
+            addMealMinutes(s.id, v); // 합계 즉시 반영
+            el.value = "";
+          }
+        }
+      }}
+      onBlur={(e) => {
+        const v = Number(e.currentTarget.value);
+        if (Number.isFinite(v) && v > 0) {
+          addMealMinutes(s.id, v);
+          e.currentTarget.value = "";
+        }
+      }}
+      style={{ ...inp, width: 80, textAlign: "right" }}
+    />
+  </div>
+
+  <div style={{ fontSize: 12, color: "#374151" }}>
+    합계: <b>{cell.mealMin || 0}분</b>
+  </div>
+</div>
 
    {/* ⚠️ Penalty Zone */}
 <div
@@ -3080,9 +3021,6 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
     </div>
 
     </div>
-  
-
-
 
 
 
@@ -3093,25 +3031,37 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
   <div style={sectionTitle}> My Daily </div>
 
   {(() => {
-    // 당일 집계
-    const academyMin = subjectOutingMin(cell);
-    const restBreakMin = (cell.restroomMin || 0) + (cell.mealMin || 0);
-    const running = !!(cell.time && !cell.outTime);
-    const netMin = running ? netStudyMinLive(cell) : netStudyMin(cell);
+     // ===== 당일 집계 =====
+    const baseAcademyMin = subjectOutingMin(cell);
+const overrideMin =
+  cell.overrideAcademyTimes
+    ? Object.values(cell.overrideAcademyTimes).reduce((sum, t) => {
+        if (t.from && t.to) return sum + spanMin(t.from, t.to);
+        return sum;
+      }, 0)
+    : 0;
 
-    // 진행중이면 라이브, 아니면 확정
-    const gross = cell.time ? (running ? (hmToMin(nowHM()) - hmToMin(cell.time)) : spanMin(cell.time, cell.outTime)) : 0;
-    const academy = subjectOutingMin(cell) + spanMin(cell.academyFrom, cell.academyTo);
-    const rest = (cell.mealMin || 0) + (cell.restroomMin || 0);
-    const net = running ? netStudyMinLive(cell) : netStudyMin(cell);
-    const other = Math.max(0, gross - (net + academy + rest));
+const academyMin = baseAcademyMin + overrideMin; // ✅ 보충 포함
 
+const restBreakMin = (cell.restroomMin || 0) + (cell.mealMin || 0);
+const running = !!(cell.time && !cell.outTime);
+const netMin = running ? netStudyMinLive(cell) : netStudyMin(cell);
+const gross = cell.time
+  ? (running
+      ? hmToMin(nowHM()) - hmToMin(cell.time)
+      : spanMin(cell.time, cell.outTime))
+  : 0;
+
+const commute = cell.commuteMin || 0;
+const rest = restBreakMin;
+const other = Math.max(0, gross - (netMin + academyMin + rest));
     const segs = [
-      { label: `순공 ${minToHM(net)}`, value: net, color: "#16a34a" },
-      { label: `학원 ${minToHM(academy)}`, value: academy, color: "#1d4ed8" },
-      { label: `휴식 ${minToHM(rest)}`, value: rest, color: "#f59e0b" },
-      { label: `기타 ${minToHM(other)}`, value: other, color: "#9CA3AF" },
-    ];
+  { label: `순공 ${minToHM(netMin)}`, value: netMin, color: "#16a34a" },
+  { label: `학원 ${minToHM(academyMin)}`, value: academyMin, color: "#1d4ed8" },
+  { label: `이동 ${minToHM(commute)}`, value: commute, color: "#93C5FD" }, // 💎 파스텔 하늘색
+  { label: `휴식 ${minToHM(rest)}`, value: rest, color: "#f59e0b" },
+  { label: `기타 ${minToHM(other)}`, value: other, color: "#9CA3AF" },
+];
 
     const sum = segs.reduce((a,b)=>a+b.value,0);
     const wk = getWeekRange(date);
@@ -3131,8 +3081,10 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
         )}
 
         <div>🏫 총 Academy Subjects: <b>{minToHM(academyMin)}</b></div>
+        <div>🚌 이동 / 통학: <b>{minToHM(cell.commuteMin || 0)}</b></div>
         <div>⏰ 총 순공시간: <b>{minToHM(netMin)}</b>{running && <span style={{ marginLeft:6, fontSize:11, color:"#16a34a" }}>●</span>}</div>
         <div>🚰 총 외출(화장실·물·식사): <b>{minToHM(restBreakMin)}</b></div>
+        
 
         <div
   style={{
