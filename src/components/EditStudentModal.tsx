@@ -3,7 +3,6 @@ import GradeModal from "./GradeModal";
 import GradeChartModal from "./GradeChartModal";
 import type { Student, AcademyType, WeeklyTime } from "../App";
 
-//rt WeeklySchedulePreview from "./WeeklySchedulePreview";//
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -43,19 +42,8 @@ function EditStudentModal({
     scienceScore: student.scienceScore ?? 0,
   });
 
-  const getTimeSlots = (isWeekend: boolean) => {
-  const start = isWeekend ? 9 : 15;
-  const end = isWeekend ? 18 : 22;
-  const slots: string[] = [];
-  for (let h = start; h < end; h++) {
-    slots.push(`${String(h).padStart(2, "0")}:00`);
-    slots.push(`${String(h).padStart(2, "0")}:30`);
-  }
-  return slots;
-};
-
   /** ✅ 과목 리스트 */
-  const SUBJECTS: AcademyType[] = ["영어", "수학", "국어", "과학", "기타", "외출",];
+  const SUBJECTS: AcademyType[] = ["영어", "수학", "국어", "과학", "기타", "외출"];
 
   /** ✅ 시간표 구조를 ‘현재/예약(next)’으로 확장 */
   const [sched, setSched] = useState<{
@@ -71,11 +59,10 @@ function EditStudentModal({
   /** ✅ 학원 시간 저장 함수 (예약 반영 포함) */
   const handleAcademySave = (
   sub: AcademyType,
-  day: number | string,
+  day: number,
   start: string,
   end: string
 ) => {
-   const dayNum = Number(day || 0); // ⚡ undefined 방지
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   const effectiveDate = tomorrow.toISOString().slice(0, 10);
@@ -83,8 +70,8 @@ function EditStudentModal({
   setSched((prev) => {
     const prevSlots = prev.current[sub]?.slots || [];
     const updatedSlots = [
-      ...prevSlots.filter((s) => s.day !== Number(day)),
-      { day: Number(day), from: start, to: end },
+      ...prevSlots.filter((s) => s.day !== day),
+      { day, from: start, to: end },
     ];
 
     return {
@@ -99,14 +86,10 @@ function EditStudentModal({
     };
   });
 
-  // ✅ 요일 표시 정확히 수정
-  const dayNames = ["월", "화", "수", "목", "금","토", "일",]
-  const idx = Number(day);
-  const dayLabel =
-    !isNaN(idx) && idx >= 0 && idx < 7 ? dayNames[idx] : "(요일 미정)";
-  alert(
-    `📅 ${dayLabel}요일 ${start} ~ ${end} 학원 시간이 새로 등록되었습니다!\n(내일부터 적용)`
-  );
+  const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+  const dayLabel = dayNames[day] ?? "(요일 미정)";
+
+  alert(`📅 ${dayLabel}요일 ${start} ~ ${end} 학원 시간이 새로 등록되었습니다!\n(내일부터 적용)`);
 };
 
   /** ✅ activeSchedule = 오늘 이후 자동 분기 */
@@ -167,7 +150,7 @@ function EditStudentModal({
         zIndex: 60,
         pointerEvents: "auto",
       }}
-      
+      onClick={onClose}
     >
       <div
         style={{
@@ -324,7 +307,7 @@ function EditStudentModal({
                           textAlign: "center",
                         }}
                       >
-                        {[ "월", "화", "수", "목", "금", "토","일"].map(
+                        {["일", "월", "화", "수", "목", "금", "토"].map(
                           (d, idx) => (
                             <option key={idx} value={idx}>
                               {d}
@@ -387,75 +370,34 @@ function EditStudentModal({
                         }}
                       />
 
-                    {/* 저장 */}
-<button
-  onClick={async (e) => {
-    e.stopPropagation(); // ✅ 클릭 버블링 차단 (중요!)
-
-    if (!slot.from || !slot.to) {
-      alert("시간을 입력하세요!");
-      return;
-    }
-
-    // 🔹 day값이 string일 가능성 방지
-    const dayNum =
-      slot.day !== undefined && slot.day !== null ? Number(slot.day) : 0;
-
-    // 🔹 로컬 상태 즉시 업데이트
-    const prevCurrent = sched.current || {};
-    const prevSub = prevCurrent[sub] || { slots: [] };
-    const updatedSlots = [
-      ...prevSub.slots.filter((s) => Number(s.day) !== dayNum),
-      { day: dayNum, from: slot.from, to: slot.to },
-    ];
-
-    const nextSched = {
-      ...sched,
-      current: {
-        ...prevCurrent,
-        [sub]: { ...prevSub, slots: updatedSlots },
-      },
-    };
-
-    setSched(nextSched);
-
-    // 🔹 Firestore 저장
-    const updated = {
-      personalSchedule: {
-        current: nextSched.current,
-        next: nextSched.next,
-      },
-    };
-    await updateStudent(student.id, updated);
-
-    // 🔹 상위 컴포넌트에도 즉시 반영
-    // onSave({   ...student,     ...updated,    }); //
-
-   //alert("✅ 학생 정보가 저장되었습니다!");
-
-    // 요일 안내
-    const dayNames = ["월", "화", "수", "목", "금","토", "일",]
-    const dayLabel =
-      Number.isInteger(dayNum) && dayNum >= 0 && dayNum < 7
-        ? dayNames[dayNum]
-        : "요일 선택 안됨";
-
-    alert(`📘 ${dayLabel}요일 ${slot.from} ~ ${slot.to} 학원 시간이 저장되었습니다!`);
-  }}
-  style={{
-    height: 30,
-    marginTop: 2,
-    background: "#dae8fc",
-    color: "#2f3b52",
-    borderRadius: 6,
-    padding: "3px 10px",
-    border: "1px solid #b9c6ec",
-    fontSize: 12,
-    cursor: "pointer",
-  }}
->
-  저장
-</button>
+                      {/* 저장 */}
+                      <button
+                        onClick={() => {
+                          if (!slot.from || !slot.to) {
+                            alert("시간을 입력해주세요!");
+                            return;
+                          }
+                          handleAcademySave(
+                            sub as AcademyType,
+                            slot.day,
+                            slot.from,
+                            slot.to
+                          );
+                        }}
+                        style={{
+                          height: 30,
+                          marginTop: 2,
+                          background: "#dae8fc",
+                          color: "#2f3b52",
+                          borderRadius: 6,
+                          padding: "3px 10px",
+                          border: "1px solid #b9c6ec",
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        저장
+                      </button>
 
                       {/* 삭제 */}
                       <button
@@ -522,122 +464,6 @@ function EditStudentModal({
             ))}
           </div>
         </div>
-        
-{/* 🗓️ 주간 시간표 미리보기 */}
-<div style={{ marginTop: 30 }}>
-  <h3
-    style={{
-      fontSize: 14,
-      fontWeight: 700,
-      color: "#3b2f2f",
-      marginBottom: 8,
-    }}
-  >
-    🗓️ 주간 시간표 미리보기
-  </h3>
-
-  <div
-    style={{
-      display: "grid",
-      gridTemplateColumns: "60px repeat(7, 1fr)", // 시간 + 월~일
-      border: "1px solid #ccc",
-      fontSize: 11,
-    }}
-  >
-    {/* 헤더 */}
-    {["시간", "월", "화", "수", "목", "금", "토", "일"].map((h, i) => (
-      <div
-        key={i}
-        style={{
-          background: "#f7f7f7",
-          textAlign: "center",
-          padding: "6px 0",
-          fontWeight: 600,
-          borderRight: "1px solid #ddd",
-        }}
-      >
-        {h}
-      </div>
-    ))}
-
-    {/* 시간표 */}
-    {Array.from({ length: 27 }).map((_, i) => {
-      const hour = 9 + Math.floor(i / 2);
-      const minute = i % 2 === 0 ? "00" : "30";
-      const label = `${String(hour).padStart(2, "0")}:${minute}`;
-      const currentTime = hour + (minute === "30" ? 0.5 : 0);
-
-      return (
-        <React.Fragment key={i}>
-          {/* 왼쪽 시간축 */}
-          <div
-            style={{
-              textAlign: "center",
-              padding: "2px 0",
-              borderTop: "1px solid #eee",
-              borderRight: "1px solid #ddd",
-              color: "#444",
-            }}
-          >
-            {label}
-          </div>
-
-          {/* 요일별 칸 */}
-          {["월", "화", "수", "목", "금", "토", "일"].map((day, idx) => {
-            const isWeekend = idx >= 5;
-            const activeStart = isWeekend ? 9 : 15.5;
-            const activeEnd = isWeekend ? 18 : 22;
-
-            // 🔹 평일/주말 시간대 여부
-            const isActive =
-              currentTime >= activeStart && currentTime < activeEnd;
-
-            // 🔹 과목별 색상
-            const colorMap: Record<string, string> = {
-              영어: "#7da2ff",
-              수학: "#6dd47e",
-              국어: "#ffb347",
-              과학: "#a56eff",
-              기타: "#b0bec5",
-              외출: "#ef5350",
-            };
-
-            // 🔹 현재 칸에 해당하는 수업 찾기
-            const matchSubject = Object.entries(sched.current || {}).find(
-              ([sub, data]) =>
-                (data?.slots || []).some(
-                  (s) =>
-                    ((s.day - 1) === idx && s.from <= label && s.to > label)
-                )
-            );
-
-            return (
-              <div
-                key={`${day}-${label}`}
-                style={{
-                  height: 20,
-                  borderTop: "1px solid #eee",
-                  borderRight: "1px solid #ddd",
-                  textAlign: "center",
-                  fontSize: 10,
-                  color: matchSubject ? "#fff" : "#555",
-                  background: matchSubject
-                    ? colorMap[matchSubject[0]] || "#3b2f2f"
-                    : isActive
-                    ? "#fff"
-                    : "#f4f4f4",
-                  transition: "0.2s",
-                }}
-              >
-                {matchSubject ? matchSubject[0] : ""}
-              </div>
-            );
-          })}
-        </React.Fragment>
-      );
-    })}
-  </div>
-</div>
 
         {/* 버튼 영역 */}
         <div
@@ -691,7 +517,6 @@ function EditStudentModal({
     await updateStudent(student.id, updated);
 
     alert("✅ 학생 정보가 저장되었습니다!");
-    //onClose();//
   }}
 >
   저장
