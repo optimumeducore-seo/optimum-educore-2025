@@ -1,7 +1,8 @@
 // src/components/GradeModal.tsx
 import React, { useState, useEffect } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase"; // ✅ firebase.ts에서 export한 db 사용
+import { loadGrade, saveGrade } from "../services/firestore";
 
 interface GradeModalProps {
   studentId: string;
@@ -41,19 +42,7 @@ const getLevel = (my: number, avg: number) => {
 };
 
 // ✅ Firestore 저장 / 불러오기
-const saveGrade = async (studentId: string, data: any) => {
-  await setDoc(doc(db, "grades", studentId), data, { merge: true });
-  console.log("✅ Firestore 저장 완료:", data);
-};
 
-const loadGrade = async (studentId: string) => {
-  const snap = await getDoc(doc(db, "grades", studentId));
-  if (snap.exists()) {
-    console.log("📂 Firestore 불러오기:", snap.data());
-    return snap.data();
-  }
-  return null;
-};
 
 // ✅ AI 피드백
 const generateFeedback = (scores: Record<string, any>) => {
@@ -98,6 +87,35 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
   const [activeTab, setActiveTab] = useState<"중1" | "중2" | "중3" | "브랜치">("중1");
   const [teacherComment, setTeacherComment] = useState("");
   const [loading, setLoading] = useState(true);
+
+   // ✅ 1. 최초 Firestore에서 한 번 불러오기
+  useEffect(() => {
+    const fetchData = async () => {
+      const saved = await loadGrade(studentId);
+      if (saved) {
+        setGrades(saved.scores || {});
+        setTeacherComment(saved.teacherComment || "");
+        console.log("🔥 초기 불러오기 완료:", saved);
+      } else {
+        console.log("⚠️ 저장된 성적 없음");
+      }
+      setLoading(false);
+    };
+    fetchData();
+  }, [studentId]);
+
+  // ✅ 2. 실시간 구독 (자동 반영)
+  useEffect(() => {
+  const unsubscribe = onSnapshot(doc(db, "grades", studentId), (snap: any) => {
+    if (snap.exists()) {
+      const data = snap.data();
+      setGrades(data.scores || {});
+      setTeacherComment(data.teacherComment || "");
+      console.log("⚡ 실시간 갱신:", data);
+    }
+  });
+  return () => unsubscribe();
+}, [studentId]);
 
   // ✅ 초기 구조 생성
   const [grades, setGrades] = useState(() => {
@@ -249,8 +267,8 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
                     </td>
                     {year !== "브랜치" && (
                       <td style={{ background: gradeColors[level - 1], color: "#fff", fontWeight: 700 }}>
-                        {level}등급
-                      </td>
+  {["A", "B", "C", "D", "E"][level - 1] || "-"}
+</td>
                     )}
                   </>
                 );

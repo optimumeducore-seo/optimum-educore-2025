@@ -108,7 +108,14 @@ const style = {
 };
 
 export type StatusKey = "P" | "L" | "A" | "E";
-export type AcademyType = "영어" | "수학" | "국어" | "과학" | "기타" | "외출";
+export type AcademyType =
+  | "영어"
+  | "수학"
+  | "국어"
+  | "과학"
+  | "기타"
+  | "외출"
+  | "식사";
 
 export type TimeSlot = {
   day: number;
@@ -174,7 +181,13 @@ export type Student = {
   studentPhone?: string;
   parentPhone?: string;
   removed?: boolean;
-  personalSchedule?: Partial<Record<AcademyType, WeeklyTime>>;
+  personalSchedule?: {
+  current: Partial<Record<AcademyType, WeeklyTime>>;
+  next?: {
+    effectiveDate: string;
+    data: Partial<Record<AcademyType, WeeklyTime>>;
+  };
+};
   koreanScore?: number;
   englishScore?: number;
   mathScore?: number;
