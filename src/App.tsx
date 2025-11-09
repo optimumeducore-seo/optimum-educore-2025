@@ -54,7 +54,7 @@ const subjectColor = (sub: string) => {
     case "국어": return "linear-gradient(135deg,#ddd6fe,#c4b5fd)"; // 보라
     case "과학": return "linear-gradient(135deg,#bae6fd,#93c5fd)"; // 하늘
     case "기타": return "linear-gradient(135deg,#fef3c7,#fde68a)"; // 노랑
-    case "외출": return "linear-gradient(135deg,#fecaca,#fca5a5)"; // 코랄
+    case "학교": return "linear-gradient(135deg,#fecaca,#fca5a5)"; // 코랄
     default: return "linear-gradient(135deg,#e5e7eb,#f3f4f6)"; // 기본 연회색
   }
 };
@@ -79,7 +79,7 @@ const subjectLabel = (sub: string): React.CSSProperties => {
     "국어": "#F5F3FF", // 페일 바이올렛
     "과학": "#ECF5FB", // 페일 블루그레이
     "기타": "#FAF5E7", // 샌드 베이지
-    "외출": "#FBEAEA", // 로즈 베이지 (핑크X)
+    "학교": "#FBEAEA", // 로즈 베이지 (핑크X)
   };
 
   return {
@@ -108,14 +108,7 @@ const style = {
 };
 
 export type StatusKey = "P" | "L" | "A" | "E";
-export type AcademyType =
-  | "영어"
-  | "수학"
-  | "국어"
-  | "과학"
-  | "기타"
-  | "외출"
-  | "식사";
+export type AcademyType =  "영어" | "수학" | "국어" | "과학" | "기타" | "학교";
 
 export type TimeSlot = {
   day: number;
@@ -1421,38 +1414,107 @@ const printDailyReport = (sid: string) => {
 };
 
 
-  /** ===== 집계 유틸 ===== */
-  const subjectOutingMin = (c?: DayCell) => {
-    if (!c?.academyBySubject) return 0;
-    return (Object.keys(c.academyBySubject) as AcademyType[])
-      .reduce((acc, sub) => acc + getSubjectSumMin(c, sub), 0);
-  }; 
+/** ===== 집계 유틸 ===== */
+const subjectOutingMin = (c?: DayCell) => {
+  if (!c) return 0;
+
+  // ✅ 새 구조 (EditStudentModal 기반) 먼저 찾고, 없으면 예전 구조로 대체
+  const subjects =
+    (c as any).personalSchedule?.current ||
+    c.academyBySubject ||
+    c.academyFrom ||
+    {};
+
+  // ✅ "학교" 제외 (순공시간엔 포함되지 않음)
+  const studySubjects = Object.entries(subjects).filter(
+    ([sub]) => sub !== "학교"
+  );
+
+  let total = 0;
+  studySubjects.forEach(([_, data]) => {
+    const slots = (data as any)?.slots || [];
+    slots.forEach((s: any) => {
+      if (!s.from || !s.to) return;
+      const [fh, fm] = s.from.split(":").map(Number);
+      const [th, tm] = s.to.split(":").map(Number);
+      total += th * 60 + tm - (fh * 60 + fm);
+    });
+  });
+
+  return total;
+};
 
   const outingTotalMin = (c?: DayCell) => {
-    if (!c) return 0;
-    const subjects = subjectOutingMin(c);
-    const legacy = spanMin(c.academyFrom, c.academyTo);
-    return subjects + legacy + (c.restroomMin || 0) + (c.mealMin || 0);
-  };
-  const netStudyMin = (c?: DayCell) => {
-    if (!c?.time || !c?.outTime) return 0;
-    const total = spanMin(c.time, c.outTime);
-    return Math.max(0, total - outingTotalMin(c));
-  };
+  if (!c) return 0;
+
+  // ✅ personalSchedule.current 도 읽기 (EditStudentModal 저장 반영용)
+  const subjects =
+    (c as any).personalSchedule?.current ||
+    c.academyBySubject ||
+    c.academyFrom ||
+    {};
+
+  // 🟡 학교 과목은 계산에서 제외
+  const filtered = Object.entries(subjects).filter(([key]) => key !== "학교");
+
+  const legacy = spanMin(c.academyFrom, c.academyTo);
+  let total = 0;
+
+  filtered.forEach(([_, data]: any) => {
+    const slots = data?.slots || [];
+    slots.forEach((s: any) => {
+      if (!s.from || !s.to) return;
+      const [fh, fm] = s.from.split(":").map(Number);
+      const [th, tm] = s.to.split(":").map(Number);
+      total += th * 60 + tm - (fh * 60 + fm);
+    });
+  });
+
+  return total + legacy + (c.restroomMin || 0) + (c.mealMin || 0);
+};
+
+const netStudyMin = (c?: DayCell) => {
+  if (!c) return 0;
+
+  // 하루 전체 시간표
+  const schedule = c.academyFrom || {};
+
+  // 학교 제외한 과목만 필터링
+  const studySubjects = Object.entries(schedule).filter(
+    ([sub]) => sub !== "학교"
+  );
+
+  let total = 0;
+
+  studySubjects.forEach(([_, data]) => {
+    const slots = (data as any)?.slots || [];
+    slots.forEach((s: any) => {
+      if (!s.from || !s.to) return;
+      const [fh, fm] = s.from.split(":").map(Number);
+      const [th, tm] = s.to.split(":").map(Number);
+      total += th * 60 + tm - (fh * 60 + fm);
+    });
+  });
+
+  return total;
+};
+
+// 🔹 3. 현재 시각 계산
   const nowTotalMinutes = () => {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
   };
 
-  const getWeekRange = (dateStr: string) => {
-    const d = new Date(dateStr);
-    const dow = d.getDay(); // 0:일 ~ 6:토
-    const monday = new Date(d);
-    monday.setDate(d.getDate() - ((dow + 6) % 7));
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    return { start: fmtDate(monday), end: fmtDate(sunday) };
-  };
+  // 🔹 4. 주간 범위 계산
+const getWeekRange = (dateStr: string) => {
+  const d = new Date(dateStr);
+  const dow = d.getDay();
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((dow + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return { start: fmtDate(monday), end: fmtDate(sunday) };
+};
   
   // ✅ 특정 기간 패널티 합계(개인 sid)
 //   key로 "sleepPenaltyCount" 또는 "latePenaltyCount"를 넣어 사용.
@@ -2401,7 +2463,7 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
       justifyItems: "center",
     }}
   >
-    {(["영어", "수학", "국어", "과학", "기타", "외출"] as AcademyType[]).map((sub) => {
+    {(["영어", "수학", "국어", "과학", "기타", "학교"] as AcademyType[]).map((sub) => {
       const on = enabled.has(sub);
       return (
         <button
@@ -2487,7 +2549,7 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
     <select id="supplement-subject" style={{ ...inp, width: 60, fontSize: 12 }} defaultValue="">
       <option value="">과목</option>
-      {["영어", "수학", "국어", "과학", "기타", "외출"].map((sub) => (
+      {["영어", "수학", "국어", "과학", "기타", "학교"].map((sub) => (
         <option key={sub} value={sub}>{sub}</option>
       ))}
     </select>
