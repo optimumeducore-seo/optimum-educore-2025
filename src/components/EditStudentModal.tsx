@@ -174,29 +174,46 @@ const [timeBlocks, setTimeBlocks] = useState<
 >([]);
 
 // ✅ Firestore에 저장된 개별시간 불러오기
-  useEffect(() => {
-    if (student.personalSchedule?.timeBlocks) {
-      setTimeBlocks(student.personalSchedule.timeBlocks);
+  // ✅ 학생별 개별시간 불러오기 및 동기화
+useEffect(() => {
+  if (!student?.id) return;
+
+  // 1️⃣ localStorage 우선 불러오기
+  const localKey = `timeBlocks_${student.id}`;
+  const saved = localStorage.getItem(localKey);
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      setTimeBlocks(parsed);
+      return; // ✅ 로컬에 값이 있으면 그대로 사용
     }
-  }, [student]);
+  }
 
-// ✅ 페이지 로드 시 localStorage에서 불러오기
-useEffect(() => {
-  const saved = localStorage.getItem("timeBlocks");
-  if (saved) setTimeBlocks(JSON.parse(saved));
-}, []);
+  // 2️⃣ Firestore 값이 있으면 불러와서 localStorage에 동기화
+  const fireBlocks = student.personalSchedule?.timeBlocks;
+  if (Array.isArray(fireBlocks) && fireBlocks.length > 0) {
+    setTimeBlocks(fireBlocks);
+    localStorage.setItem(localKey, JSON.stringify(fireBlocks));
+  }
+}, [student]);
 
-// ✅ 변경될 때마다 자동 저장
+// ✅ 변경 시 localStorage 동기화
 useEffect(() => {
-  localStorage.setItem("timeBlocks", JSON.stringify(timeBlocks));
-}, [timeBlocks]);
-  /** ✅ 학원 시간 저장 함수 (예약 반영 포함) */
+  if (!student?.id) return;
+  localStorage.setItem(`timeBlocks_${student.id}`, JSON.stringify(timeBlocks));
+}, [student.id, timeBlocks]);
+
+
+/** ✅ 학원 시간 저장 함수 (예약 반영 포함) */
 const handleAcademySave = async (
   sub: AcademyType,
-  day: number,
+  day: number | string,
   start: string,
   end: string
 ) => {
+  // ✅ day를 안전하게 숫자로 변환 (공백·문자·NaN 방지)
+  const dayIndex = Math.max(0, Math.min(6, Number(String(day).trim()) || 0));
+
   // 🕐 React state 비동기 업데이트 대기 (요일 값 반영 시간 확보)
   await new Promise((r) => setTimeout(r, 50));
 
@@ -209,16 +226,20 @@ const handleAcademySave = async (
     const currentData = JSON.parse(JSON.stringify(prev.current));
     const nextData = JSON.parse(JSON.stringify(prev.next?.data || {}));
 
-    // ✅ 해당 과목의 기존 슬롯을 전부 가져옴
-    const baseSlots = nextData[sub]?.slots || currentData[sub]?.slots || [];
+    // ✅ 기존 슬롯 가져오기 (undefined 방지)
+    const baseSlots = Array.isArray(nextData[sub]?.slots)
+      ? nextData[sub].slots
+      : Array.isArray(currentData[sub]?.slots)
+      ? currentData[sub].slots
+      : [];
 
-    // ✅ 같은 요일 슬롯 제거 후, 새로운 슬롯 추가
+    // ✅ 같은 요일 중복 제거 후 새 슬롯 추가
     const updatedSlots = [
-      ...baseSlots.filter((s: any) => s.day !== day),
-      { day, from: start, to: end },
+      ...baseSlots.filter((s: any) => s.day !== dayIndex),
+      { day: dayIndex, from: start, to: end },
     ];
 
-    // ✅ 내일부터 적용되는 구조
+    // ✅ 내일부터 적용
     return {
       ...prev,
       next: {
@@ -231,9 +252,10 @@ const handleAcademySave = async (
     };
   });
 
-
+  // ✅ 안내 메시지
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
-  const dayLabel = dayNames[day] ?? "(요일 미정)";
+  const dayLabel = dayNames[dayIndex] ?? "(요일 미정)";
+
   alert(
     `📅 ${dayLabel}요일 ${start} ~ ${end} 학원 시간이 새로 등록되었습니다!\n(내일부터 적용)`
   );
@@ -482,17 +504,18 @@ async function printScheduleToPDF() {
                     >
                       <select
                         value={slot.day}
-                        onChange={(e) => {
-                          const newSlots = [...(activeSchedule[sub]?.slots ?? [])];
-                          newSlots[i].day = Number(e.target.value);
-                          setSched((s) => ({
-                            ...s,
-                            current: {
-                              ...s.current,
-                              [sub]: { ...s.current[sub], slots: newSlots },
-                            },
-                          }));
-                        }}
+                      onChange={(e) => {
+  const newSlots = [...(activeSchedule[sub]?.slots ?? [])];
+  newSlots[i].day = parseInt(e.target.value, 10); // ✅ 문자열 → 확실한 숫자 변환
+
+  setSched((s) => ({
+    ...s,
+    current: {
+      ...s.current,
+      [sub]: { ...s.current[sub], slots: newSlots },
+    },
+  }));
+}}
                         style={{
                           width: 42,
                           height: 30,
@@ -570,18 +593,19 @@ async function printScheduleToPDF() {
 
                       {/* 저장 */}
                       <button
-                        onClick={() => {
-                          if (!slot.from || !slot.to) {
-                            alert("시간을 입력해주세요!");
-                            return;
-                          }
-                          handleAcademySave(
-                            sub as AcademyType,
-                            slot.day,
-                            slot.from,
-                            slot.to
-                          );
-                        }}
+  onClick={() => {
+    if (!slot.from || !slot.to) {
+      alert("시간을 입력해주세요!");
+      return;
+    }
+
+    // ✅ 최신 요일 값을 바로 가져오기 (state 지연 방지)
+    const latestDay = Number(
+      (activeSchedule[sub]?.slots ?? [])[i]?.day ?? slot.day ?? 0
+    );
+
+    handleAcademySave(sub as AcademyType, latestDay, slot.from, slot.to);
+  }}
                         style={{
                           height: 30,
                           marginTop: 2,
@@ -968,7 +992,7 @@ async function printScheduleToPDF() {
             {/* 요일별 칸 */}
             {["월", "화", "수", "목", "금", "토", "일"].map((day, idx) => {
               // 공통 변수 (한 번만 선언)
-              const dayIndex = (idx + 1) % 7;
+              const dayIndex = (idx + 1) % 7; // ✅ 그대로 사용 (보정하지 않음)
               const colorMap: Record<string, string> = {
                 영어: "#7da2ff",
                 수학: "#6dd47e",
