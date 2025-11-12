@@ -1,18 +1,115 @@
 import React, { useState, useEffect } from "react";
 import GradeModal from "./GradeModal";
 import GradeChartModal from "./GradeChartModal";
-import type { Student, AcademyType, WeeklyTime } from "../App";
+import type { AcademyType, WeeklyTime } from "../App";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-
 import { doc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
-async function updateStudent(studentId: string, patch: any) {
+type PersonalSchedule = {
+  current: Partial<Record<AcademyType, WeeklyTime>>;
+  next?: {
+    effectiveDate: string;
+    data: Partial<Record<AcademyType, WeeklyTime>>;
+  };
+  history?: { date: string; data: Partial<Record<AcademyType, WeeklyTime>> }[];
+
+  // ✅ 개별 시간표 (학교, 자습, 직접입력 등)
+  timeBlocks?: {
+    day?: string;         // 단일 요일
+    days?: string[];      // 복수 요일
+    start: string;
+    end: string;
+    subject: string;
+    customSubject?: string;
+  }[];
+};
+
+type Student = {
+  id: string;
+  name: string;
+  grade?: string;
+  school?: string;
+  gradeLevel?: string;
+  studentPhone?: string;
+  parentPhone?: string;
+  englishScore?: number;
+  mathScore?: number;
+  scienceScore?: number;
+  koreanScore?: number;
+  personalSchedule?: PersonalSchedule;
+};
+
+
+type AnyStudent = any; // 타입 경고 임시 무시용
+async function updateStudent(
+  studentId: string,
+  sched: any,
+  student: AnyStudent,
+  timeBlocks: any[] // ✅ 추가
+) {
   try {
     const ref = doc(db, "students", studentId);
-    await updateDoc(ref, patch);
-    console.log("✅ 학생 정보 Firestore 업데이트 완료");
+
+    // 🔹 내일부터 적용
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    // 🔹 과거 데이터 백업용
+    const historyEntry = {
+      date: new Date().toISOString().slice(0, 10),
+      data: JSON.parse(JSON.stringify(sched.current || {})),
+    };
+
+    // 🔹 Firestore에 기존 history 추가
+    await updateDoc(ref, {
+      "personalSchedule.history": [
+        ...(student.personalSchedule?.history ?? []),
+        historyEntry,
+      ],
+    });
+
+    // 🔹 current 중복제거
+    const cleaned = JSON.parse(JSON.stringify(sched.current || {}));
+    Object.keys(cleaned).forEach((subject) => {
+      if (cleaned[subject]?.slots) {
+        cleaned[subject].slots = cleaned[subject].slots.filter(
+          (slot: any, index: number, self: any[]) =>
+            index ===
+            self.findIndex(
+              (s) =>
+                s.day === slot.day &&
+                s.from === slot.from &&
+                s.to === slot.to
+            )
+        );
+      }
+    });
+
+    // 🔹 최종 Firestore 업데이트
+    await updateDoc(ref, {
+      "personalSchedule.history": [
+        ...(student.personalSchedule?.history ?? []),
+        historyEntry,
+      ],
+      "personalSchedule.current": cleaned,
+      "personalSchedule.next": {
+        effectiveDate: tomorrow.toISOString().slice(0, 10),
+        data: JSON.parse(JSON.stringify(sched.next?.data ?? {})),
+      },
+
+      // ✅ 여기 추가: 개별 시간표 병합
+      "personalSchedule.timeBlocks": timeBlocks ?? [],
+
+      // 활성 과목만 저장
+      academySubjects: Object.keys(cleaned).filter(
+        (k) => (cleaned[k]?.slots ?? []).length > 0
+      ),
+    });
+
+    console.log("✅ Firestore 업데이트 완료 (timeBlocks 포함)");
   } catch (err) {
     console.error("❌ Firestore 업데이트 실패:", err);
   }
@@ -66,8 +163,23 @@ const SUBJECTS: AcademyType[] = [
     current: (student.personalSchedule as any)?.current ?? student.personalSchedule ?? {},
   });
 const [timeBlocks, setTimeBlocks] = useState<
-  { day: string; start: string; end: string; subject: string }[]
+  {
+    day?: string;          // 기존 필드
+    days?: string[];       // 여러 요일용 (월·수·금)
+    start: string;
+    end: string;
+    subject: string;
+    customSubject?: string; // ✅ 직접입력용 새 필드 추가
+  }[]
 >([]);
+
+// ✅ Firestore에 저장된 개별시간 불러오기
+  useEffect(() => {
+    if (student.personalSchedule?.timeBlocks) {
+      setTimeBlocks(student.personalSchedule.timeBlocks);
+    }
+  }, [student]);
+
 // ✅ 페이지 로드 시 localStorage에서 불러오기
 useEffect(() => {
   const saved = localStorage.getItem("timeBlocks");
@@ -217,6 +329,12 @@ async function printScheduleToPDF() {
     color: "#fff",
   };
 
+    const [showHistory, setShowHistory] = useState(false);
+
+  const handleSave = () => {
+    // 기존 저장 로직
+  };
+
   return (
     <div
       style={{
@@ -249,6 +367,7 @@ async function printScheduleToPDF() {
         <h3 style={{ marginTop: 0, marginBottom: 10, color: "#3b2f2f" }}>
           👤 학생 정보 수정
         </h3>
+
 
         {/* 기본 정보 입력 */}
         <div
@@ -543,82 +662,147 @@ async function printScheduleToPDF() {
           </div>
         </div>
 
-        {/* 학생 개별 시간 입력 UI 추가 */}
+{/* 🕓 개별 시간 설정 */}
 <div style={{ marginTop: 20 }}>
-      <h3 style={{ fontSize: 14, fontWeight: 700, color: "#3b2f2f", marginBottom: 8 }}>
-        🕓 개별 시간 설정
-      </h3>
-
-      {/* 입력된 시간 블록 목록 */}
-{/* 입력된 시간 블록 목록 */}
-{timeBlocks.map((block, i) => (
-  <div
-    key={i}
+  <h3
     style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      marginBottom: 6,
+      fontSize: 14,
+      fontWeight: 700,
+      color: "#3b2f2f",
+      marginBottom: 8,
     }}
   >
-    {/* 요일 선택 */}
-    <select
-      value={block.day || ""}
-      onChange={(e) => {
-        const updated = [...timeBlocks];
-        updated[i].day = e.target.value;
-        setTimeBlocks(updated);
-      }}
-      style={{
-        padding: "4px 6px",
-        borderRadius: 4,
-        border: "1px solid #ccc",
-      }}
-    >
-      <option value="">요일</option>
-      <option value="1">월</option>
-      <option value="2">화</option>
-      <option value="3">수</option>
-      <option value="4">목</option>
-      <option value="5">금</option>
-      <option value="6">토</option>
-      <option value="0">일</option>
-    </select>
+    🕓 개별 시간 설정
+  </h3>
 
-    {/* 시작 시간 */}
-    <input
-      type="time"
-      value={block.start}
-      onChange={(e) => {
-        const updated = [...timeBlocks];
-        updated[i].start = e.target.value;
-        setTimeBlocks(updated);
-      }}
-    />
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(2, 1fr)",
+      gap: 6,
+    }}
+  >
+    {timeBlocks.map((block, i) => (
+      <div
+        key={i}
+        style={{
+          background: "#fff",
+          border: "1px solid #e5d9c7",
+          borderRadius: 8,
+          padding: 8,
+          boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#3b2f2f",
+            marginBottom: 4,
+          }}
+        >
+          {block.subject || "개별 과목"}
+        </div>
 
-    <span>~</span>
+        {/* ✅ 요일 다중 선택 */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+          {["일", "월", "화", "수", "목", "금", "토"].map((d, idx) => (
+            <label key={idx} style={{ fontSize: 11, display: "flex", alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={block.days?.includes(idx.toString()) || false}
+                onChange={(e) => {
+                  const updated = [...timeBlocks];
+                  let days = updated[i].days || [];
+                  if (e.target.checked) days = [...days, idx.toString()];
+                  else days = days.filter((v) => v !== idx.toString());
+                  updated[i].days = days;
+                  setTimeBlocks(updated);
+                }}
+                style={{ marginRight: 3 }}
+              />
+              {d}
+            </label>
+          ))}
+        </div>
 
-    {/* 종료 시간 */}
-    <input
-      type="time"
-      value={block.end}
-      onChange={(e) => {
-        const updated = [...timeBlocks];
-        updated[i].end = e.target.value;
-        setTimeBlocks(updated);
-      }}
-    />
+        {/* 시간 입력 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
+          <input
+            type="time"
+            value={block.start || ""}
+            onChange={(e) => {
+              const updated = [...timeBlocks];
+              updated[i].start = e.target.value;
+              setTimeBlocks(updated);
+            }}
+            style={{
+              flex: 1,
+              fontSize: 12,
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              padding: "3px 6px",
+            }}
+          />
+          <span style={{ fontSize: 11, color: "#777" }}>~</span>
+          <input
+            type="time"
+            value={block.end || ""}
+            onChange={(e) => {
+              const updated = [...timeBlocks];
+              updated[i].end = e.target.value;
+              setTimeBlocks(updated);
+            }}
+            style={{
+              flex: 1,
+              fontSize: 12,
+              border: "1px solid #ccc",
+              borderRadius: 6,
+              padding: "3px 6px",
+            }}
+          />
+        </div>
 
-    {/* 과목명 입력 */}
+{/* 과목 선택 or 직접입력 */}
+<div style={{ display: "flex", flex: 1, gap: 4 }}>
+  <select
+    value={block.subject}
+    onChange={(e) => {
+      const updated = [...timeBlocks];
+      updated[i].subject = e.target.value;
+      // 직접입력 선택 시 기본값 유지
+      if (e.target.value !== "직접입력") updated[i].customSubject = "";
+      setTimeBlocks(updated);
+    }}
+    style={{
+      flex: 1,
+      padding: "4px 6px",
+      borderRadius: 4,
+      border: "1px solid #ccc",
+      background: "#f9f9f9",
+    }}
+  >
+    <option value="">과목</option>
+    {["국어", "수학", "영어", "학교", "자습"].map((s) => (
+      <option key={s} value={s}>
+        {s}
+      </option>
+    ))}
+    <option value="직접입력">직접입력</option>
+  </select>
+
+  {/* 직접입력 입력창 */}
+  {block.subject === "직접입력" && (
     <input
       type="text"
-      placeholder="과목명"
-      value={block.subject}
+      placeholder="과목명 입력"
+      value={block.customSubject || ""}
       onChange={(e) => {
         const updated = [...timeBlocks];
-        updated[i].subject = e.target.value;
+        updated[i].customSubject = e.target.value;
         setTimeBlocks(updated);
       }}
+      autoFocus
       style={{
         flex: 1,
         padding: "4px 6px",
@@ -626,53 +810,94 @@ async function printScheduleToPDF() {
         borderRadius: 4,
       }}
     />
+  )}
+</div>
 
-    {/* 삭제 버튼 */}
+        {/* 버튼들 */}
+        <div style={{ display: "flex", gap: 4 }}>
+          {/* 저장 */}
+          <button
+            onClick={() => {
+              const updated = [...timeBlocks];
+              const days = block.days || [];
+              if (!days.length) {
+                alert("요일을 하나 이상 선택하세요.");
+                return;
+              }
+              days.forEach((d) => {
+                console.log(
+                  `✅ ${block.subject || "과목"}: ${["일","월","화","수","목","금","토"][+d]} ${block.start} ~ ${block.end}`
+                );
+              });
+              alert(
+                `${block.subject || "과목"}이 ${days.length}개 요일에 등록되었습니다.`
+              );
+            }}
+            style={{
+              flex: 1,
+              height: 28,
+              background: "#dae8fc",
+              color: "#2f3b52",
+              borderRadius: 6,
+              border: "1px solid #b9c6ec",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            저장
+          </button>
+
+          {/* 삭제 */}
+          <button
+            onClick={() => {
+              const confirmDelete = confirm("이 항목을 삭제하시겠습니까?");
+              if (!confirmDelete) return;
+              const updated = timeBlocks.filter((_, idx) => idx !== i);
+              setTimeBlocks(updated);
+            }}
+            style={{
+              flex: 1,
+              height: 28,
+              background: "#f9d6d5",
+              color: "#5a2a2a",
+              borderRadius: 6,
+              border: "1px solid #e4b6b5",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            삭제
+          </button>
+        </div>
+      </div>
+    ))}
+
+    {/* ➕ 시간 추가 */}
     <button
-      onClick={() => {
-        const updated = timeBlocks.filter((_, idx) => idx !== i);
-        setTimeBlocks(updated);
-      }}
+      onClick={() =>
+        setTimeBlocks([
+          ...timeBlocks,
+          { days: [], start: "", end: "", subject: "" },
+        ])
+      }
       style={{
-        border: "none",
-        background: "transparent",
-        color: "#b71c1c",
-        fontWeight: 700,
-        fontSize: 16,
-        cursor: "pointer",
+        fontSize: 11,
+        border: "1px solid #e5d9c7",
+        borderRadius: 6,
+        padding: "8px 5px",
+        background: "#f3e7d0",
+        color: "#3b2f2f",
+        fontWeight: 600,
       }}
     >
-      ✕
+      ➕ 시간 추가
     </button>
   </div>
-))}
-
-{/* 추가 버튼 */}
-<button
-  onClick={() =>
-    setTimeBlocks([
-      ...timeBlocks,
-      { day: "", start: "", end: "", subject: "" },
-    ])
-  }
-  style={{
-    marginTop: 6,
-    padding: "5px 10px",
-    borderRadius: 4,
-    border: "1px solid #ccc",
-    background: "#f9f9f9",
-    cursor: "pointer",
-  }}
->
-  + 시간 추가
-</button>
-    </div>
-
+</div>
 
       {/* 🗓️ 주간 시간표 미리보기 */}
 {/* 🗓️ 주간 시간표 미리보기 */}
 <div style={{ marginTop: 30 }}>
-  {/* PDF 저장할 전체 영역 */}
   <div
     id="schedule-container"
     style={{
@@ -688,11 +913,10 @@ async function printScheduleToPDF() {
       <div style={{ display: "inline-block" }}>
         <span style={{ color: "#b71c1c", fontSize: 26, fontWeight: 900 }}>O</span>
         <span style={{ color: "#000", fontSize: 18, fontWeight: 600 }}>PTIMUM</span>
-        <span style={{ color: "#1e3a8a", fontSize: 26, fontWeight: 900 }}>  E</span>
+        <span style={{ color: "#1e3a8a", fontSize: 26, fontWeight: 900 }}> E</span>
         <span style={{ color: "#000", fontSize: 18, fontWeight: 600 }}>DUCORE</span>
-        <span style={{color: "#444", fontSize: 18, fontWeight: 800}}>   시간표</span>
+        <span style={{ color: "#444", fontSize: 18, fontWeight: 800 }}> 시간표</span>
       </div>
-    
     </div>
 
     {/* 실제 시간표 grid */}
@@ -743,37 +967,52 @@ async function printScheduleToPDF() {
 
             {/* 요일별 칸 */}
             {["월", "화", "수", "목", "금", "토", "일"].map((day, idx) => {
+              // 공통 변수 (한 번만 선언)
+              const dayIndex = (idx + 1) % 7;
               const colorMap: Record<string, string> = {
                 영어: "#7da2ff",
                 수학: "#6dd47e",
                 국어: "#ffb347",
-                과학: "#a56eff",
-                기타: "#b0bec5",
-                학교: "#fdd54f",
+                과학: "#a56eff",                
+                기타: "#fdd54f",
+                학교: "#b0bec5",
               };
 
-              const dayIndex = (idx + 1) % 7;
+              // 시간 범위 판별 함수
+              const inRange = (t: string, from?: string, to?: string) =>
+                !!from && !!to && from <= t && t < to;
 
+              // 기존 스케줄 병합
               const mergedSchedule = {
                 ...(sched.current || {}),
                 ...(sched.next?.data || {}),
               };
 
+              // 기본 스케줄에서 해당 시간대 과목 찾기
               const matchSubject = Object.entries(mergedSchedule).find(
                 ([sub, data]) =>
                   (data?.slots || []).some(
-                    (s) => s.day === dayIndex && s.from <= label && s.to > label
+                    (s) => s.day === dayIndex && inRange(label, s.from, s.to)
                   )
               );
-             
-              // 🕓 timeBlocks 반영 (요일 상관없이 표시)
-const customBlock = timeBlocks.find(
-  (b) => b.start <= label && b.end > label
-);
 
-const subjectName =
-  (matchSubject && matchSubject[0]) || (customBlock && customBlock.subject);
+              // 개별 시간 블록 확인
+              const customBlock = timeBlocks.find((b) => {
+                const matchDay =
+                  (Array.isArray(b.days) && b.days.includes(String(dayIndex))) ||
+                  (b.day !== undefined && b.day === String(dayIndex));
+                return matchDay && inRange(label, b.start, b.end);
+              });
 
+              // 우선순위: 개인 블록 > 기본 스케줄
+             const subjectName =
+  customBlock?.customSubject ||
+  customBlock?.subject ||
+  matchSubject?.[0];
+              const background = subjectName
+                ? colorMap[subjectName] ?? "#b0bec5"
+                : "#fff";
+              const isFilled = !!subjectName;
 
               return (
                 <div
@@ -784,13 +1023,11 @@ const subjectName =
                     borderRight: "1px solid #ddd",
                     textAlign: "center",
                     fontSize: 10,
-                    color: matchSubject ? "#fff" : "#555",
-                    background: matchSubject
-                      ? colorMap[matchSubject[0]] || "#3b2f2f"
-                      : "#fff",
+                    color: isFilled ? "#fff" : "#555",
+                    background,
                   }}
                 >
-                  {subjectName ? subjectName : ""}
+                  {subjectName ?? ""}
                 </div>
               );
             })}
@@ -800,25 +1037,78 @@ const subjectName =
     </div>
   </div>
 </div>
-        {/* 버튼 영역 */}
-        <div
-          style={{
-            marginTop: 20,
-            paddingTop: 10,
-            borderTop: "1px solid #e5d9c7",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div style={{ display: "flex", gap: 8 }}>
-            <button style={btn} onClick={() => setShowGradeModal(true)}>
-              📘 성적 입력
-            </button>
-            <button style={btn} onClick={() => setShowGradeChart(true)}>
-              📈 그래프 보기
-            </button>
-          </div>
+
+{/* 버튼 영역 */}
+<div
+  style={{
+    marginTop: 20,
+    paddingTop: 10,
+    borderTop: "1px solid #e5d9c7",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  }}
+>
+  <div style={{ display: "flex", gap: 8 }}>
+    <button style={btn} onClick={() => setShowGradeModal(true)}>
+      📘 성적 입력
+    </button>
+    <button style={btn} onClick={() => setShowGradeChart(true)}>
+      📈 그래프 보기
+    </button>
+    <button style={btn} onClick={() => setShowHistory(!showHistory)}>
+      {showHistory ? "📜 이력 닫기" : "📜 변경 이력 보기"}
+    </button>
+  </div>
+
+  {showHistory && (
+    <div
+      style={{
+        border: "1px solid #ccc",
+        padding: 8,
+        borderRadius: 8,
+        maxHeight: 250,
+        overflowY: "auto",
+        background: "#fff8e7",
+        marginTop: 10,
+      }}
+    >
+      <h4 style={{ margin: "4px 0", fontSize: 13 }}>📜 변경 이력</h4>
+      {student.personalSchedule?.history?.length ? (
+        student.personalSchedule.history
+          .slice()
+          .reverse()
+          .map((h: any, i: number) => (
+            <div
+              key={i}
+              style={{
+                borderBottom: "1px solid #ddd",
+                padding: "4px 0",
+                fontSize: 11,
+              }}
+            >
+              <strong>{h.date}</strong>
+              <pre
+                style={{
+                  fontSize: 10,
+                  background: "#f9f9f9",
+                  padding: 4,
+                  borderRadius: 4,
+                  whiteSpace: "pre-wrap",
+                  marginTop: 4,
+                }}
+              >
+                {JSON.stringify(h.data, null, 2)}
+              </pre>
+            </div>
+          ))
+      ) : (
+        <p style={{ fontSize: 11, color: "#666" }}>기록 없음</p>
+      )}
+    </div>
+  )}
+
+
 
           <div style={{ display: "flex", gap: 8 }}>
             <button style={btn} onClick={onClose}>
@@ -869,16 +1159,41 @@ const subjectName =
     };
 
     // ✅ Firestore 완전 덮어쓰기 (이전 요일 데이터 제거용)
-await setDoc(doc(db, "students", student.id), {
-  ...student,
-  personalSchedule: {
-    current: JSON.parse(JSON.stringify(sched.current)), // 현재 화면 상태 그대로 저장
-    next: JSON.parse(JSON.stringify(sched.next ?? null)),
+await setDoc(
+  doc(db, "students", student.id),
+  {
+    ...student,
+    personalSchedule: {
+      current: {
+        ...sched.current,
+        // ✅ 영어 중복 제거 로직
+        영어: {
+          ...sched.current.영어,
+          slots: (sched.current.영어?.slots || []).filter(
+            (slot, index, self) =>
+              index ===
+              self.findIndex(
+                (s) =>
+                  s.day === slot.day &&
+                  s.from === slot.from &&
+                  s.to === slot.to
+              )
+          ),
+        },
+      },
+      next: JSON.parse(JSON.stringify(sched.next ?? null)),
+
+      // ✅ 개별 시간(timeBlocks) 함께 저장
+      timeBlocks: JSON.parse(JSON.stringify(timeBlocks || [])),
+    },
+
+    // ✅ 활성 과목 목록 업데이트
+    academySubjects: Object.keys(active).filter(
+      (k) => (active[k as AcademyType]?.slots ?? []).length > 0
+    ) as AcademyType[],
   },
-  academySubjects: Object.keys(active).filter(
-    (k) => (active[k as AcademyType]?.slots ?? []).length > 0
-  ) as AcademyType[],
-}, { merge: false });
+  { merge: true } // 🔹 과거 데이터(history 등 유지)
+);
 
 // ✅ 로컬 상태도 즉시 반영
 const newStudent = { ...student, ...updated }; // 새 객체로 복사 (참조 끊기)
@@ -905,6 +1220,7 @@ alert("✅ Firestore에 완전 반영되었습니다.\n(이전 요일 데이터 
         )}
       </div>
     </div>
+    
   );
 }
 

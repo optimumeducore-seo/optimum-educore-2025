@@ -42,9 +42,16 @@ const minToHM = (min: number) => {
   const m = mm % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 };
-/** 두 시각 차이(분) */
-const spanMin = (from?: string, to?: string) =>
-  !from || !to ? 0 : Math.max(0, hmToMin(to) - hmToMin(from));
+
+/** 두 시간 차이(분) */
+const spanMin = (from?: string, to?: string) => {
+  if (!from || !to) return 0;
+  const start = hmToMin(from);
+  const end = hmToMin(to);
+  // ✅ 자정을 넘긴 경우 보정 (예: 16:00 → 06:00)
+  const diff = end >= start ? end - start : end + 24 * 60 - start;
+  return diff;
+};
 
 // 과목별 파스텔톤 색상 매핑
 const subjectColor = (sub: string) => {
@@ -1473,30 +1480,29 @@ const subjectOutingMin = (c?: DayCell) => {
   return total + legacy + (c.restroomMin || 0) + (c.mealMin || 0);
 };
 
+/** 순공(하원 후 기준) 계산: 등원~하원 사이 - 외출시간 */
 const netStudyMin = (c?: DayCell) => {
-  if (!c) return 0;
-
-  // 하루 전체 시간표
-  const schedule = c.academyFrom || {};
-
-  // 학교 제외한 과목만 필터링
-  const studySubjects = Object.entries(schedule).filter(
-    ([sub]) => sub !== "학교"
-  );
-
+  if (!c?.time) return 0; // 등원 전이면 0
+  const excludeSubjects = ["학교", "기타"];
   let total = 0;
+Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
+  if (excludeSubjects.includes(sub)) return; // 🚫 학교·기타 제외
 
-  studySubjects.forEach(([_, data]) => {
-    const slots = (data as any)?.slots || [];
-    slots.forEach((s: any) => {
-      if (!s.from || !s.to) return;
-      const [fh, fm] = s.from.split(":").map(Number);
-      const [th, tm] = s.to.split(":").map(Number);
-      total += th * 60 + tm - (fh * 60 + fm);
-    });
+  (data.slots || []).forEach((s) => {
+    total += spanMin(s.from, s.to);
   });
+});
 
-  return total;
+  // 등원~하원 구간 전체(분)
+  const start = hmToMin(c.time);
+  const end = c.outTime ? hmToMin(c.outTime) : hmToMin(nowHM());
+  const gross = Math.max(0, end - start);
+
+  // 외출시간(학원·식사·화장실 등)
+  const outing = outingTotalMin(c);
+
+  // 순공 = 전체시간 - 외출시간
+  return Math.max(0, gross - outing);
 };
 
 // 🔹 3. 현재 시각 계산
@@ -1546,6 +1552,16 @@ const sumPenaltyForRange = (
   /** 진행 중 순공(분) 계산: 하원 전이면 현재시각을 to로 보고 계산 */
   const netStudyMinLive = (c?: DayCell) => {
     if (!c?.time) return 0; // 등원 전이면 0
+    let total = 0;
+    const excludeSubjects = ["학교", "기타"];
+
+Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
+  if (excludeSubjects.includes(sub)) return; // 🚫 학교·기타 제외
+
+  (data.slots || []).forEach((s) => {
+    total += spanMin(s.from, s.to);
+  });
+})
     const start = hmToMin(c.time);
     const end = c.outTime ? hmToMin(c.outTime) : nowTotalMinutes(); // 하원 미입력 시 현재 시각
     const gross = Math.max(0, end - start);
