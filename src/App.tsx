@@ -651,10 +651,19 @@ const sanitize = (obj: any) =>
 
  const [store, setStore] = useState<StoreShape>(() => loadStore());
 
-// ✅ 스토어 기본 그룹 아이디 보장
-if (!store.currentGroupId) {
-  store.currentGroupId = "default";
-}
+// ✅ 스토어 기본 그룹 아이디 보장 (모든 기기 통일)
+useEffect(() => {
+  if (!store.currentGroupId || store.currentGroupId !== "default") {
+    setStore((prev) => ({
+      ...prev,
+      currentGroupId: "default",
+      groups: [
+        { id: "default", name: "우리반", students: [] },
+      ],
+    }));
+  }
+}, []);
+
 console.log("📦 현재 그룹 ID:", store.currentGroupId);
 
 // ✅ Firestore 실시간 학생 반영 (완전 안정 버전)
@@ -1073,6 +1082,9 @@ const uniqueSchools = useMemo(() => {
     });
   };
 
+
+
+  
   // ⛏️ 과목 시간 X 버튼: 시간이 있으면 초기화, 이미 비었으면 토글 해제
   const smartClearOrDisable = (sid: string, subject: AcademyType) => {
     setStore(prev => {
@@ -1841,17 +1853,46 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
              }} value={currentGroup?.id || ""} onChange={(e)=>setStore(prev=>({ ...prev, currentGroupId: e.target.value }))}>
               {store.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
-            <button style={btn} onClick={()=>{
-              const name = prompt("새 그룹(반) 이름을 입력하세요", "새 반");
-              if (!name) return;
-              const g: Group = { id: uid(), name, students: [] };
-              setStore(prev => ({ ...prev, groups: [...prev.groups, g], currentGroupId: g.id }));
-            }}>+ 그룹 추가</button>
+
+            <button
+  style={btn}
+  onClick={async () => {
+    const name = prompt("새 그룹(반) 이름을 입력하세요", "새 반");
+    if (!name) return;
+
+    const g: Group = { id: uid(), name, students: [] };
+
+    // ✅ 로컬에 그룹 추가
+    setStore((prev) => ({
+      ...prev,
+      groups: [...prev.groups, g],
+      currentGroupId: g.id,
+    }));
+
+    // ✅ Firestore에 그룹 저장
+    try {
+      await setDoc(doc(db, "groups", g.id), {
+        id: g.id,
+        name: name,
+        createdAt: serverTimestamp(),
+      });
+      console.log("✅ Firestore 그룹 등록 완료:", name);
+      alert(`그룹 '${name}'이(가) 추가되었습니다.`);
+    } catch (err) {
+      console.error("❌ Firestore 그룹 저장 실패:", err);
+      alert("그룹 추가 중 오류가 발생했습니다.");
+    }
+  }}
+>
+  + 그룹 추가
+</button>
+
             <button style={btn} onClick={()=>{
               const name = prompt("그룹(반) 새 이름", currentGroup?.name || "");
               if (!name || !currentGroup) return;
               setStore(prev => ({ ...prev, groups: prev.groups.map(g => g.id === currentGroup.id ? { ...g, name } : g) }));
             }}>이름 변경</button>
+
             <button style={btn} onClick={()=>{
               if (!currentGroup) return;
               if (!confirm(`"${currentGroup.name}" 그룹을 삭제할까요? (학생/기록은 유지되지 않습니다)`)) return;
@@ -3437,7 +3478,17 @@ const other = Math.max(0, gross - (netMin + academyMin + rest));
 );
 }
 
+/** ✅ StudentPage에서도 쓸 수 있는 독립 순공 계산 함수 (MyDaily와 분리됨) */
+export const calcNetStudyMin = (record: any) => {
+  const inTime = record.inTime ? new Date(record.inTime) : null;
+  const outTime = record.outTime ? new Date(record.outTime) : new Date();
+  if (!inTime) return 0;
 
+  const diff = Math.max(0, (outTime.getTime() - inTime.getTime()) / 60000); // 분 단위 계산
+  const outing = record.outingMin || 0;
+  const rest = record.restroomMin || 0;
+  return Math.max(0, diff - outing - rest);
+};
 
 /** ================= 달력 모달 (요약·일정 표시 + 메모 팝업 + 프린트 지원) ================= */
 type StudentCalendarModalProps = {

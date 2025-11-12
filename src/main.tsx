@@ -1,12 +1,21 @@
 // src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "./App";
+import StudentPage from "./pages/StudentPage";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <Routes>
+        {/* 🎓 학생용 페이지 */}
+        <Route path="/student" element={<StudentPage />} />
+        {/* 🏫 관리자용 기존 화면 */}
+        <Route path="/" element={<App />} />
+      </Routes>
+    </BrowserRouter>
   </React.StrictMode>
 );
 
@@ -17,6 +26,8 @@ if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js");
     });
   } else {
-    navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((rs) => rs.forEach((r) => r.unregister()));
   }
 }
