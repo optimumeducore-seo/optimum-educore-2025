@@ -178,6 +178,7 @@ export type Student = {
   grade?: string;
   school?: string;
   gradeLevel?: string;
+    groupId?: string; // ✅ 추가 — 그룹 ID
   studentPhone?: string;
   parentPhone?: string;
   removed?: boolean;
@@ -201,6 +202,7 @@ export type StoreShape = {
   groups: Group[];
   currentGroupId: string | null;
   records: Records;
+  students?: Student[]; // ✅ 이 줄을 추가하세요!
 };
 
 
@@ -511,18 +513,24 @@ function loadStore(): StoreShape {
       return s;
     }
 
-    const g0: Group = { id: uid(), name: "우리반반", students: [] };
-    const init: StoreShape = {
-      groups: [g0],
-      currentGroupId: g0.id,
-      records: {},
-    };
+    const g0: Group = { id: "default", name: "우리반", students: [] };
+const init: StoreShape = {
+  groups: [g0],
+  currentGroupId: "default",
+  records: {},
+};
     localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
     return init;
   } catch {
-    const g0: Group = { id: uid(), name: "우리반", students: [] };
-    return { groups: [g0], currentGroupId: g0.id, records: {} };
-  }
+  const g0: Group = { id: "default", name: "우리반", students: [] };
+  const init: StoreShape = {
+    groups: [g0],
+    currentGroupId: "default",
+    records: {},
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
+  return init;
+}
 }
 function saveStore(s: StoreShape) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
@@ -537,77 +545,7 @@ export default function App() {
 const [academySchedule, setAcademySchedule] = useState<Record<string, { start: string; end: string }[]>>({});
 
 const [attendanceList, setAttendanceList] = useState<any[]>([]);
-// 🔹 테스트 버튼 핸들러 (return 위에 두기)
-/* async function addAttendanceTest() {
-  try {
-    const docRef = await addDoc(collection(db, "attendance"), {
-      name: "홍길동",
-      status: "출석",
-      time: serverTimestamp(),
-    });
-    console.log("✅ 출결 저장 완료:", docRef.id);
-  } catch (e) {
-    console.error("❌ 출결 저장 실패:", e);
-  }
-}
 
-const [attendanceList, setAttendanceList] = useState<any[]>([]);
-
-async function loadAttendanceTest() {
-  try {
-    const querySnapshot = await getDocs(collection(db, "attendance"));
-    const list: any[] = [];
-    querySnapshot.forEach((doc) => {
-      list.push({ id: doc.id, ...doc.data() });
-    });
-    setAttendanceList(list);               // ✅ state 업데이트 (한 번만)
-    console.log("📋 출결 목록:", list);
-  } catch (e) {
-    console.error("❌ 출결 목록 불러오기 실패:", e);
-  }
-} */
-
-
-
-// 🟢 실시간 출결 반영
-useEffect(() => {
-  const q = query(collection(db, "students"));
-  const unsub = onSnapshot(q, (snap) => {
-    const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-    console.log("📦 Firestore 구독 업데이트:", list);
-
-    setStore((prev) => ({
-      ...prev,
-      groups: prev.groups.map((g) => ({
-        ...g,
-        students: list.filter((s) => s.groupId === g.id && !s.removed),
-      })),
-    }));
-  });
-
-  return () => unsub();
-}, []); // ← 꼭 빈 배열 유지
-
-// 🔄 학생 목록 실시간 반영
-useEffect(() => {
-  const q = query(collection(db, "students"));
-  const unsub = onSnapshot(
-    q,
-    (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      console.log("👀 Firestore 학생 데이터:", list);
-      setStore(prev => ({
-        ...prev,
-        groups: prev.groups.map(g => ({
-          ...g,
-          students: list.filter(s => s.groupId === g.id && !s.removed)
-        })),
-      }));
-    },
-    (err) => console.error("❌ 학생 실시간 구독 오류:", err)
-  );
-  return () => unsub();
-}, []);
 
 
 async function handleCheckIn(studentName: string) {
@@ -642,10 +580,20 @@ async function saveStudentToFS(groupId: string, s: any) {
     );
 
     await setDoc(
-      doc(db, "students", s.id),
-      { ...safeData, groupId, createdAt: serverTimestamp() },
-      { merge: true }
-    );
+  doc(db, "students", s.id),
+  {
+    id: s.id,
+    name: s.name || "",
+    grade: s.grade || "",
+    school: s.school || "",
+    studentPhone: s.studentPhone || "",
+    parentPhone: s.parentPhone || "",
+    groupId: groupId || "default",
+    removed: false,
+    createdAt: serverTimestamp(),
+  },
+  { merge: true }
+);
 
     console.log("✅ Firestore에 학생 저장 완료:", s.name || "(이름 없음)");
   } catch (e) {
@@ -680,9 +628,6 @@ const today = useMemo(() => todayStr(), []);
 const sanitize = (obj: any) =>
   Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined && v !== ""));
 
-
-
-
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -704,7 +649,124 @@ const sanitize = (obj: any) =>
 
 
 
-  const [store, setStore] = useState<StoreShape>(() => loadStore());
+ const [store, setStore] = useState<StoreShape>(() => loadStore());
+
+// ✅ 스토어 기본 그룹 아이디 보장
+if (!store.currentGroupId) {
+  store.currentGroupId = "default";
+}
+console.log("📦 현재 그룹 ID:", store.currentGroupId);
+
+// ✅ Firestore 실시간 학생 반영 (완전 안정 버전)
+useEffect(() => {
+  const groupId = store.currentGroupId || "default";
+
+  const q = query(
+    collection(db, "students"),
+    where("groupId", "==", groupId) // ✅ 현재 그룹 필터 적용
+  );
+
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          name: data.name || "",
+          grade: data.grade || "",
+          school: data.school || "",
+          studentPhone: data.studentPhone || "",
+          parentPhone: data.parentPhone || "",
+          groupId: data.groupId || "default",
+          removed: !!data.removed,
+        };
+      });
+
+      console.log("🔥 Firestore 실시간 학생 데이터:", list.length, list);
+
+      setStore((prev) => {
+        // ✅ 기존 그룹 유지, 없으면 기본 생성
+        const baseGroups =
+          prev.groups?.length > 0
+            ? prev.groups
+            : [{ id: "default", name: "우리반", students: [] }];
+
+        // ✅ 그룹별 학생 매칭
+        const groups = baseGroups.map((g) => ({
+          ...g,
+          students: list.filter(
+            (s) => (s.groupId || "default") === g.id && !s.removed
+          ),
+        }));
+
+        const currentGroupId = prev.currentGroupId ?? groups[0].id;
+
+        return {
+          ...prev,
+          groups,
+          currentGroupId,
+          students: list,
+        };
+      });
+    },
+    (err) => console.error("❌ Firestore 실시간 구독 오류:", err)
+  );
+
+  return () => unsub();
+}, [store.currentGroupId]); // ✅ 그룹 바뀔 때마다 새로 구독
+
+// 학생 추가 함수 (공유용)
+const addStudent = async () => {
+  const student: Student = {
+    id: uid(),
+    name: (newStu.name || "").trim(),
+    grade: (newStu.grade || "").trim(),
+    school: (newStu.school || "").trim(),
+    studentPhone: (newStu.studentPhone || "").trim(),
+    parentPhone: (newStu.parentPhone || "").trim(),
+    groupId: store.currentGroupId || "default", 
+    
+  // ✅ ← 여기 중요!!
+    removed: false, // ✅ 기본값
+  };
+
+  try {
+  const groupId = store.currentGroupId || "default"; // ✅ 미리 변수 저장
+  console.log("📦 현재 그룹 ID:", groupId);
+
+    // 1️⃣ 로컬에 즉시 반영 (UI 업데이트)
+    setStore((prev) => ({
+      ...prev,
+      students: [...(prev.students || []), student],
+    }));
+
+    await setDoc(
+  doc(db, "students", student.id),
+  {
+    ...student,
+    groupId: store.currentGroupId || "default", // ✅ 추가
+    createdAt: serverTimestamp(),
+  },
+  { merge: true }
+);
+
+    console.log("✅ Firestore 저장 완료:", student.name);
+    alert(`${student.name} 학생이 등록되었습니다.`);
+
+    // 3️⃣ 입력칸 초기화
+    setNewStu({
+      name: "",
+      grade: "",
+      school: "",
+      studentPhone: "",
+      parentPhone: "",
+    });
+  } catch (err) {
+    console.error("❌ Firestore 저장 실패:", err);
+  }
+};
+
   const [date, setDate] = useState<string>(() => todayStr());
   const [editStudent, setEditStudent] = useState<string | null>(null);
   const [focusStatus, setFocusStatus] = useState<StatusKey | null>(null);
@@ -712,9 +774,6 @@ const sanitize = (obj: any) =>
   const [bulkGrade, setBulkGrade] = useState<string>(""); 
   const [bulkSchool, setBulkSchool] = useState<string>("");
 
-  // 개인시간표를 오늘 날짜(ds)에 반영 (중복 방지 포함, slots 구조)
-
- 
 
 const applyPersonalScheduleForDate = (sid: string, ds: string) => {
   setStore((prev) => {
@@ -849,12 +908,17 @@ if (sched) {
   const [showRemoved, setShowRemoved] = useState(false);
 
   // 현재 그룹
-  const currentGroup = useMemo(
-    () => store.groups.find(g => g.id === store.currentGroupId) || store.groups[0],
-    [store.groups, store.currentGroupId]
-  );
+  // ✅ 현재 그룹 (메인)
+const currentGroup = useMemo(
+  () =>
+    store.groups.find((g) => g.id === store.currentGroupId) ||
+    store.groups[0] ||
+    { students: [] },
+  [store.groups, store.currentGroupId]
+);
 
-  useEffect(() => {
+// ✅ 과제 실시간 수신
+useEffect(() => {
   if (!currentGroup) return;
   const q = query(
     collection(db, "assignments"),
@@ -862,58 +926,58 @@ if (sched) {
     where("dateStr", "==", today),
     orderBy("createdAt", "desc")
   );
-  const unsub = onSnapshot(q, (snap) => {
-    const list: AssignmentFS[] = [];
-    snap.forEach(d => list.push({ id: d.id, ...(d.data() as any) }));
-    setAssignments(list);
-    console.log("📡 과제 실시간 수신:", list.length);
-  }, (err) => console.error("❌ 과제 구독 오류:", err));
+
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      const list: AssignmentFS[] = [];
+      snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
+      setAssignments(list);
+      console.log("📡 과제 실시간 수신:", list.length);
+    },
+    (err) => console.error("❌ 과제 구독 오류:", err)
+  );
+
   return () => unsub();
 }, [currentGroup?.id, today]);
 
-  const students = useMemo(() => {
-    const list = currentGroup?.students ? [...currentGroup.students] : [];
-  
-    return list.sort((a, b) => {
-      // 1️⃣ 학년 숫자 추출
-      const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
-      const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
-  
-      // 2️⃣ 학년 내림차순 (고학년 → 저학년)
-      if (g1 !== g2) return g2 - g1;
-  
-      // 3️⃣ 같은 학년이면 이름 가나다순(오름차순)
-      return (a.name || "").localeCompare(b.name || "", "ko");
-    });
-  }, [currentGroup]);
+// ✅ 현재 그룹 학생 목록
+const students = useMemo(() => {
+  const list = currentGroup?.students ? [...currentGroup.students] : [];
 
-  const uniqueGrades = useMemo(() => {
-    const grades = new Set(students.map(s => s.grade).filter(Boolean));
-    // 학년 역순 정렬 (고학년부터)
-    return Array.from(grades).sort((a, b) => {
-      const numA = parseInt((a ?? "0").replace(/[^0-9]/g, ""));
-const numB = parseInt((b ?? "0").replace(/[^0-9]/g, ""));
-      return numB - numA;
-    });
-  }, [students]);
+  return list.sort((a, b) => {
+    const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
+    const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
 
-  useEffect(() => {
-    const currentGroup = store.groups.find(g => g.id === store.currentGroupId) || store.groups[0];
-    const studentList = currentGroup?.students || [];
-  
-    studentList.forEach(student => {
-      applyPersonalScheduleForDate(student.id, date);
-    });
-  
-  // 👇 의존성 최소화 버전
-  }, [date, store.currentGroupId]);
+    if (g1 !== g2) return g2 - g1; // 고학년 → 저학년
+    return (a.name || "").localeCompare(b.name || "", "ko"); // 가나다순
+  });
+}, [currentGroup]);
 
-  // 3. 학교 목록 생성
-  const uniqueSchools = useMemo(() => {
-    const schools = new Set(students.map(s => s.school).filter(Boolean));
-    return Array.from(schools).sort();
-  }, [students]);
+// ✅ 학년 목록 생성
+const uniqueGrades = useMemo(() => {
+  const grades = new Set(students.map((s) => s.grade).filter(Boolean));
+  return Array.from(grades).sort((a, b) => {
+    const numA = parseInt((a ?? "0").replace(/[^0-9]/g, ""));
+    const numB = parseInt((b ?? "0").replace(/[^0-9]/g, ""));
+    return numB - numA;
+  });
+}, [students]);
 
+// ✅ 개인 시간표 적용
+useEffect(() => {
+  const studentList = currentGroup?.students || [];
+  studentList.forEach((student: any) => {
+    applyPersonalScheduleForDate(student.id, date);
+  });
+}, [date, currentGroup]);
+
+// ✅ 학교 목록 생성
+const uniqueSchools = useMemo(() => {
+  const studentList = currentGroup?.students || [];
+  const schools = new Set(studentList.map((s: any) => s.school).filter(Boolean));
+  return Array.from(schools).sort();
+}, [currentGroup]);
 
   // PWA(로컬용)
   useEffect(() => {
@@ -928,138 +992,6 @@ const numB = parseInt((b ?? "0").replace(/[^0-9]/g, ""));
   const [newStu, setNewStu] = useState<Partial<Student>>({
     name: "", grade: "", school: "", studentPhone: "", parentPhone: ""
   });
-// ===== CSV 업로드(엑셀/구글시트 내보내기) =====
-const csvInputRef = useRef<HTMLInputElement>(null);
-
-// CSV 한 줄을 콤마(따옴표 안 콤마 무시) 기준으로 분리
-const splitCSVLine = (line: string) => {
-  const parts: string[] = [];
-  let cur = "";
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      // 연속 쌍따옴표("") → 내부 따옴표로 처리
-      if (inQ && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else {
-        inQ = !inQ;
-      }
-    } else if (ch === "," && !inQ) {
-      parts.push(cur);
-      cur = "";
-    } else {
-      cur += ch;
-    }
-  }
-  parts.push(cur);
-  return parts.map((s) => s.trim());
-};
-
-// CSV 전체 파싱 → [{헤더:값}]
-const parseCSV = (text: string): Record<string, string>[] => {
-  const rows = text
-    .split(/\r?\n/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-  if (rows.length === 0) return [];
-
-  const headers = splitCSVLine(rows[0]).map((h) => h.replace(/^"|"$/g, ""));
-  const out: Record<string, string>[] = [];
-  for (let i = 1; i < rows.length; i++) {
-    const cols = splitCSVLine(rows[i]).map((c) => c.replace(/^"|"$/g, ""));
-    const obj: Record<string, string> = {};
-    headers.forEach((h, idx) => (obj[h] = (cols[idx] ?? "").trim()));
-    out.push(obj);
-  }
-  return out;
-};
-
-// CSV 헤더 → Student 필드 매핑
-const normalizeToStudent = (row: Record<string, string>): Student | null => {
-  const get = (...keys: string[]) => {
-    for (const k of keys) {
-      if (row[k] != null && row[k].trim() !== "") return row[k].trim();
-    }
-    return "";
-  };
-
-  const name = get("이름", "name", "학생명");
-  if (!name) return null;
-
-  const grade = get("학년", "grade");
-  const school = get("학교", "school");
-  const gradeLevel = get("학교급", "gradeLevel");
-  const studentPhone = get("학생연락처", "학생", "studentPhone");
-  const parentPhone = get("부모연락처", "학부모연락처", "부모", "parentPhone");
-
-  return {
-    id: uid(),
-    name,
-    grade: grade || undefined,
-    school: school || undefined,
-    gradeLevel: gradeLevel || undefined,
-    studentPhone: studentPhone || undefined,
-    parentPhone: parentPhone || undefined,
-  };
-};
-
-// 현재 그룹에 중복 제거하며 추가 (중복 기준: 이름+학교+학년)
-const addStudentsToCurrentGroup = (list: Student[]) => {
-  if (!currentGroup) return;
-  if (!list.length) {
-    alert("추가할 학생 행이 없습니다.");
-    return;
-  }
-
-  const existing = new Set(
-    (currentGroup.students || []).map(
-      (s) => `${(s.name || "").trim()}|${s.school || ""}|${s.grade || ""}`
-    )
-  );
-
-  const unique = list.filter((s) => {
-    const key = `${(s.name || "").trim()}|${s.school || ""}|${s.grade || ""}`;
-    if (existing.has(key)) return false;
-    existing.add(key);
-    return true;
-  });
-
-  if (!unique.length) {
-    alert("모두 중복으로 판단되어 추가되지 않았습니다.");
-    return;
-  }
-
-  setStore((prev) => ({
-    ...prev,
-    groups: prev.groups.map((g) =>
-      g.id === currentGroup.id
-        ? { ...g, students: [...g.students, ...unique] }
-        : g
-    ),
-  }));
-
-  alert(`✅ ${unique.length}명 추가되었습니다.`);
-};
-
-// 파일 input onChange
-const onCSVFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const text = String(reader.result || "");
-    const rows = parseCSV(text);
-    const students = rows
-      .map((r) => normalizeToStudent(r))
-      .filter((x): x is Student => !!x);
-    addStudentsToCurrentGroup(students);
-  };
-  reader.readAsText(file, "utf-8");
-  // 같은 파일 재업로드 허용
-  e.currentTarget.value = "";
-};
 
   // 저장
   useEffect(()=>saveStore(store), [store]);
@@ -1569,36 +1501,7 @@ Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
     return Math.max(0, gross - outing);
   };
 
-  /** ===== 학생/그룹 관리 ===== */
-  const addStudent = () => {
-  const name = (newStu.name || "").trim();
-  if (!name) return;
 
-  const s: Student = {
-    id: uid(),
-    name,
-    grade: (newStu.grade || "").trim() || undefined,
-    school: (newStu.school || "").trim() || undefined,
-    studentPhone: (newStu.studentPhone || "").trim() || undefined,
-    parentPhone: (newStu.parentPhone || "").trim() || undefined,
-  };
-
-  setStore(prev => ({
-    ...prev,
-    groups: prev.groups.map(g =>
-      g.id === currentGroup.id
-        ? { ...g, students: [...g.students, s] }
-        : g
-    ),
-  }));
-
-  setNewStu({ name: "", grade: "", school: "", studentPhone: "", parentPhone: "" });
-
-  // ✅ Firestore에 학생 정보 저장 (이 한 줄 추가!)
-  saveStudentToFS(currentGroup.id, s).catch(e =>
-    console.error("🔥 Firestore 저장 실패:", e)
-  );
-};
 
 // ===================== 🧩 updateStudent 함수 =====================
 // ✅ 기존 updateStudent 함수 아래쪽 교체
@@ -2080,9 +1983,10 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
             <input style={inp} placeholder="학교" value={newStu.school||""} onChange={(e)=>setNewStu(s=>({...s, school:e.target.value}))} />
             <input style={inp} placeholder="학생 연락처" value={newStu.studentPhone||""} onChange={(e)=>setNewStu(s=>({...s, studentPhone:e.target.value}))} />
             <input style={inp} placeholder="부모님 연락처" value={newStu.parentPhone||""} onChange={(e)=>setNewStu(s=>({...s, parentPhone:e.target.value}))} />
-            <button style={btnD} onClick={addStudent}>추가</button><button style={btn} onClick={()=>csvInputRef.current?.click()}>CSV 불러오기</button>
+            <button style={btnD} onClick={addStudent}>추가</button>
+            {/*<button style={btn} onClick={()=>csvInputRef.current?.click()}>CSV 불러오기</button>
 <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={onCSVFileChange} />
-
+*/}
           </div>
 
 
