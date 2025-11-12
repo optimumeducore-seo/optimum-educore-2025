@@ -1,4 +1,3 @@
-// src/pages/StudentPage.tsx
 import { useEffect, useState } from "react";
 import { db } from "../firebase";
 import {
@@ -28,6 +27,7 @@ export default function StudentPage() {
   const [monthStats, setMonthStats] = useState<{ [key: string]: any }>({});
   const [passwordInput, setPasswordInput] = useState("");
   const [verified, setVerified] = useState(false);
+  const [todayInTime, setTodayInTime] = useState<string | null>(null);
 
   // === 학생 목록 불러오기 ===
   useEffect(() => {
@@ -54,30 +54,27 @@ export default function StudentPage() {
     setPasswordInput("");
   };
 
- // === 비밀번호 검증 ===
-const handleVerifyPassword = async () => {
-  if (!selected) return;
+  // === 비밀번호 검증 ===
+  const handleVerifyPassword = async () => {
+    if (!selected) return;
 
-  const key = `pw_${selected.id}`; // 학생마다 개별 저장
-  const savedPw = localStorage.getItem(key);
+    const key = `pw_${selected.id}`;
+    const savedPw = localStorage.getItem(key);
 
-  if (!savedPw) {
-    // 🔸 비번이 아직 없는 경우 → 처음 등록
-    if (passwordInput.trim().length < 3) {
-      alert("비밀번호를 3자리 이상 입력하세요.");
-      return;
+    if (!savedPw) {
+      if (passwordInput.trim().length < 3) {
+        alert("비밀번호를 3자리 이상 입력하세요.");
+        return;
+      }
+      localStorage.setItem(key, passwordInput);
+      alert("✅ 비밀번호가 설정되었습니다! 다음부터 이 비밀번호로 로그인하세요.");
+      setVerified(true);
+    } else if (savedPw === passwordInput) {
+      setVerified(true);
+    } else {
+      alert("❌ 비밀번호가 올바르지 않습니다.");
     }
-    localStorage.setItem(key, passwordInput);
-    alert("✅ 비밀번호가 설정되었습니다! 다음부터 이 비밀번호로 로그인하세요.");
-    setVerified(true);
-  } else if (savedPw === passwordInput) {
-    // 🔸 저장된 비번과 일치 → 통과
-    setVerified(true);
-  } else {
-    // 🔸 틀린 경우
-    alert("❌ 비밀번호가 올바르지 않습니다.");
-  }
-};
+  };
 
   // === 월별 출결 요약 ===
   const calcMonthlyStats = (records: any[]) => {
@@ -100,25 +97,37 @@ const handleVerifyPassword = async () => {
     return { total, days: records.length };
   })();
 
-  // === 등/하원 ===
+  // === 등원 ===
   const handleCheckIn = async (studentId: string) => {
     const todayStr = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+
     await setDoc(
       doc(db, "records", studentId),
-      { date: todayStr, inTime: new Date().toISOString(), outTime: null },
+      { date: todayStr, inTime: now, outTime: null },
       { merge: true }
     );
-    alert("등원 처리 완료!");
+
+    setTodayInTime(now);
+    alert("✅ 등원 처리 완료!");
+    setSelected(null);
+    setVerified(false);
   };
 
+  // === 하원 ===
   const handleCheckOut = async (studentId: string) => {
     const todayStr = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+
     await setDoc(
       doc(db, "records", studentId),
-      { date: todayStr, outTime: new Date().toISOString() },
+      { date: todayStr, outTime: now },
       { merge: true }
     );
-    alert("하원 처리 완료!");
+
+    alert("👋 하원 처리 완료!");
+    setSelected(null);
+    setVerified(false);
   };
 
   // === 그래프 데이터 ===
@@ -303,26 +312,26 @@ const handleVerifyPassword = async () => {
       )}
 
       {/* 비밀번호 초기화 버튼 */}
-<button
-  onClick={() => {
-    if (!selected) return;
-    const key = `pw_${selected.id}`;
-    localStorage.removeItem(key);
-    alert("🔄 비밀번호가 초기화되었습니다. 새 비밀번호를 등록하세요!");
-  }}
-  style={{
-    marginTop: 10,
-    background: "#fce7e7",
-    color: "#b71c1c",
-    border: "1px solid #f8bdbd",
-    borderRadius: 8,
-    padding: "8px 12px",
-    fontSize: 13,
-    cursor: "pointer",
-  }}
->
-  비밀번호 초기화
-</button>
+      <button
+        onClick={() => {
+          if (!selected) return;
+          const key = `pw_${selected.id}`;
+          localStorage.removeItem(key);
+          alert("🔄 비밀번호가 초기화되었습니다. 새 비밀번호를 등록하세요!");
+        }}
+        style={{
+          marginTop: 10,
+          background: "#fce7e7",
+          color: "#b71c1c",
+          border: "1px solid #f8bdbd",
+          borderRadius: 8,
+          padding: "8px 12px",
+          fontSize: 13,
+          cursor: "pointer",
+        }}
+      >
+        비밀번호 초기화
+      </button>
 
       {/* ===== 본인 확인 후 상세 ===== */}
       {selected && verified && (
@@ -340,10 +349,54 @@ const handleVerifyPassword = async () => {
           >
             <h3 style={{ color: "#1e3a8a", marginBottom: 8 }}>{selected.name} 학생</h3>
             <p>학년: {selected.grade}</p>
+            {todayInTime && (
+              <p style={{ color: "#0d47a1" }}>
+                오늘 등원시간: {new Date(todayInTime).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+              </p>
+            )}
             <p>
               최근 {summary.days}일 순공:{" "}
               <strong style={{ color: "#b71c1c" }}>{summary.total.toFixed(0)}분</strong>
             </p>
+          </div>
+
+          {/* 등원 / 하원 버튼 */}
+          <div
+            style={{
+              marginTop: 25,
+              display: "flex",
+              justifyContent: "center",
+              gap: "12px",
+            }}
+          >
+            <button
+              onClick={() => handleCheckIn(selected.id)}
+              style={{
+                background: "#3b82f6",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                padding: "12px 20px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              등원
+            </button>
+            <button
+              onClick={() => handleCheckOut(selected.id)}
+              style={{
+                background: "#ef4444",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                padding: "12px 20px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              하원
+            </button>
           </div>
 
           {/* 달력 */}
@@ -352,7 +405,7 @@ const handleVerifyPassword = async () => {
             {renderCalendar()}
           </div>
 
-          {/* ✅ 월별 통계 카드 */}
+          {/* 월별 순공 요약 */}
           <div style={{ marginTop: 40 }}>
             <h4 style={{ color: "#1e3a8a", marginBottom: 10 }}>📊 월별 순공 요약</h4>
             {Object.keys(monthStats).length ? (
@@ -394,33 +447,11 @@ const handleVerifyPassword = async () => {
             <h4 style={{ color: "#1e3a8a", marginBottom: 10 }}>📈 최근 순공 변화</h4>
             {chartData.length ? (
               <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                <AreaChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: "#333" }} />
-                  <YAxis tick={{ fontSize: 12, fill: "#333" }} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#fff",
-                      border: "1px solid #ddd",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    formatter={(v) => `${v}분`}
-                  />
-                  <defs>
-                    <linearGradient id="colorStudy" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#1e3a8a" stopOpacity={0.4} />
-                      <stop offset="100%" stopColor="#90caf9" stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <Area
-                    type="monotone"
-                    dataKey="study"
-                    stroke="#1e3a8a"
-                    strokeWidth={2.5}
-                    fill="url(#colorStudy)"
-                    activeDot={{ r: 5, fill: "#b71c1c", stroke: "#fff", strokeWidth: 2 }}
-                  />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip />
                   <ReferenceLine
                     y={avg}
                     stroke="#b71c1c"
@@ -432,21 +463,23 @@ const handleVerifyPassword = async () => {
                       fontSize: 12,
                     }}
                   />
+                  <Area
+                    type="monotone"
+                    dataKey="study"
+                    stroke="#1976d2"
+                    strokeWidth={2}
+                    fill="url(#colorStudy)"
+                  />
+                  <defs>
+                    <linearGradient id="colorStudy" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#90caf9" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#bbdefb" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div
-                style={{
-                  textAlign: "center",
-                  color: "#999",
-                  fontSize: 14,
-                  fontStyle: "italic",
-                  padding: "20px 0",
-                }}
-              >
-                최근 순공 데이터가 없습니다.<br />
-                오늘부터 꾸준히 기록해보세요 💪
-              </div>
+              <p style={{ color: "#aaa" }}>순공 데이터가 없습니다.</p>
             )}
           </div>
 
