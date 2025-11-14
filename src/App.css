@@ -40,3 +40,10 @@
 .read-the-docs {
   color: #888;
 }
+
+@keyframes fadeIn {
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

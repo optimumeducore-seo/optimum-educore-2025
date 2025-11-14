@@ -7,7 +7,9 @@ import {
   collection,
   doc,
   setDoc,
+  updateDoc,
   addDoc,
+  getDoc,      // ← 이거 추가!!!!
   getDocs,
   deleteDoc,
   query,
@@ -107,10 +109,10 @@ const style = {
     } as React.CSSProperties,
   },
   status: {
-    P: { color: "#10b981", background: "#d1fae5" },
-    L: { color: "#f59e0b", background: "#fef3c7" },
-    A: { color: "#ef4444", background: "#fee2e2" },
-    E: { color: "#6366f1", background: "#e0e7ff" },
+  P: { background: "#EAF8ED", color: "#1B5E20" }, 
+  L: { background: "#FFF7E5", color: "#9A6A05" }, 
+  A: { background: "#FCE5E5", color: "#B71C1C" }, 
+  E: { background: "#E8ECFF", color: "#2A3EB1" },
   } as Record<StatusKey, { color: string; background: string }>,
 };
 
@@ -546,32 +548,86 @@ const [academySchedule, setAcademySchedule] = useState<Record<string, { start: s
 
 const [attendanceList, setAttendanceList] = useState<any[]>([]);
 
+async function fetchLogs(studentId: string) {
+  const ref = doc(db, "records", studentId);
+  const snap = await getDoc(ref);
 
+  if (!snap.exists()) return [];
 
-async function handleCheckIn(studentName: string) {
-  try {
-    await addDoc(collection(db, "attendance"), {
-      name: studentName,
-      status: "출석",
-      time: serverTimestamp(),
-    });
-    console.log("✅ Firestore에 등원 저장:", studentName);
-  } catch (e) {
-    console.error("❌ Firestore 저장 실패:", e);
-  }
+  const data = snap.data();
+  return Array.isArray(data.logs) ? data.logs : [];
 }
-async function handleCheckOut(name: string) {
-  try {
-    await addDoc(collection(db, "attendance"), {
-      name: name,
-      status: "하원",
-      time: serverTimestamp(),
-    });
-    console.log("✅ Firestore에 하원 저장됨:", name);
-  } catch (e) {
-    console.error("❌ Firestore 하원 저장 실패:", e);
+
+// === 선생님용 등원 ===
+async function handleCheckin(studentId: string) {
+  const ref = doc(db, "records", studentId);
+  const snap = await getDoc(ref);
+
+  let logs: any[] = [];
+  if (snap.exists()) {
+    const data = snap.data();
+    logs = Array.isArray(data.logs) ? data.logs.slice() : [];
   }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const now = new Date().toISOString();
+
+  // 오늘 이미 등원했는지 확인 (하원 안한 경우)
+ const alreadyIn = logs.some(
+  (l) => l.date === todayStr && l.inTime
+);
+
+  if (alreadyIn) {
+    alert("이미 등원 처리되었습니다.");
+    return;
+  }
+
+  logs.push({
+    date: todayStr,
+    inTime: now,
+    outTime: null,
+  });
+
+  await setDoc(ref, { logs }, { merge: true });
+
+  alert("등원 처리 완료!");
 }
+
+// === 선생님용 하원 ===
+async function handleCheckout(studentId: string) {
+  const ref = doc(db, "records", studentId);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    alert("등원 기록이 없습니다.");
+    return;
+  }
+
+  const data = snap.data();
+  let logs: any[] = Array.isArray(data.logs) ? data.logs.slice() : [];
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const now = new Date().toISOString();
+
+  // 오늘 등원했지만 아직 outTime 없는 기록 찾기
+  const idx = logs
+    .map((l, i) => ({ ...l, _idx: i }))
+    .filter((l) => l.date === todayStr && l.inTime && !l.outTime)
+    .map((l) => l._idx)
+    .pop();
+
+  if (idx === undefined) {
+    alert("하원 처리할 등원 기록이 없습니다.");
+    return;
+  }
+
+  logs[idx] = { ...logs[idx], outTime: now };
+
+  await setDoc(ref, { logs }, { merge: true });
+
+  alert("하원 처리 완료!");
+}
+
 async function saveStudentToFS(groupId: string, s: any) {
   try {
     // undefined 값 제거 (Firestore는 undefined 허용 안 함)
@@ -622,7 +678,11 @@ async function deleteAssignmentFS(id: string) {
 const [assignments, setAssignments] = useState<AssignmentFS[]>([]);
 const today = useMemo(() => todayStr(), []);
 
-
+async function saveComment(sid: string, date: string, data: any) {
+  await updateDoc(doc(db, "records", date), {
+    [sid]: data
+  });
+}
 
 // ✅ 빈 값(undefined, "") 필드 제거 유틸
 const sanitize = (obj: any) =>
@@ -725,6 +785,7 @@ useEffect(() => {
   return () => unsub();
 }, [store.currentGroupId]); // ✅ 그룹 바뀔 때마다 새로 구독
 
+
 // 학생 추가 함수 (공유용)
 const addStudent = async () => {
   const student: Student = {
@@ -782,7 +843,8 @@ const addStudent = async () => {
   const [bulkTitle, setBulkTitle] = useState("");
   const [bulkGrade, setBulkGrade] = useState<string>(""); 
   const [bulkSchool, setBulkSchool] = useState<string>("");
-
+  const [todayIn, setTodayIn] = useState<{ [key: string]: string | null }>({});
+  const [todayOut, setTodayOut] = useState<{ [key: string]: string | null }>({});
 
 const applyPersonalScheduleForDate = (sid: string, ds: string) => {
   setStore((prev) => {
@@ -950,6 +1012,11 @@ useEffect(() => {
   return () => unsub();
 }, [currentGroup?.id, today]);
 
+
+
+
+
+
 // ✅ 현재 그룹 학생 목록
 const students = useMemo(() => {
   const list = currentGroup?.students ? [...currentGroup.students] : [];
@@ -962,6 +1029,39 @@ const students = useMemo(() => {
     return (a.name || "").localeCompare(b.name || "", "ko"); // 가나다순
   });
 }, [currentGroup]);
+
+// =====================================
+// 🔥 Firestore → 오늘 등/하원 시간 불러오기
+// =====================================
+useEffect(() => {
+  const loadRecords = async () => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let inMap: any = {};
+    let outMap: any = {};
+
+    for (const st of students) {
+      const ref = doc(db, "records", st.id);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) continue;
+      const data = snap.data();
+
+      const logs = Array.isArray(data.logs) ? data.logs : [];
+      const todayLog = logs.find(l => l.date === todayStr && l.inTime);
+
+      if (todayLog) {
+        inMap[st.id] = todayLog.inTime || null;
+        outMap[st.id] = todayLog.outTime || null;
+      }
+    }
+
+    setTodayIn(inMap);
+    setTodayOut(outMap);
+  };
+
+  if (students.length) loadRecords();
+}, [students]);
+
 
 // ✅ 학년 목록 생성
 const uniqueGrades = useMemo(() => {
@@ -1023,13 +1123,36 @@ const uniqueSchools = useMemo(() => {
     });
   };
   const setTime = (sid: string, time: string) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[date] || {}) };
-      const next: DayCell = { ...ensureCell(sid), time: time || undefined };
-      d0[sid] = next; records[date] = d0; return { ...prev, records };
-    });
-  };
+  setStore(prev => {
+    const records = { ...prev.records };
+    const d0 = { ...(records[date] || {}) };
+    const base: DayCell = { ...ensureCell(sid) };
+
+    const next: DayCell = { ...base, time: time || undefined };
+
+    // =============================
+    // 🔥 자동 출석/지각/결석 판정
+    // =============================
+    if (next.time) {
+      const [h, m] = next.time.split(":").map(Number);
+      const mins = h * 60 + m;
+
+      const cutoffLate = 16 * 60 + 10;  // 16:10 이후 지각
+      const cutoffAbsent = 18 * 60;     // 18:00 이후 결석
+
+      let auto: StatusKey = "P";
+      if (mins > cutoffLate) auto = "L";
+      if (mins > cutoffAbsent) auto = "A";
+
+      next.status = auto;
+    }
+
+    d0[sid] = next;
+    records[date] = d0;
+    return { ...prev, records };
+  });
+};
+
   const setTimeNow = (sid: string) => setTime(sid, nowHM());
   const setOutTime = (sid: string, out: string) => {
     setStore(prev => {
@@ -1596,6 +1719,69 @@ const updateStudent = (sid: string, patch: Partial<Student>) => {
   }
 };
 
+
+const reloadStudents = async () => {
+  const groupId = store.currentGroupId || "default";
+
+  // 1️⃣ Firestore에서 해당 그룹 학생 가져오기
+  const q = query(
+    collection(db, "students"),
+    where("groupId", "==", groupId)
+  );
+  const snap = await getDocs(q);
+
+  const fsStudents = snap.docs.map((d) => ({
+    id: d.id,
+    ...(d.data() as any),
+  }));
+
+  // 2️⃣ Firestore 학생 id 목록
+  const fsIds = new Set(fsStudents.map((s) => s.id));
+
+  // 3️⃣ 로컬 store에서 이번 그룹 학생
+  const localStudents = store.groups
+    .find((g) => g.id === groupId)
+    ?.students || [];
+
+  // 4️⃣ Firestore에 없는 로컬 학생 = 삭제 대상
+  const removedLocal = localStudents.filter((s) => !fsIds.has(s.id));
+
+  if (removedLocal.length > 0) {
+    console.log("🗑️ Firestore에 없어 삭제되는 로컬 학생:", removedLocal);
+  }
+
+  // 5️⃣ 로컬 store 정리 + Firestore에서 가져온 것으로 세팅
+  setStore((prev) => {
+    const groups = prev.groups.map((g) =>
+      g.id === groupId
+        ? {
+            ...g,
+            students: fsStudents, // ← Firestore 학생으로 완전 덮어쓰기
+          }
+        : g
+    );
+
+    return {
+      ...prev,
+      groups,
+      students: fsStudents,
+    };
+  });
+
+  alert("🔄 학생 목록을 Firestore 기준으로 새로 고쳤습니다.");
+};
+
+const statusBtn: React.CSSProperties = {
+  padding: "6px 14px",
+  borderRadius: 12,
+  fontSize: 13,
+  fontWeight: 700,
+  cursor: "pointer",
+  display: "inline-block",
+  border: "1px solid transparent",
+  transition: "all .15s ease",
+};
+
   const setAll = (st: StatusKey) => {
     setStore(prev => {
       const records = { ...prev.records };
@@ -1610,6 +1796,9 @@ const updateStudent = (sid: string, patch: Partial<Student>) => {
       return { ...prev, records };
     });
   };
+
+
+
 
   /** 오늘/월 출결 합계 */
   const todayTotals = useMemo(() => {
@@ -1649,15 +1838,32 @@ const updateStudent = (sid: string, patch: Partial<Student>) => {
     background: active ? "#111" : "#fff", color: active ? "#fff" : "#111", cursor:"pointer", fontSize:12,
     lineHeight:1
   });
-  const statusMenuStyle: React.CSSProperties = { position: "absolute", top: "100%", left: 0, marginTop: 6,  border: "1px solid #e5e7eb",    background: "#fff",    borderRadius: 8, boxShadow: "0 10px 25px rgba(0,0,0,.08)", overflow: "hidden",  zIndex: 9999,    };
-  
-  const statusItemStyle: React.CSSProperties = {
-    padding: "8px 12px",
-    fontSize: 13,
-    cursor: "pointer",
-    borderBottom: "1px solid #f2f4f7",
-    whiteSpace: "nowrap",
-  };
+  const statusMenuStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "100%",
+  left: 0,
+  marginTop: 4,
+  background: "#fff",
+  border: "1px solid #ddd",
+  borderRadius: 8,
+  boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
+  padding: 4,  // ← 여백 최소
+  zIndex: 10,
+};
+
+ const statusItemStyle: React.CSSProperties = {
+  padding: "4px 10px",
+  borderRadius: 10,
+  fontSize: 13,
+  fontWeight: 700,
+  height: 32,                // ← 동일
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  margin: "2px 0",
+  transition: "0.1s",
+};
   
   const btnXS: React.CSSProperties = {
     border: "1px solid #e5e7eb",
@@ -1989,46 +2195,118 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
           </div>
         </div>
 
-
-    
-          
        
-
-        {/* 학생 추가 */}
-        <div style={{ marginTop:16 }}>
        
-          <div style={{ marginBottom: 8 }}>
-  <button
+{/* 학생 추가 */}
+<div style={{ marginTop: 20 }}>
+
+  <div
     style={{
-      ...btn,
-      background: showRemoved ? "#b91c1c" : "#e5e7eb",
-      color: showRemoved ? "#fff" : "#111",
-      fontWeight: 700
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "10px 14px",
+      background: "#f9fafb",
+      border: "1px solid #e5e7eb",
+      borderRadius: 12,
+      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+      flexWrap: "nowrap"
     }}
-    onClick={() => setShowRemoved(!showRemoved)}
   >
-    {showRemoved ? "숨김 해제" : "숨김 학생 보기"}
-  </button>
-</div>
+
+    {/* ▶ 왼쪽: 입력창 + 추가 */}
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <input
+        style={{ ...inp, width: 120, height: 38 }}
+        placeholder="이름"
+        value={newStu.name || ""}
+        onChange={(e)=>setNewStu(s=>({...s, name:e.target.value}))}
+      />
+
+      <select
+        style={{ ...inp, width: 90, height: 38 }}
+        value={newStu.grade || ""}
+        onChange={(e)=>setNewStu(s=>({ ...s, grade:e.target.value }))}
+      >
+        <option value="">학년</option>
+        <option value="중1">중1</option><option value="중2">중2</option><option value="중3">중3</option>
+        <option value="고1">고1</option><option value="고2">고2</option><option value="고3">고3</option>
+      </select>
+
+      <input
+        style={{ ...inp, width: 150, height: 38 }}
+        placeholder="학교"
+        value={newStu.school || ""}
+        onChange={(e)=>setNewStu(s=>({...s, school:e.target.value}))}
+      />
+
+      <input
+        style={{ ...inp, width: 140, height: 38 }}
+        placeholder="학생 연락처"
+        value={newStu.studentPhone || ""}
+        onChange={(e)=>setNewStu(s=>({...s, studentPhone:e.target.value}))}
+      />
+
+      <input
+        style={{ ...inp, width: 140, height: 38 }}
+        placeholder="부모님 연락처"
+        value={newStu.parentPhone || ""}
+        onChange={(e)=>setNewStu(s=>({...s, parentPhone:e.target.value}))}
+      />
+
+      <button
+        style={{
+          ...btnD,
+          height: 38,
+          padding: "0 20px",
+          fontWeight: 800,
+          borderRadius: 8,
+        }}
+        onClick={addStudent}
+      >
+        추가
+      </button>
+    </div>
+
+    {/* ▶ 오른쪽: 새로고침 + 숨김학생보기 */}
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <button
+        style={{
+          ...btn,
+          height: 38,
+          borderRadius: 8,
+          background: "#dbeafe",
+          color: "#1e3a8a",
+          fontWeight: 700,
+          padding: "0 14px",
+        }}
+        onClick={reloadStudents}
+      >
+        🔄 새로고침
+      </button>
+
+      <button
+        style={{
+          ...btn,
+          height: 38,
+          borderRadius: 8,
+          background: showRemoved ? "#b91c1c" : "#e5e7eb",
+          color: showRemoved ? "#fff" : "#111",
+          fontWeight: 700,
+          padding: "0 14px",
+        }}
+        onClick={() => setShowRemoved(!showRemoved)}
+      >
+        {showRemoved ? "숨김 해제" : "숨김학생보기"}
+      </button>
+    </div>
+
+  </div>
 
 
-          
 
-          <div style={{ display:"grid", gridTemplateColumns:"180px 100px 180px 160px 160px 100px", gap:8, marginBottom:8 }}>
-            <input style={inp} placeholder="이름" value={newStu.name||""} onChange={(e)=>setNewStu(s=>({...s, name:e.target.value}))} onKeyDown={(e)=>e.key==="Enter"&&addStudent()} />
-            <select style={inp} value={newStu.grade || ""} onChange={(e)=>setNewStu(s=>({ ...s, grade:e.target.value }))}>
-              <option value="">학년 선택</option>
-              <option value="중1">중1</option><option value="중2">중2</option><option value="중3">중3</option>
-              <option value="고1">고1</option><option value="고2">고2</option><option value="고3">고3</option>
-            </select>
-            <input style={inp} placeholder="학교" value={newStu.school||""} onChange={(e)=>setNewStu(s=>({...s, school:e.target.value}))} />
-            <input style={inp} placeholder="학생 연락처" value={newStu.studentPhone||""} onChange={(e)=>setNewStu(s=>({...s, studentPhone:e.target.value}))} />
-            <input style={inp} placeholder="부모님 연락처" value={newStu.parentPhone||""} onChange={(e)=>setNewStu(s=>({...s, parentPhone:e.target.value}))} />
-            <button style={btnD} onClick={addStudent}>추가</button>
-            {/*<button style={btn} onClick={()=>csvInputRef.current?.click()}>CSV 불러오기</button>
-<input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={onCSVFileChange} />
-*/}
-          </div>
+ 
+
 
 
           
@@ -2116,7 +2394,10 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
             {bulkTitle.trim() ? "➕ 과제 추가" : "제목 입력 대기"}
         </button>
     </div>
+
+    
 </div>
+
 
 
 
@@ -2130,10 +2411,10 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
                   <th style={{ padding:10 }}>학년</th>
                   <th style={{ padding:10 }}>학교</th>
                   <th style={{ padding:10, width:220 }}>시간<br/><span style={{ fontSize:11, color:"#6b7280" }}>(등원/하원 - 24H)</span></th>
-                  <th style={{ padding:10, width:90 }}>상태</th>
+                  <th style={{ padding:10, width:90 }}>출결</th>
                   <th style={{ padding:10, width:90 }}>순공</th>
                   <th style={{ padding:10, width:160 }}>연락처</th>
-                  <th style={{ padding:10, width:140 }}>작업</th>
+                  <th style={{ padding:10, width:140 }}>학생정보</th>
                   <th style={{ padding:10, width:160 }}>상세</th>
                 </tr>
               </thead>
@@ -2147,8 +2428,10 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
     .filter(s => showRemoved || !s.removed)   // 기본적으로 숨김 학생은 안보임
     .map((s, i) => {
       const cell = day[s.id] ?? { status: "P" as StatusKey };
-                  const enabled = new Set(cell.enabledSubjects || []);
-                  const running = !!(cell.time && !cell.outTime);
+
+    
+const enabled = new Set(cell.enabledSubjects || []);
+const running = !!(cell.time && !cell.outTime);
 
                   return (
                     <React.Fragment key={s.id}>
@@ -2191,10 +2474,11 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
                           <div style={{display:"grid", gridTemplateColumns:"1fr auto auto", gap:6, alignItems:"center", marginBottom:6}}>
                             <input type="time" value={cell.time ?? ""} onChange={(e)=>setTime(s.id, e.target.value)} style={timeInp}/>
                             <button
+
   style={btn}
   onClick={() => {
-    setTimeNow(s.id);              // 기존 로컬 동작 유지
-    handleCheckIn(s.name);         // ✅ Firestore에 기록 추가
+    setTimeNow(s.id);
+    handleCheckin(s.id); // ✅ id로 변경
   }}
 >
   등원
@@ -2212,7 +2496,7 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
   style={btn}
   onClick={() => {
     setOutTimeNow(s.id);      // 기존 기능 유지
-    handleCheckOut(s.name);   // Firestore에 하원 데이터 저장
+    handleCheckout(s.id); // ✅ id 기반으로 변경  // Firestore에 하원 데이터 저장
   }}
 >
   하원
@@ -2226,23 +2510,52 @@ boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 �
                         </td>
 
                         {/* 상태 팝업 */}
-                        <td style={{ padding:10, position:"relative" }}>
-                          <button
-                            style={{ ...chip(true), background:"#fff", color:"#111", border:"1px solid #e5e7eb", fontWeight:700, width:"100%", display:"flex", justifyContent:"center" }}
-                            onClick={() => setStatusPickerFor(prev => prev === s.id ? null : s.id)}
-                            title="상태 변경"
-                          >
-                            {STATUS[cell.status].label}
-                          </button>
+                       <td style={{ padding: 10, position: "relative" }}>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",   // 가운데 정렬
+      paddingLeft: 20,            // ←← 오른쪽으로 밀기!
+    }}
+  >
+    <button
+      style={{
+        padding: "4px 10px",
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 700,
+        height: 32,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: style.status[cell.status].background,
+        color: style.status[cell.status].color,
+        border: `1px solid ${style.status[cell.status].color}`,
+        cursor: "pointer",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+      }}
+      onClick={() =>
+        setStatusPickerFor(prev => (prev === s.id ? null : s.id))
+      }
+    >
+      {STATUS[cell.status].label}
+    </button>
+  </div>
                           {statusPickerFor === s.id && (
                             <div style={statusMenuStyle} onMouseLeave={()=>setStatusPickerFor(null)}>
                               {(["P","L","A","E"] as StatusKey[]).map(k => (
-                                <div key={k}
-                                  style={{ ...statusItemStyle, background: cell.status===k ? "#111" : "#fff", color: cell.status===k ? "#fff" : "#111", borderBottom: k==="E" ? "none" : "1px solid #f2f4f7" }}
-                                  onClick={() => { setStatus(s.id, k); setStatusPickerFor(null); }}
-                                >
-                                  {STATUS[k].label}
-                                </div>
+                               <div
+  key={k}
+  style={{
+    ...statusItemStyle,
+    background: style.status[k].background,
+    color: style.status[k].color,
+    border: `1px solid ${style.status[k].color}`,
+  }}
+  onClick={() => { setStatus(s.id, k); setStatusPickerFor(null); }}
+>
+  {STATUS[k].label}
+</div>
                               ))}
                             </div>
                           )}
@@ -3347,11 +3660,11 @@ const other = Math.max(0, gross - (netMin + academyMin + rest));
     const count = students.reduce((acc, s) => acc + ((day[s.id]?.status === k) ? 1 : 0), 0);
 
     const colors: Record<StatusKey, { bg: string; color: string; border: string }> = {
-      P: { bg: "#EAF8ED", color: "#1B5E20", border: "#CFEAD5" }, // 출석
-      L: { bg: "#FFF9E5", color: "#7A5A0B", border: "#F1E7BF" }, // 지각
-      A: { bg: "#FCEBEC", color: "#C62828", border: "#F3C8CC" }, // 결석
-      E: { bg: "#ECEEFC", color: "#283593", border: "#CCD3F6" }, // 조퇴
-    };
+  P: { bg: "#F0FAF7", color: "#0E7F63", border: "#A8E1D1" }, // 출석
+  L: { bg: "#FFF8E7", color: "#A87A05", border: "#F3D899" }, // 지각
+  A: { bg: "#FCECEC", color: "#C23B3B", border: "#F4B3B3" }, // 결석
+  E: { bg: "#F1F3FF", color: "#3F4ACD", border: "#C7CCFA" }, // 조퇴
+};
 
     const isActive = focusStatus === k;
 
@@ -3795,7 +4108,19 @@ null | { date: string; comment: string; studyNote: string }>(null);
         const isSat = dow === 6;
         const isHol = isHoliday(ds);
         const c = records[ds]?.[student.id];
-        const status: StatusKey = c?.status || "P";
+
+
+// 🟡 일요일 자동 결석 처리 (등원 기록 없을 때만)
+if (new Date(ds).getDay() === 0) {
+  if (!c || !c.time) {
+    // c가 아예 없으면 기본결석으로
+    records[ds] = records[ds] || {};
+    records[ds][student.id] = { ...(c || {}), status: "A" };
+  }
+}
+
+// 상태 다시 읽기
+const status: StatusKey | null = c?.status ?? null;
         const isFocused = focusStatus && status === focusStatus;
         const todayStr = fmtDate(new Date());
          const isFuture = ds > todayStr;
@@ -3879,49 +4204,75 @@ const textColor =
 
               {/* 상태 뱃지 */}
               <span
-                style={{
-                  ...badge,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontWeight: 700,
-                }}
-              >
-                {(() => {
-                  if (isFuture) {
-                    return (
-                      <>
-                        <span style={{ width:10, height:10, borderRadius:"50%", background:"#e5e7eb", display:"inline-block" }} />
-                      </>
-                    );
-                  }
+  style={{
+    ...badge,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontWeight: 700,
+  }}
+>
+  {(() => {
+    // 📌 기록 없는 날 → 상태 표시 안함
+    if (!status) {
+      return (
+        <>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: "#e5e7eb",
+              display: "inline-block",
+            }}
+          />
+        </>
+      );
+    }
 
-                  // 과거 및 오늘
-                  const color =
-                    status === "P"
-                      ? "#16a34a" // 출석 초록
-                      : status === "L"
-                      ? "#eab308" // 지각 노랑
-                      : status === "A"
-                      ? "#dc2626" // 결석 빨강
-                      : "#6d28d9"; // 조퇴 보라
+    // 📌 미래 날짜
+    if (isFuture) {
+      return (
+        <>
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius:"50%",
+              background:"#e5e7eb",
+              display:"inline-block",
+            }}
+          />
+        </>
+      );
+    }
 
-                  return (
-                    <>
-                      <span
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: "50%",
-                          background: color,
-                          display: "inline-block",
-                        }}
-                      />
-                      {STATUS[status].short}
-                    </>
-                  );
-                })()}
-              </span>
+    // 📌 상태 있는 날짜 (P/L/A/E)
+    const color =
+      status === "P"
+        ? "#16a34a"
+        : status === "L"
+        ? "#eab308"
+        : status === "A"
+        ? "#dc2626"
+        : "#6d28d9";
+
+    return (
+      <>
+        <span
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: color,
+            display: "inline-block",
+          }}
+        />
+        {STATUS[status].short}
+      </>
+    );
+  })()}
+</span>
             </div>
 
             {/* 메모 / 학습 미리보기 */}
