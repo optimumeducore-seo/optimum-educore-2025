@@ -109,15 +109,15 @@ const style = {
     } as React.CSSProperties,
   },
   status: {
-  P: { background: "#EAF8ED", color: "#1B5E20" }, 
-  L: { background: "#FFF7E5", color: "#9A6A05" }, 
-  A: { background: "#FCE5E5", color: "#B71C1C" }, 
-  E: { background: "#E8ECFF", color: "#2A3EB1" },
+    P: { background: "#EAF8ED", color: "#1B5E20" },
+    L: { background: "#FFF7E5", color: "#9A6A05" },
+    A: { background: "#FCE5E5", color: "#B71C1C" },
+    E: { background: "#E8ECFF", color: "#2A3EB1" },
   } as Record<StatusKey, { color: string; background: string }>,
 };
 
 export type StatusKey = "P" | "L" | "A" | "E";
-export type AcademyType =  "영어" | "수학" | "국어" | "과학" | "기타" | "학교";
+export type AcademyType = "영어" | "수학" | "국어" | "과학" | "기타" | "학교";
 
 export type TimeSlot = {
   day: number;
@@ -141,13 +141,13 @@ export interface DayCell {
 
   // 과목별 시간
   academyBySubject?: Partial<Record<AcademyType, SubjectEntry>>;
- overrideAcademyTimes?: Record<string, { subject: string; from: string; to: string; date: string }>;
+  overrideAcademyTimes?: Record<string, { subject: string; from: string; to: string; date: string }>;
 
   // 휴식/식사
   restroomCount?: number;
   restroomMin?: number;
   mealMin?: number;
-   commuteMin?: number; // 이동 / 통학 시간(분 단위)
+  commuteMin?: number; // 이동 / 통학 시간(분 단위)
 
   // 메모/과제
   memo?: string;
@@ -180,17 +180,17 @@ export type Student = {
   grade?: string;
   school?: string;
   gradeLevel?: string;
-    groupId?: string; // ✅ 추가 — 그룹 ID
+  groupId?: string; // ✅ 추가 — 그룹 ID
   studentPhone?: string;
   parentPhone?: string;
   removed?: boolean;
   personalSchedule?: {
-  current: Partial<Record<AcademyType, WeeklyTime>>;
-  next?: {
-    effectiveDate: string;
-    data: Partial<Record<AcademyType, WeeklyTime>>;
+    current: Partial<Record<AcademyType, WeeklyTime>>;
+    next?: {
+      effectiveDate: string;
+      data: Partial<Record<AcademyType, WeeklyTime>>;
+    };
   };
-};
   koreanScore?: number;
   englishScore?: number;
   mathScore?: number;
@@ -273,8 +273,8 @@ const nextDateStr = (ds: string) => {
   const d = new Date(ds);
   d.setDate(d.getDate() + 1);
   const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  const dd = String(d.getDate()).padStart(2,"0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 };
 const nowHM = () => {
@@ -297,55 +297,55 @@ function monthRange(dateStr: string) {
 
 /** ================= 대한민국 공휴일 유틸 (2024~2029 + 간단 대체공휴일) ================= */
 // 날짜 키
-const ymd = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+const ymd = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
 type HolidayMap = Record<string, string>;  // "YYYY-MM-DD" -> 이름
 const HOLIDAY_CACHE: Record<number, HolidayMap> = {};
 
 /** 고정 공휴일 */
 const FIXED_HOLIDAYS: Array<{ m: number; d: number; name: string }> = [
-  { m:1, d:1, name:"신정" },
-  { m:3, d:1, name:"삼일절" },
-  { m:5, d:5, name:"어린이날" },
-  { m:6, d:6, name:"현충일" },
-  { m:8, d:15, name:"광복절" },
-  { m:10, d:3, name:"개천절" },
-  { m:10, d:9, name:"한글날" },
-  { m:12, d:25, name:"크리스마스" },
+  { m: 1, d: 1, name: "신정" },
+  { m: 3, d: 1, name: "삼일절" },
+  { m: 5, d: 5, name: "어린이날" },
+  { m: 6, d: 6, name: "현충일" },
+  { m: 8, d: 15, name: "광복절" },
+  { m: 10, d: 3, name: "개천절" },
+  { m: 10, d: 9, name: "한글날" },
+  { m: 12, d: 25, name: "크리스마스" },
 ];
 
 /** 음력 기반(연도별 실제 양력 날짜 매핑) — 간단 테이블 (필요 연도만 확장 가능) */
-const LUNAR_SOLAR_TABLE: Record<number, Array<{ m:number; d:number; name:string }>> = {
+const LUNAR_SOLAR_TABLE: Record<number, Array<{ m: number; d: number; name: string }>> = {
   // 설연휴/석가탄신일/추석연휴(대체 포함 날짜들 일부 포함)
   2024: [
-    { m:2, d:9, name:"설연휴" }, { m:2, d:10, name:"설날" }, { m:2, d:12, name:"설연휴" },
-    { m:5, d:15, name:"석가탄신일" },
-    { m:9, d:16, name:"추석연휴" }, { m:9, d:17, name:"추석" }, { m:9, d:18, name:"추석연휴" },
+    { m: 2, d: 9, name: "설연휴" }, { m: 2, d: 10, name: "설날" }, { m: 2, d: 12, name: "설연휴" },
+    { m: 5, d: 15, name: "석가탄신일" },
+    { m: 9, d: 16, name: "추석연휴" }, { m: 9, d: 17, name: "추석" }, { m: 9, d: 18, name: "추석연휴" },
   ],
   2025: [
-    { m:1, d:27, name:"설연휴" }, { m:1, d:28, name:"설날" }, { m:1, d:29, name:"설연휴" },
-    { m:5, d:5,  name:"석가탄신일" },
-    { m:10, d:5, name:"추석연휴" }, { m:10, d:6, name:"추석" }, { m:10, d:7, name:"추석연휴" },
+    { m: 1, d: 27, name: "설연휴" }, { m: 1, d: 28, name: "설날" }, { m: 1, d: 29, name: "설연휴" },
+    { m: 5, d: 5, name: "석가탄신일" },
+    { m: 10, d: 5, name: "추석연휴" }, { m: 10, d: 6, name: "추석" }, { m: 10, d: 7, name: "추석연휴" },
   ],
   2026: [
-    { m:2, d:16, name:"설연휴" }, { m:2, d:17, name:"설날" }, { m:2, d:18, name:"설연휴" },
-    { m:5, d:24, name:"석가탄신일" },
-    { m:10, d:4, name:"추석연휴" }, { m:10, d:5, name:"추석" }, { m:10, d:6, name:"추석연휴" },
+    { m: 2, d: 16, name: "설연휴" }, { m: 2, d: 17, name: "설날" }, { m: 2, d: 18, name: "설연휴" },
+    { m: 5, d: 24, name: "석가탄신일" },
+    { m: 10, d: 4, name: "추석연휴" }, { m: 10, d: 5, name: "추석" }, { m: 10, d: 6, name: "추석연휴" },
   ],
   2027: [
-    { m:2, d:6, name:"설연휴" }, { m:2, d:7, name:"설날" }, { m:2, d:8, name:"설연휴" },
-    { m:5, d:13, name:"석가탄신일" },
-    { m:9, d:25, name:"추석연휴" }, { m:9, d:26, name:"추석" }, { m:9, d:27, name:"추석연휴" },
+    { m: 2, d: 6, name: "설연휴" }, { m: 2, d: 7, name: "설날" }, { m: 2, d: 8, name: "설연휴" },
+    { m: 5, d: 13, name: "석가탄신일" },
+    { m: 9, d: 25, name: "추석연휴" }, { m: 9, d: 26, name: "추석" }, { m: 9, d: 27, name: "추석연휴" },
   ],
   2028: [
-    { m:1, d:26, name:"설연휴" }, { m:1, d:27, name:"설날" }, { m:1, d:28, name:"설연휴" },
-    { m:5, d:2,  name:"석가탄신일" },
-    { m:9, d:13, name:"추석연휴" }, { m:9, d:14, name:"추석" }, { m:9, d:15, name:"추석연휴" },
+    { m: 1, d: 26, name: "설연휴" }, { m: 1, d: 27, name: "설날" }, { m: 1, d: 28, name: "설연휴" },
+    { m: 5, d: 2, name: "석가탄신일" },
+    { m: 9, d: 13, name: "추석연휴" }, { m: 9, d: 14, name: "추석" }, { m: 9, d: 15, name: "추석연휴" },
   ],
   2029: [
-    { m:2, d:12, name:"설연휴" }, { m:2, d:13, name:"설날" }, { m:2, d:14, name:"설연휴" },
-    { m:5, d:20, name:"석가탄신일" },
-    { m:9, d:30, name:"추석연휴" }, { m:10, d:1, name:"추석" }, { m:10, d:2, name:"추석연휴" },
+    { m: 2, d: 12, name: "설연휴" }, { m: 2, d: 13, name: "설날" }, { m: 2, d: 14, name: "설연휴" },
+    { m: 5, d: 20, name: "석가탄신일" },
+    { m: 9, d: 30, name: "추석연휴" }, { m: 10, d: 1, name: "추석" }, { m: 10, d: 2, name: "추석연휴" },
   ],
 };
 
@@ -410,7 +410,7 @@ type AssignmentFS = {
 
 type DonutSeg = { label: string; value: number; color: string };
 
-function Donut({ size=120, stroke=18, segments }: { size?: number; stroke?: number; segments: DonutSeg[] }) {
+function Donut({ size = 120, stroke = 18, segments }: { size?: number; stroke?: number; segments: DonutSeg[] }) {
   const total = Math.max(1, segments.reduce((a, s) => a + Math.max(0, s.value), 0));
   const C = size;
   const R = (size - stroke) / 2;
@@ -429,7 +429,7 @@ function Donut({ size=120, stroke=18, segments }: { size?: number; stroke?: numb
   });
 
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:10, alignItems:"center" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 10, alignItems: "center" }}>
       <svg width={C} height={C} viewBox={`0 0 ${C} ${C}`}>
         {/* 바닥 원(연한 회색) */}
         <circle cx={center} cy={center} r={R} fill="none" stroke="#eef2f7" strokeWidth={stroke} />
@@ -449,18 +449,18 @@ function Donut({ size=120, stroke=18, segments }: { size?: number; stroke?: numb
           />
         ))}
         {/* 가운데 구멍(텍스트 자리 시각적 정리용) */}
-        <circle cx={center} cy={center} r={R - stroke/2 - 2} fill="#fff" />
+        <circle cx={center} cy={center} r={R - stroke / 2 - 2} fill="#fff" />
       </svg>
 
       {/* 범례 */}
-      <div style={{ display:"grid", gap:6, fontSize:12, alignSelf:"center" }}>
+      <div style={{ display: "grid", gap: 6, fontSize: 12, alignSelf: "center" }}>
         {segments.map((s) => {
           const pct = Math.round((s.value / total) * 100);
           return (
-            <div key={s.label} style={{ display:"flex", alignItems:"center", gap:6 }}>
-              <span style={{ width:10, height:10, borderRadius:2, background:s.color, display:"inline-block" }} />
-              <span style={{ color:"#374151" }}>{s.label}</span>
-              <span style={{ marginLeft:"auto", color:"#6b7280" }}>{pct}%</span>
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: "inline-block" }} />
+              <span style={{ color: "#374151" }}>{s.label}</span>
+              <span style={{ marginLeft: "auto", color: "#6b7280" }}>{pct}%</span>
             </div>
           );
         })}
@@ -516,23 +516,23 @@ function loadStore(): StoreShape {
     }
 
     const g0: Group = { id: "default", name: "우리반", students: [] };
-const init: StoreShape = {
-  groups: [g0],
-  currentGroupId: "default",
-  records: {},
-};
+    const init: StoreShape = {
+      groups: [g0],
+      currentGroupId: "default",
+      records: {},
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
     return init;
   } catch {
-  const g0: Group = { id: "default", name: "우리반", students: [] };
-  const init: StoreShape = {
-    groups: [g0],
-    currentGroupId: "default",
-    records: {},
-  };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
-  return init;
-}
+    const g0: Group = { id: "default", name: "우리반", students: [] };
+    const init: StoreShape = {
+      groups: [g0],
+      currentGroupId: "default",
+      records: {},
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
+    return init;
+  }
 }
 function saveStore(s: StoreShape) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
@@ -544,149 +544,149 @@ function saveStore(s: StoreShape) {
 /** ================= 메인 앱 ================= */
 export default function App() {
 
-const [academySchedule, setAcademySchedule] = useState<Record<string, { start: string; end: string }[]>>({});
+  const [academySchedule, setAcademySchedule] = useState<Record<string, { start: string; end: string }[]>>({});
 
-const [attendanceList, setAttendanceList] = useState<any[]>([]);
+  const [attendanceList, setAttendanceList] = useState<any[]>([]);
 
-async function fetchLogs(studentId: string) {
-  const ref = doc(db, "records", studentId);
-  const snap = await getDoc(ref);
+  async function fetchLogs(studentId: string) {
+    const ref = doc(db, "records", studentId);
+    const snap = await getDoc(ref);
 
-  if (!snap.exists()) return [];
+    if (!snap.exists()) return [];
 
-  const data = snap.data();
-  return Array.isArray(data.logs) ? data.logs : [];
-}
-
-// === 선생님용 등원 ===
-async function handleCheckin(studentId: string) {
-  const ref = doc(db, "records", studentId);
-  const snap = await getDoc(ref);
-
-  let logs: any[] = [];
-  if (snap.exists()) {
     const data = snap.data();
-    logs = Array.isArray(data.logs) ? data.logs.slice() : [];
+    return Array.isArray(data.logs) ? data.logs : [];
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const now = new Date().toISOString();
+  // === 선생님용 등원 ===
+  async function handleCheckin(studentId: string) {
+    const ref = doc(db, "records", studentId);
+    const snap = await getDoc(ref);
 
-  // 오늘 이미 등원했는지 확인 (하원 안한 경우)
- const alreadyIn = logs.some(
-  (l) => l.date === todayStr && l.inTime
-);
+    let logs: any[] = [];
+    if (snap.exists()) {
+      const data = snap.data();
+      logs = Array.isArray(data.logs) ? data.logs.slice() : [];
+    }
 
-  if (alreadyIn) {
-    alert("이미 등원 처리되었습니다.");
-    return;
-  }
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
 
-  logs.push({
-    date: todayStr,
-    inTime: now,
-    outTime: null,
-  });
-
-  await setDoc(ref, { logs }, { merge: true });
-
-  alert("등원 처리 완료!");
-}
-
-// === 선생님용 하원 ===
-async function handleCheckout(studentId: string) {
-  const ref = doc(db, "records", studentId);
-  const snap = await getDoc(ref);
-
-  if (!snap.exists()) {
-    alert("등원 기록이 없습니다.");
-    return;
-  }
-
-  const data = snap.data();
-  let logs: any[] = Array.isArray(data.logs) ? data.logs.slice() : [];
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const now = new Date().toISOString();
-
-  // 오늘 등원했지만 아직 outTime 없는 기록 찾기
-  const idx = logs
-    .map((l, i) => ({ ...l, _idx: i }))
-    .filter((l) => l.date === todayStr && l.inTime && !l.outTime)
-    .map((l) => l._idx)
-    .pop();
-
-  if (idx === undefined) {
-    alert("하원 처리할 등원 기록이 없습니다.");
-    return;
-  }
-
-  logs[idx] = { ...logs[idx], outTime: now };
-
-  await setDoc(ref, { logs }, { merge: true });
-
-  alert("하원 처리 완료!");
-}
-
-async function saveStudentToFS(groupId: string, s: any) {
-  try {
-    // undefined 값 제거 (Firestore는 undefined 허용 안 함)
-    const safeData = Object.fromEntries(
-      Object.entries(s).filter(([_, v]) => v !== undefined && v !== "")
+    // 오늘 이미 등원했는지 확인 (하원 안한 경우)
+    const alreadyIn = logs.some(
+      (l) => l.date === todayStr && l.inTime
     );
 
-    await setDoc(
-  doc(db, "students", s.id),
-  {
-    id: s.id,
-    name: s.name || "",
-    grade: s.grade || "",
-    school: s.school || "",
-    studentPhone: s.studentPhone || "",
-    parentPhone: s.parentPhone || "",
-    groupId: groupId || "default",
-    removed: false,
-    createdAt: serverTimestamp(),
-  },
-  { merge: true }
-);
+    if (alreadyIn) {
+      alert("이미 등원 처리되었습니다.");
+      return;
+    }
 
-    console.log("✅ Firestore에 학생 저장 완료:", s.name || "(이름 없음)");
-  } catch (e) {
-    console.error("❌ Firestore 학생 저장 실패:", e);
+    logs.push({
+      date: todayStr,
+      inTime: now,
+      outTime: null,
+    });
+
+    await setDoc(ref, { logs }, { merge: true });
+
+    alert("등원 처리 완료!");
   }
-}
 
-// 새 과제 생성(아이디가 이미 있으면 upsert로 동작)
-async function upsertAssignmentFS(a: AssignmentFS) {
-  const payload = sanitize({ ...a, createdAt: a.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
-  await setDoc(doc(db, "assignments", a.id), payload, { merge: true });
-  console.log("✅ 과제 저장/업데이트:", a.title, a.status);
-}
+  // === 선생님용 하원 ===
+  async function handleCheckout(studentId: string) {
+    const ref = doc(db, "records", studentId);
+    const snap = await getDoc(ref);
 
-async function toggleAssignmentFS(id: string, next: AssignmentStatus) {
-  await setDoc(doc(db, "assignments", id), sanitize({ status: next, updatedAt: serverTimestamp() }), { merge: true });
-}
+    if (!snap.exists()) {
+      alert("등원 기록이 없습니다.");
+      return;
+    }
 
-async function renameAssignmentFS(id: string, newTitle: string) {
-  await setDoc(doc(db, "assignments", id), sanitize({ title: newTitle, updatedAt: serverTimestamp() }), { merge: true });
-}
+    const data = snap.data();
+    let logs: any[] = Array.isArray(data.logs) ? data.logs.slice() : [];
 
-async function deleteAssignmentFS(id: string) {
-  await deleteDoc(doc(db, "assignments", id));
-}
-const [assignments, setAssignments] = useState<AssignmentFS[]>([]);
-const today = useMemo(() => todayStr(), []);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
 
-async function saveComment(sid: string, date: string, data: any) {
-  await updateDoc(doc(db, "records", date), {
-    [sid]: data
-  });
-}
+    // 오늘 등원했지만 아직 outTime 없는 기록 찾기
+    const idx = logs
+      .map((l, i) => ({ ...l, _idx: i }))
+      .filter((l) => l.date === todayStr && l.inTime && !l.outTime)
+      .map((l) => l._idx)
+      .pop();
 
-// ✅ 빈 값(undefined, "") 필드 제거 유틸
-const sanitize = (obj: any) =>
-  Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined && v !== ""));
+    if (idx === undefined) {
+      alert("하원 처리할 등원 기록이 없습니다.");
+      return;
+    }
+
+    logs[idx] = { ...logs[idx], outTime: now };
+
+    await setDoc(ref, { logs }, { merge: true });
+
+    alert("하원 처리 완료!");
+  }
+
+  async function saveStudentToFS(groupId: string, s: any) {
+    try {
+      // undefined 값 제거 (Firestore는 undefined 허용 안 함)
+      const safeData = Object.fromEntries(
+        Object.entries(s).filter(([_, v]) => v !== undefined && v !== "")
+      );
+
+      await setDoc(
+        doc(db, "students", s.id),
+        {
+          id: s.id,
+          name: s.name || "",
+          grade: s.grade || "",
+          school: s.school || "",
+          studentPhone: s.studentPhone || "",
+          parentPhone: s.parentPhone || "",
+          groupId: groupId || "default",
+          removed: false,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      console.log("✅ Firestore에 학생 저장 완료:", s.name || "(이름 없음)");
+    } catch (e) {
+      console.error("❌ Firestore 학생 저장 실패:", e);
+    }
+  }
+
+  // 새 과제 생성(아이디가 이미 있으면 upsert로 동작)
+  async function upsertAssignmentFS(a: AssignmentFS) {
+    const payload = sanitize({ ...a, createdAt: a.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
+    await setDoc(doc(db, "assignments", a.id), payload, { merge: true });
+    console.log("✅ 과제 저장/업데이트:", a.title, a.status);
+  }
+
+  async function toggleAssignmentFS(id: string, next: AssignmentStatus) {
+    await setDoc(doc(db, "assignments", id), sanitize({ status: next, updatedAt: serverTimestamp() }), { merge: true });
+  }
+
+  async function renameAssignmentFS(id: string, newTitle: string) {
+    await setDoc(doc(db, "assignments", id), sanitize({ title: newTitle, updatedAt: serverTimestamp() }), { merge: true });
+  }
+
+  async function deleteAssignmentFS(id: string) {
+    await deleteDoc(doc(db, "assignments", id));
+  }
+  const [assignments, setAssignments] = useState<AssignmentFS[]>([]);
+  const today = useMemo(() => todayStr(), []);
+
+  async function saveComment(sid: string, date: string, data: any) {
+    await updateDoc(doc(db, "records", date), {
+      [sid]: data
+    });
+  }
+
+  // ✅ 빈 값(undefined, "") 필드 제거 유틸
+  const sanitize = (obj: any) =>
+    Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined && v !== ""));
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -709,232 +709,232 @@ const sanitize = (obj: any) =>
 
 
 
- const [store, setStore] = useState<StoreShape>(() => loadStore());
+  const [store, setStore] = useState<StoreShape>(() => loadStore());
 
-// ✅ 스토어 기본 그룹 아이디 보장 (모든 기기 통일)
-useEffect(() => {
-  if (!store.currentGroupId || store.currentGroupId !== "default") {
-    setStore((prev) => ({
-      ...prev,
-      currentGroupId: "default",
-      groups: [
-        { id: "default", name: "우리반", students: [] },
-      ],
-    }));
-  }
-}, []);
+  // ✅ 스토어 기본 그룹 아이디 보장 (모든 기기 통일)
+  useEffect(() => {
+    if (!store.currentGroupId || store.currentGroupId !== "default") {
+      setStore((prev) => ({
+        ...prev,
+        currentGroupId: "default",
+        groups: [
+          { id: "default", name: "우리반", students: [] },
+        ],
+      }));
+    }
+  }, []);
 
-console.log("📦 현재 그룹 ID:", store.currentGroupId);
+  console.log("📦 현재 그룹 ID:", store.currentGroupId);
 
-// ✅ Firestore 실시간 학생 반영 (완전 안정 버전)
-useEffect(() => {
-  const groupId = store.currentGroupId || "default";
+  // ✅ Firestore 실시간 학생 반영 (완전 안정 버전)
+  useEffect(() => {
+    const groupId = store.currentGroupId || "default";
 
-  const q = query(
-    collection(db, "students"),
-    where("groupId", "==", groupId) // ✅ 현재 그룹 필터 적용
-  );
+    const q = query(
+      collection(db, "students"),
+      where("groupId", "==", groupId) // ✅ 현재 그룹 필터 적용
+    );
 
-  const unsub = onSnapshot(
-    q,
-    (snap) => {
-      const list = snap.docs.map((d) => {
-        const data = d.data() as any;
-        return {
-          id: d.id,
-          name: data.name || "",
-          grade: data.grade || "",
-          school: data.school || "",
-          studentPhone: data.studentPhone || "",
-          parentPhone: data.parentPhone || "",
-          groupId: data.groupId || "default",
-          removed: !!data.removed,
-        };
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: data.name || "",
+            grade: data.grade || "",
+            school: data.school || "",
+            studentPhone: data.studentPhone || "",
+            parentPhone: data.parentPhone || "",
+            groupId: data.groupId || "default",
+            removed: !!data.removed,
+          };
+        });
+
+        console.log("🔥 Firestore 실시간 학생 데이터:", list.length, list);
+
+        setStore((prev) => {
+          // ✅ 기존 그룹 유지, 없으면 기본 생성
+          const baseGroups =
+            prev.groups?.length > 0
+              ? prev.groups
+              : [{ id: "default", name: "우리반", students: [] }];
+
+          // ✅ 그룹별 학생 매칭
+          const groups = baseGroups.map((g) => ({
+            ...g,
+            students: list.filter(
+              (s) => (s.groupId || "default") === g.id && !s.removed
+            ),
+          }));
+
+          const currentGroupId = prev.currentGroupId ?? groups[0].id;
+
+          return {
+            ...prev,
+            groups,
+            currentGroupId,
+            students: list,
+          };
+        });
+      },
+      (err) => console.error("❌ Firestore 실시간 구독 오류:", err)
+    );
+
+    return () => unsub();
+  }, [store.currentGroupId]); // ✅ 그룹 바뀔 때마다 새로 구독
+
+
+  // 학생 추가 함수 (공유용)
+  const addStudent = async () => {
+    const student: Student = {
+      id: uid(),
+      name: (newStu.name || "").trim(),
+      grade: (newStu.grade || "").trim(),
+      school: (newStu.school || "").trim(),
+      studentPhone: (newStu.studentPhone || "").trim(),
+      parentPhone: (newStu.parentPhone || "").trim(),
+      groupId: store.currentGroupId || "default",
+
+      // ✅ ← 여기 중요!!
+      removed: false, // ✅ 기본값
+    };
+
+    try {
+      const groupId = store.currentGroupId || "default"; // ✅ 미리 변수 저장
+      console.log("📦 현재 그룹 ID:", groupId);
+
+      // 1️⃣ 로컬에 즉시 반영 (UI 업데이트)
+      setStore((prev) => ({
+        ...prev,
+        students: [...(prev.students || []), student],
+      }));
+
+      await setDoc(
+        doc(db, "students", student.id),
+        {
+          ...student,
+          groupId: store.currentGroupId || "default", // ✅ 추가
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      console.log("✅ Firestore 저장 완료:", student.name);
+      alert(`${student.name} 학생이 등록되었습니다.`);
+
+      // 3️⃣ 입력칸 초기화
+      setNewStu({
+        name: "",
+        grade: "",
+        school: "",
+        studentPhone: "",
+        parentPhone: "",
       });
-
-      console.log("🔥 Firestore 실시간 학생 데이터:", list.length, list);
-
-      setStore((prev) => {
-        // ✅ 기존 그룹 유지, 없으면 기본 생성
-        const baseGroups =
-          prev.groups?.length > 0
-            ? prev.groups
-            : [{ id: "default", name: "우리반", students: [] }];
-
-        // ✅ 그룹별 학생 매칭
-        const groups = baseGroups.map((g) => ({
-          ...g,
-          students: list.filter(
-            (s) => (s.groupId || "default") === g.id && !s.removed
-          ),
-        }));
-
-        const currentGroupId = prev.currentGroupId ?? groups[0].id;
-
-        return {
-          ...prev,
-          groups,
-          currentGroupId,
-          students: list,
-        };
-      });
-    },
-    (err) => console.error("❌ Firestore 실시간 구독 오류:", err)
-  );
-
-  return () => unsub();
-}, [store.currentGroupId]); // ✅ 그룹 바뀔 때마다 새로 구독
-
-
-// 학생 추가 함수 (공유용)
-const addStudent = async () => {
-  const student: Student = {
-    id: uid(),
-    name: (newStu.name || "").trim(),
-    grade: (newStu.grade || "").trim(),
-    school: (newStu.school || "").trim(),
-    studentPhone: (newStu.studentPhone || "").trim(),
-    parentPhone: (newStu.parentPhone || "").trim(),
-    groupId: store.currentGroupId || "default", 
-    
-  // ✅ ← 여기 중요!!
-    removed: false, // ✅ 기본값
+    } catch (err) {
+      console.error("❌ Firestore 저장 실패:", err);
+    }
   };
-
-  try {
-  const groupId = store.currentGroupId || "default"; // ✅ 미리 변수 저장
-  console.log("📦 현재 그룹 ID:", groupId);
-
-    // 1️⃣ 로컬에 즉시 반영 (UI 업데이트)
-    setStore((prev) => ({
-      ...prev,
-      students: [...(prev.students || []), student],
-    }));
-
-    await setDoc(
-  doc(db, "students", student.id),
-  {
-    ...student,
-    groupId: store.currentGroupId || "default", // ✅ 추가
-    createdAt: serverTimestamp(),
-  },
-  { merge: true }
-);
-
-    console.log("✅ Firestore 저장 완료:", student.name);
-    alert(`${student.name} 학생이 등록되었습니다.`);
-
-    // 3️⃣ 입력칸 초기화
-    setNewStu({
-      name: "",
-      grade: "",
-      school: "",
-      studentPhone: "",
-      parentPhone: "",
-    });
-  } catch (err) {
-    console.error("❌ Firestore 저장 실패:", err);
-  }
-};
 
   const [date, setDate] = useState<string>(() => todayStr());
   const [editStudent, setEditStudent] = useState<string | null>(null);
   const [focusStatus, setFocusStatus] = useState<StatusKey | null>(null);
   const [bulkTitle, setBulkTitle] = useState("");
-  const [bulkGrade, setBulkGrade] = useState<string>(""); 
+  const [bulkGrade, setBulkGrade] = useState<string>("");
   const [bulkSchool, setBulkSchool] = useState<string>("");
   const [todayIn, setTodayIn] = useState<{ [key: string]: string | null }>({});
   const [todayOut, setTodayOut] = useState<{ [key: string]: string | null }>({});
 
-const applyPersonalScheduleForDate = (sid: string, ds: string) => {
-  setStore((prev) => {
-    const records = { ...prev.records };
-    const d0 = { ...(records[ds] || {}) };
+  const applyPersonalScheduleForDate = (sid: string, ds: string) => {
+    setStore((prev) => {
+      const records = { ...prev.records };
+      const d0 = { ...(records[ds] || {}) };
 
-    let cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-   
-    // 현재 그룹에서 학생 찾기
-    const groupId = prev.currentGroupId ?? prev.groups[0]?.id;
-    const st = prev.groups
-      .find((g) => g.id === groupId)
-      ?.students.find((s) => s.id === sid);
+      let cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
 
-    // ✅ personalSchedule에서 current/next 분기
-    const sched = st?.personalSchedule;
-let personal: Partial<Record<AcademyType, WeeklyTime>> = {};
+      // 현재 그룹에서 학생 찾기
+      const groupId = prev.currentGroupId ?? prev.groups[0]?.id;
+      const st = prev.groups
+        .find((g) => g.id === groupId)
+        ?.students.find((s) => s.id === sid);
 
-// ✅ old/new 구조 모두 호환
-if (sched) {
-  const s = sched as any;
-  if (s.next && new Date() >= new Date(s.next.effectiveDate)) {
-    personal = s.next.data || {};
-  } else if (s.current) {
-    personal = s.current;
-  } else {
-    // 옛날 구조 (current, next 없이 바로 slots가 들어있는 경우)
-    personal = s;
-  }
-}
-    const dow = new Date(ds).getDay();
+      // ✅ personalSchedule에서 current/next 분기
+      const sched = st?.personalSchedule;
+      let personal: Partial<Record<AcademyType, WeeklyTime>> = {};
 
-    // 기존 데이터 복사
-    const abs: Partial<Record<AcademyType, SubjectEntry>> = {
-      ...(cell.academyBySubject || {}),
-    };
-    const enabled = new Set(cell.enabledSubjects || []);
+      // ✅ old/new 구조 모두 호환
+      if (sched) {
+        const s = sched as any;
+        if (s.next && new Date() >= new Date(s.next.effectiveDate)) {
+          personal = s.next.data || {};
+        } else if (s.current) {
+          personal = s.current;
+        } else {
+          // 옛날 구조 (current, next 없이 바로 slots가 들어있는 경우)
+          personal = s;
+        }
+      }
+      const dow = new Date(ds).getDay();
 
-    // 🎯 개인시간표 기준 병합 (요일 필터 + 중복 제거)
-    (Object.keys(personal) as AcademyType[]).forEach((sub) => {
-      const wt = personal[sub];
-      if (!wt) return;
+      // 기존 데이터 복사
+      const abs: Partial<Record<AcademyType, SubjectEntry>> = {
+        ...(cell.academyBySubject || {}),
+      };
+      const enabled = new Set(cell.enabledSubjects || []);
 
-      // 오늘 요일에 해당 슬롯이 없으면 스킵
-      if (!wt.slots || !wt.slots.some((slot) => slot.day === dow)) return;
+      // 🎯 개인시간표 기준 병합 (요일 필터 + 중복 제거)
+      (Object.keys(personal) as AcademyType[]).forEach((sub) => {
+        const wt = personal[sub];
+        if (!wt) return;
 
-      enabled.add(sub);
+        // 오늘 요일에 해당 슬롯이 없으면 스킵
+        if (!wt.slots || !wt.slots.some((slot) => slot.day === dow)) return;
 
-      // 기존 과목 엔트리
-      const entry: SubjectEntry = (abs[sub] ?? {}) as SubjectEntry;
-      const prevSlots: TimeSlot[] = Array.isArray(entry.slots)
-        ? [...entry.slots]
-        : [];
+        enabled.add(sub);
 
-      // 오늘 해당 요일 슬롯만 추출
-      const todaySlots =
-        wt.slots?.filter((slot) => slot.day === dow) ?? [];
+        // 기존 과목 엔트리
+        const entry: SubjectEntry = (abs[sub] ?? {}) as SubjectEntry;
+        const prevSlots: TimeSlot[] = Array.isArray(entry.slots)
+          ? [...entry.slots]
+          : [];
 
-      // 중복 제거 후 병합
-      const merged = [
-        ...prevSlots,
-        ...todaySlots.filter(
-          (slot) =>
-            !prevSlots.some(
-              (s) =>
-                s.day === slot.day &&
-                s.from === slot.from &&
-                s.to === slot.to
-            )
-        ),
-      ];
+        // 오늘 해당 요일 슬롯만 추출
+        const todaySlots =
+          wt.slots?.filter((slot) => slot.day === dow) ?? [];
 
-      // 최종 반영
-      abs[sub] = { ...entry, slots: merged };
+        // 중복 제거 후 병합
+        const merged = [
+          ...prevSlots,
+          ...todaySlots.filter(
+            (slot) =>
+              !prevSlots.some(
+                (s) =>
+                  s.day === slot.day &&
+                  s.from === slot.from &&
+                  s.to === slot.to
+              )
+          ),
+        ];
+
+        // 최종 반영
+        abs[sub] = { ...entry, slots: merged };
+      });
+
+      // ✅ 최종 셀 업데이트
+      cell = {
+        ...cell,
+        enabledSubjects: Array.from(enabled),
+        academyBySubject: abs,
+        scheduleAppliedDate: ds,
+      };
+
+      // ✅ records 갱신
+      d0[sid] = cell;
+      records[ds] = d0;
+      return { ...prev, records };
     });
-
-    // ✅ 최종 셀 업데이트
-    cell = {
-      ...cell,
-      enabledSubjects: Array.from(enabled),
-      academyBySubject: abs,
-      scheduleAppliedDate: ds,
-    };
-
-    // ✅ records 갱신
-    d0[sid] = cell;
-    records[ds] = d0;
-    return { ...prev, records };
-  });
-}; 
+  };
   // ✅ 순공 실시간 갱신 (5초마다)
   const [liveTick, setLiveTick] = useState(0);
 
@@ -980,119 +980,119 @@ if (sched) {
 
   // 현재 그룹
   // ✅ 현재 그룹 (메인)
-const currentGroup = useMemo(
-  () =>
-    store.groups.find((g) => g.id === store.currentGroupId) ||
-    store.groups[0] ||
-    { students: [] },
-  [store.groups, store.currentGroupId]
-);
-
-// ✅ 과제 실시간 수신
-useEffect(() => {
-  if (!currentGroup) return;
-  const q = query(
-    collection(db, "assignments"),
-    where("groupId", "==", currentGroup.id),
-    where("dateStr", "==", today),
-    orderBy("createdAt", "desc")
+  const currentGroup = useMemo(
+    () =>
+      store.groups.find((g) => g.id === store.currentGroupId) ||
+      store.groups[0] ||
+      { students: [] },
+    [store.groups, store.currentGroupId]
   );
 
-  const unsub = onSnapshot(
-    q,
-    (snap) => {
-      const list: AssignmentFS[] = [];
-      snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
-      setAssignments(list);
-      console.log("📡 과제 실시간 수신:", list.length);
-    },
-    (err) => console.error("❌ 과제 구독 오류:", err)
-  );
+  // ✅ 과제 실시간 수신
+  useEffect(() => {
+    if (!currentGroup) return;
+    const q = query(
+      collection(db, "assignments"),
+      where("groupId", "==", currentGroup.id),
+      where("dateStr", "==", today),
+      orderBy("createdAt", "desc")
+    );
 
-  return () => unsub();
-}, [currentGroup?.id, today]);
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list: AssignmentFS[] = [];
+        snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
+        setAssignments(list);
+        console.log("📡 과제 실시간 수신:", list.length);
+      },
+      (err) => console.error("❌ 과제 구독 오류:", err)
+    );
+
+    return () => unsub();
+  }, [currentGroup?.id, today]);
 
 
 
 
 
 
-// ✅ 현재 그룹 학생 목록
-const students = useMemo(() => {
-  const list = currentGroup?.students ? [...currentGroup.students] : [];
+  // ✅ 현재 그룹 학생 목록
+  const students = useMemo(() => {
+    const list = currentGroup?.students ? [...currentGroup.students] : [];
 
-  return list.sort((a, b) => {
-    const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
-    const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
+    return list.sort((a, b) => {
+      const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
+      const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
 
-    if (g1 !== g2) return g2 - g1; // 고학년 → 저학년
-    return (a.name || "").localeCompare(b.name || "", "ko"); // 가나다순
-  });
-}, [currentGroup]);
+      if (g1 !== g2) return g2 - g1; // 고학년 → 저학년
+      return (a.name || "").localeCompare(b.name || "", "ko"); // 가나다순
+    });
+  }, [currentGroup]);
 
-// =====================================
-// 🔥 Firestore → 오늘 등/하원 시간 불러오기
-// =====================================
-useEffect(() => {
-  const loadRecords = async () => {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    let inMap: any = {};
-    let outMap: any = {};
+  // =====================================
+  // 🔥 Firestore → 오늘 등/하원 시간 불러오기
+  // =====================================
+  useEffect(() => {
+    const loadRecords = async () => {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let inMap: any = {};
+      let outMap: any = {};
 
-    for (const st of students) {
-      const ref = doc(db, "records", st.id);
-      const snap = await getDoc(ref);
+      for (const st of students) {
+        const ref = doc(db, "records", st.id);
+        const snap = await getDoc(ref);
 
-      if (!snap.exists()) continue;
-      const data = snap.data();
+        if (!snap.exists()) continue;
+        const data = snap.data();
 
-      const logs = Array.isArray(data.logs) ? data.logs : [];
-      const todayLog = logs.find(l => l.date === todayStr && l.inTime);
+        const logs = Array.isArray(data.logs) ? data.logs : [];
+        const todayLog = logs.find(l => l.date === todayStr && l.inTime);
 
-      if (todayLog) {
-        inMap[st.id] = todayLog.inTime || null;
-        outMap[st.id] = todayLog.outTime || null;
+        if (todayLog) {
+          inMap[st.id] = todayLog.inTime || null;
+          outMap[st.id] = todayLog.outTime || null;
+        }
       }
-    }
 
-    setTodayIn(inMap);
-    setTodayOut(outMap);
-  };
+      setTodayIn(inMap);
+      setTodayOut(outMap);
+    };
 
-  if (students.length) loadRecords();
-}, [students]);
+    if (students.length) loadRecords();
+  }, [students]);
 
 
-// ✅ 학년 목록 생성
-const uniqueGrades = useMemo(() => {
-  const grades = new Set(students.map((s) => s.grade).filter(Boolean));
-  return Array.from(grades).sort((a, b) => {
-    const numA = parseInt((a ?? "0").replace(/[^0-9]/g, ""));
-    const numB = parseInt((b ?? "0").replace(/[^0-9]/g, ""));
-    return numB - numA;
-  });
-}, [students]);
+  // ✅ 학년 목록 생성
+  const uniqueGrades = useMemo(() => {
+    const grades = new Set(students.map((s) => s.grade).filter(Boolean));
+    return Array.from(grades).sort((a, b) => {
+      const numA = parseInt((a ?? "0").replace(/[^0-9]/g, ""));
+      const numB = parseInt((b ?? "0").replace(/[^0-9]/g, ""));
+      return numB - numA;
+    });
+  }, [students]);
 
-// ✅ 개인 시간표 적용
-useEffect(() => {
-  const studentList = currentGroup?.students || [];
-  studentList.forEach((student: any) => {
-    applyPersonalScheduleForDate(student.id, date);
-  });
-}, [date, currentGroup]);
+  // ✅ 개인 시간표 적용
+  useEffect(() => {
+    const studentList = currentGroup?.students || [];
+    studentList.forEach((student: any) => {
+      applyPersonalScheduleForDate(student.id, date);
+    });
+  }, [date, currentGroup]);
 
-// ✅ 학교 목록 생성
-const uniqueSchools = useMemo(() => {
-  const studentList = currentGroup?.students || [];
-  const schools = new Set(studentList.map((s: any) => s.school).filter(Boolean));
-  return Array.from(schools).sort();
-}, [currentGroup]);
+  // ✅ 학교 목록 생성
+  const uniqueSchools = useMemo(() => {
+    const studentList = currentGroup?.students || [];
+    const schools = new Set(studentList.map((s: any) => s.school).filter(Boolean));
+    return Array.from(schools).sort();
+  }, [currentGroup]);
 
   // PWA(로컬용)
   useEffect(() => {
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(()=>{});
+        navigator.serviceWorker.register("/sw.js").catch(() => { });
       });
     }
   }, []);
@@ -1103,7 +1103,7 @@ const uniqueSchools = useMemo(() => {
   });
 
   // 저장
-  useEffect(()=>saveStore(store), [store]);
+  useEffect(() => saveStore(store), [store]);
 
   // 오늘 레코드
   const day = useMemo<Record<string, DayCell>>(
@@ -1112,358 +1112,336 @@ const uniqueSchools = useMemo(() => {
   const ensureCell = (sid: string): DayCell => day[sid] ?? { status: "P" };
 
   /** ===== 출결/시간 ===== */
-  const setStatus = (sid: string, st: StatusKey) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[date] || {}) };
-      const next: DayCell = { ...ensureCell(sid), status: st };
-      if ((st === "P" || st === "L") && !next.time) next.time = nowHM();
-      if (st === "A") { next.time = undefined; next.outTime = undefined; }
-      d0[sid] = next; records[date] = d0; return { ...prev, records };
-    });
-  };
-  const setTime = (sid: string, time: string) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const d0 = { ...(records[date] || {}) };
-    const base: DayCell = { ...ensureCell(sid) };
+  /** ===== 출결/시간 ===== */
+const setStatus = (sid: string, st: StatusKey) => {
+  updateDayCell(date, sid, (cell0) => {
+    const next: DayCell = { ...cell0, status: st };
 
-    const next: DayCell = { ...base, time: time || undefined };
-
-    // =============================
-    // 🔥 자동 출석/지각/결석 판정
-    // =============================
-    if (next.time) {
-      const [h, m] = next.time.split(":").map(Number);
-      const mins = h * 60 + m;
-
-      const cutoffLate = 16 * 60 + 10;  // 16:10 이후 지각
-      const cutoffAbsent = 18 * 60;     // 18:00 이후 결석
-
-      let auto: StatusKey = "P";
-      if (mins > cutoffLate) auto = "L";
-      if (mins > cutoffAbsent) auto = "A";
-
-      next.status = auto;
+    if ((st === "P" || st === "L") && !next.time) {
+      next.time = nowHM();
+    }
+    if (st === "A") {
+      next.time = undefined;
+      next.outTime = undefined;
     }
 
-    d0[sid] = next;
-    records[date] = d0;
-    return { ...prev, records };
+    return next;
   });
 };
 
-  const setTimeNow = (sid: string) => setTime(sid, nowHM());
-  const setOutTime = (sid: string, out: string) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[date] || {}) };
-      const next: DayCell = { ...ensureCell(sid), outTime: out || undefined };
-      d0[sid] = next; records[date] = d0; return { ...prev, records };
-    });
-  };
-  const setOutTimeNow = (sid: string) => setOutTime(sid, nowHM());
+
+
+ const setOutTime = (sid: string, out: string) => {
+  updateDayCell(date, sid, (base) => {
+    return { ...base, outTime: out || undefined };
+  });
+};
+const setOutTimeNow = (sid: string) => setOutTime(sid, nowHM());
 
 
   /** ===== 과목 토글/시간 ===== */
   const toggleSubject = (sid: string, sub: AcademyType) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[date] || {}) };
-      const base = ensureCell(sid);
+  updateDayCell(date, sid, (base) => {
+    const enabled = new Set(base.enabledSubjects || []);
+    if (enabled.has(sub)) enabled.delete(sub);
+    else enabled.add(sub);
 
-      const enabled = new Set(base.enabledSubjects || []);
-      if (enabled.has(sub)) enabled.delete(sub);
-      else enabled.add(sub);
+    return { ...base, enabledSubjects: Array.from(enabled) };
+  });
+};
 
-      d0[sid] = { ...base, enabledSubjects: Array.from(enabled) };
-      records[date] = d0;
-      return { ...prev, records };
-    });
-  };
+ const setAcademyTime = (sid: string, subject: AcademyType, which: "from" | "to", v: string) => {
+  updateDayCell(date, sid, (base) => {
+    const abs: Partial<Record<AcademyType, SubjectEntry>> = {
+      ...(base.academyBySubject || {})
+    };
 
-  const setAcademyTime = (sid: string, subject: AcademyType, which: "from" | "to", v: string) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[date] || {}) };
-      const base = ensureCell(sid);
-  
-      // ✅ abs 선언 추가
-      const abs: Partial<Record<AcademyType, SubjectEntry>> = {
-        ...(base.academyBySubject || {})
-      };
-  
-      // ✅ 현재 과목 엔트리 수정
-      const cur: SubjectEntry = { ...(abs[subject] || {}) };
-      cur[which] = v || undefined;
-  
-      abs[subject] = cur;
-  
-      d0[sid] = { ...base, academyBySubject: abs };
-      records[date] = d0;
-      return { ...prev, records };
-    });
-  };
+    const cur: SubjectEntry = { ...(abs[subject] || {}) };
+    cur[which] = v || undefined;
+
+    abs[subject] = cur;
+
+    return { ...base, academyBySubject: abs };
+  });
+};
 
 
 
-  
   // ⛏️ 과목 시간 X 버튼: 시간이 있으면 초기화, 이미 비었으면 토글 해제
   const smartClearOrDisable = (sid: string, subject: AcademyType) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[date] || {}) };
-      const base = ensureCell(sid);
-  
-      // ✅ abs 선언 추가
-      const abs: Partial<Record<AcademyType, SubjectEntry>> = {
-        ...(base.academyBySubject || {})
+  updateDayCell(date, sid, (base) => {
+    const abs: Partial<Record<AcademyType, SubjectEntry>> = {
+      ...(base.academyBySubject || {})
+    };
+
+    const cur: SubjectEntry = abs[subject] || {};
+    const hasTime = !!(cur.from || cur.to);
+
+    if (hasTime) {
+      abs[subject] = { ...cur, from: undefined, to: undefined };
+      return { ...base, academyBySubject: abs };
+    } else {
+      const enabled = new Set(base.enabledSubjects || []);
+      enabled.delete(subject);
+      abs[subject] = { ...cur, from: undefined, to: undefined };
+      return {
+        ...base,
+        enabledSubjects: Array.from(enabled),
+        academyBySubject: abs,
       };
-  
-      const cur: SubjectEntry = abs[subject] || {};
-      const hasTime = !!(cur.from || cur.to);
-  
-      if (hasTime) {
-        abs[subject] = { ...cur, from: undefined, to: undefined };
-        d0[sid] = { ...base, academyBySubject: abs };
-      } else {
-        const enabled = new Set(base.enabledSubjects || []);
-        enabled.delete(subject);
-        abs[subject] = { ...cur, from: undefined, to: undefined };
-        d0[sid] = { ...base, enabledSubjects: Array.from(enabled), academyBySubject: abs };
-      }
-  
-      records[date] = d0;
-      return { ...prev, records };
-    });
-  };
+    }
+  });
+};
 
 
   const carryOverIncompleteTasks = (sid: string, fromDate: string) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const from = { ...(records[fromDate] || {}) };
-      const cellFrom: DayCell = { ...(from[sid] ?? { status:"P" }) };
-  
-      const remain = (cellFrom.tasks || []).filter(t => !t.done);
-      if (remain.length === 0) return prev;
-  
-      const toDate = nextDateStr(fromDate);
-      const toDay  = { ...(records[toDate] || {}) };
-      const cellTo: DayCell = { ...(toDay[sid] ?? { status:"P" }) };
-  
-      const existed = cellTo.tasks || [];
-      cellTo.tasks = [...existed, ...remain.map(t => ({ ...t, done:false }))];
-  
-      toDay[sid] = cellTo;
-      records[toDate] = toDay;
-      return { ...prev, records };
-    });
-    alert("⏭️ 미완료 과제를 내일로 이월했습니다.");
-  };
-  const addTask = (sid: string, ds: string, title: string) => {
-    const t = title.trim();
-    if (!t) return;
-    setStore(prev => {
-      const records = { ...prev.records };
-      const dayRec  = { ...(records[ds] || {}) };
-      const cell: DayCell = { ...(dayRec[sid] ?? { status:"P" }) };
-      const tasks = [...(cell.tasks || []), { id: uid(), title: t }];
-      dayRec[sid] = { ...cell, tasks };
-      records[ds]  = dayRec;
-      return { ...prev, records };
-    });
-  };
+  setStore(prev => {
+    const records = { ...prev.records };
+    const from = { ...(records[fromDate] || {}) };
+    const cellFrom: DayCell = { ...(from[sid] ?? { status: "P" }) };
 
-  
-  const toggleTask = (sid: string, ds: string, taskId: string) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const dayRec  = { ...(records[ds] || {}) };
-      const cell: DayCell = { ...(dayRec[sid] ?? { status:"P" }) };
-      const tasks = (cell.tasks || []).map(t => t.id===taskId ? { ...t, done: !t.done } : t);
-      dayRec[sid] = { ...cell, tasks };
-      records[ds]  = dayRec;
-      return { ...prev, records };
-    });
-  };
-  
-  const removeTask = (sid: string, ds: string, taskId: string) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const dayRec  = { ...(records[ds] || {}) };
-      const cell: DayCell = { ...(dayRec[sid] ?? { status:"P" }) };
-      const tasks = (cell.tasks || []).filter(t => t.id !== taskId);
-      dayRec[sid] = { ...cell, tasks };
-      records[ds]  = dayRec;
-      return { ...prev, records };
-    });
-  };
-  
-  const setTaskNote = (sid: string, ds: string, taskId: string, note: string) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const dayRec  = { ...(records[ds] || {}) };
-      const cell: DayCell = { ...(dayRec[sid] ?? { status:"P" }) };
-      const tasks = (cell.tasks || []).map(t => t.id===taskId ? { ...t, note: note || undefined } : t);
-      dayRec[sid] = { ...cell, tasks };
-      records[ds]  = dayRec;
-      return { ...prev, records };
-    });
-  };
+    const remain = (cellFrom.tasks || []).filter(t => !t.done);
+    if (remain.length === 0) return prev;
+
+    const toDate = nextDateStr(fromDate);
+    const toDay = { ...(records[toDate] || {}) };
+    const cellTo: DayCell = { ...(toDay[sid] ?? { status: "P" }) };
+
+    const existed = cellTo.tasks || [];
+    const next: DayCell = {
+      ...cellTo,
+      tasks: [...existed, ...remain.map(t => ({ ...t, done: false }))],
+    };
+
+    toDay[sid] = next;
+    records[toDate] = toDay;
+
+    saveRecordToFS(toDate, sid, next);
+
+    return { ...prev, records };
+  });
+  alert("⏭️ 미완료 과제를 내일로 이월했습니다.");
+};
+
+  const addTask = (sid: string, ds: string, title: string) => {
+  const t = title.trim();
+  if (!t) return;
+  setStore(prev => {
+    const records = { ...prev.records };
+    const dayRec = { ...(records[ds] || {}) };
+    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+    const tasks = [...(cell.tasks || []), { id: uid(), title: t }];
+    const next: DayCell = { ...cell, tasks };
+
+    dayRec[sid] = next;
+    records[ds] = dayRec;
+
+    saveRecordToFS(ds, sid, next);
+
+    return { ...prev, records };
+  });
+};
+
+
+ const toggleTask = (sid: string, ds: string, taskId: string) => {
+  setStore(prev => {
+    const records = { ...prev.records };
+    const dayRec = { ...(records[ds] || {}) };
+    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+
+    const tasks = (cell.tasks || []).map(t =>
+      t.id === taskId ? { ...t, done: !t.done } : t
+    );
+
+    const next: DayCell = { ...cell, tasks };
+    dayRec[sid] = next;
+    records[ds] = dayRec;
+
+    saveRecordToFS(ds, sid, next);
+
+    return { ...prev, records };
+  });
+};
+
+ const removeTask = (sid: string, ds: string, taskId: string) => {
+  setStore(prev => {
+    const records = { ...prev.records };
+    const dayRec = { ...(records[ds] || {}) };
+    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+
+    const tasks = (cell.tasks || []).filter(t => t.id !== taskId);
+    const next: DayCell = { ...cell, tasks };
+
+    dayRec[sid] = next;
+    records[ds] = dayRec;
+
+    saveRecordToFS(ds, sid, next);
+
+    return { ...prev, records };
+  });
+};
+
+ const setTaskNote = (sid: string, ds: string, taskId: string, note: string) => {
+  setStore(prev => {
+    const records = { ...prev.records };
+    const dayRec = { ...(records[ds] || {}) };
+    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+
+    const tasks = (cell.tasks || []).map(t =>
+      t.id === taskId ? { ...t, note: note || undefined } : t
+    );
+
+    const next: DayCell = { ...cell, tasks };
+
+    dayRec[sid] = next;
+    records[ds] = dayRec;
+
+    saveRecordToFS(ds, sid, next);
+
+    return { ...prev, records };
+  });
+};
+
   const addTaskByFilter = (title: string, grade: string, school: string) => {
     const t = title.trim();
     if (!t) return;
 
     setStore(prev => {
-        const records = { ...prev.records };
-        const dayRec = { ...(records[date] || {}) };
+  const records = { ...prev.records };
+  const dayRec = { ...(records[date] || {}) };
 
-        // 🎯 필터링된 학생 목록 생성
-        const targetStudents = students.filter(st => {
-            let match = true;
-            if (grade && st.grade !== grade) match = false;
-            if (school && st.school !== school) match = false;
-            return match;
-        });
+  const targetStudents = students.filter(st => {
+    let match = true;
+    if (grade && st.grade !== grade) match = false;
+    if (school && st.school !== school) match = false;
+    return match;
+  });
 
-        if (targetStudents.length === 0) {
-            setTimeout(() => alert(`과제를 추가할 대상 학생이 없습니다. (조건: ${grade || '전체 학년'}, ${school || '전체 학교'})`), 0);
-            return prev;
-        }
+  if (targetStudents.length === 0) {
+    setTimeout(() => alert(`과제를 추가할 대상 학생이 없습니다. (조건: ${grade || '전체 학년'}, ${school || '전체 학교'})`), 0);
+    return prev;
+  }
 
+  targetStudents.forEach(st => {
+    const cell: DayCell = { ...(dayRec[st.id] ?? { status: "P" }) };
 
+    const existingTitles = new Set((cell.tasks || []).map(task => task.title.trim().toLowerCase()));
+    if (!existingTitles.has(t.toLowerCase())) {
+      const tasks = [...(cell.tasks || []), { id: uid(), title: t }];
+      const next: DayCell = { ...cell, tasks };
 
-        // 🎯 필터링된 학생들에게 과제 추가
-        targetStudents.forEach(st => {
-            const cell: DayCell = { ...(dayRec[st.id] ?? { status: "P" }) };
+      dayRec[st.id] = next;
 
-            const existingTitles = new Set((cell.tasks || []).map(task => task.title.trim().toLowerCase()));
-            if (!existingTitles.has(t.toLowerCase())) {
-                // uid()는 App 컴포넌트 외부에 정의된 고유 ID 생성 함수를 사용합니다.
-                cell.tasks = [...(cell.tasks || []), { id: uid(), title: t }];
-                dayRec[st.id] = cell;
-            }
-        });
+      // 🔥 Firestore 저장
+      saveRecordToFS(date, st.id, next);
+    }
+  });
 
-        records[date] = dayRec;
+  records[date] = dayRec;
 
-        setTimeout(() => alert(`✅ ${title} 과제를 ${grade || '전체 학년'} / ${school || '전체 학교'} ${targetStudents.length}명에게 추가했습니다.`), 0);
+  setTimeout(() => alert(`✅ ${title} 과제를 ${grade || '전체 학년'} / ${school || '전체 학교'} ${targetStudents.length}명에게 추가했습니다.`), 0);
 
-        return { ...prev, records };
-    });
+  return { ...prev, records };
+});
     setBulkTitle(""); // 과제 추가 후 입력창 초기화
-};
+  };
   // ----------------------------------------
 
 
   /** ===== 화장실/식사 (한 칸에 묶기) ===== */
-  const setRestroomCount = (sid: string, count: number) => {
-    const c = Math.max(0, Math.min(5, Math.floor(count)));
-    setStore(prev => {
-      const records = { ...prev.records }; const d0 = { ...(records[date] || {}) };
-      const cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-      cell.restroomCount = c;
-      cell.restroomMin = c * 7;
-      d0[sid] = cell; records[date] = d0; return { ...prev, records };
-    });
-  };
+ const setRestroomCount = (sid: string, count: number) => {
+  const c = Math.max(0, Math.min(5, Math.floor(count)));
+  updateDayCell(date, sid, (cell) => {
+    const next: DayCell = {
+      ...cell,
+      restroomCount: c,
+      restroomMin: c * 7,
+    };
+    return next;
+  });
+};
   // 누를수록 0→1→…→5에서 멈추는 증가 버튼용
-const incRestroom = (sid: string) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const d0 = { ...(records[date] || {}) };
-    const cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-
+  const incRestroom = (sid: string) => {
+  updateDayCell(date, sid, (cell) => {
     const curr = cell.restroomCount || 0;
-    const next = Math.min(5, curr + 1); // 최대 5회에서 멈춤
-
-    cell.restroomCount = next;
-    cell.restroomMin = next * 7; // 총 적용분(회당 7분 × 횟수)
-
-    d0[sid] = cell; records[date] = d0;
-    return { ...prev, records };
+    const nextCount = Math.min(5, curr + 1);
+    return {
+      ...cell,
+      restroomCount: nextCount,
+      restroomMin: nextCount * 7,
+    };
   });
 };
-   /** ===== 수면 패널티 ===== */
-   const addSleepPenalty = (sid: string, delta = 1) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[date] || {}) };
-      const cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-
-      // 누를 때마다 +1
-      cell.sleepPenaltyCount = (cell.sleepPenaltyCount || 0) + Math.max(1, delta);
-
-      d0[sid] = cell;
-      records[date] = d0;
-      return { ...prev, records };
-    });
-  };
-
-
-  const addMealMinutes = (sid: string, minutes: number) => {
-    const mm = Math.max(0, Math.floor(minutes) || 0);
-    if (!mm) return;
-    setStore(prev => {
-      const records = { ...prev.records }; const d0 = { ...(records[date] || {}) };
-      const cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-      cell.mealMin = (cell.mealMin || 0) + mm;
-      d0[sid] = cell; records[date] = d0; return { ...prev, records };
-    });
-  };
-  // ⏳ 식사시간 빼기 (감소)
-   const subtractMealMinutes = (sid: string, minutes: number) => {
-     const mm = Math.max(0, Math.floor(minutes) || 0);
-     if (!mm) return;
-  setStore(prev => {
-    const records = { ...prev.records };
-    const d0 = { ...(records[date] || {}) };
-    const cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-    const current = cell.mealMin || 0;
-    cell.mealMin = Math.max(0, current - mm); // ✅ 음수 방지
-    d0[sid] = cell;
-    records[date] = d0;
-    return { ...prev, records };
+  /** ===== 수면 패널티 ===== */
+ const addSleepPenalty = (sid: string, delta = 1) => {
+  updateDayCell(date, sid, (cell) => {
+    const curr = cell.sleepPenaltyCount || 0;
+    return {
+      ...cell,
+      sleepPenaltyCount: curr + Math.max(1, delta),
+    };
   });
 };
 
-  const resetMeal = (sid: string) => {
-    setStore(prev => {
-      const records = { ...prev.records }; const d0 = { ...(records[date] || {}) };
-      const cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-      cell.mealMin = 0;
-      d0[sid] = cell; records[date] = d0; return { ...prev, records };
-    });
-  };
+
+const addMealMinutes = (sid: string, minutes: number) => {
+  const mm = Math.max(0, Math.floor(minutes) || 0);
+  if (!mm) return;
+
+  updateDayCell(date, sid, (cell) => {
+    const curr = cell.mealMin || 0;
+    return {
+      ...cell,
+      mealMin: curr + mm,
+    };
+  });
+};
+
+const subtractMealMinutes = (sid: string, minutes: number) => {
+  const mm = Math.max(0, Math.floor(minutes) || 0);
+  if (!mm) return;
+
+  updateDayCell(date, sid, (cell) => {
+    const curr = cell.mealMin || 0;
+    return {
+      ...cell,
+      mealMin: Math.max(0, curr - mm),
+    };
+  });
+};
+
+const resetMeal = (sid: string) => {
+  updateDayCell(date, sid, (cell) => ({
+    ...cell,
+    mealMin: 0,
+  }));
+};
 
   const setMemo = (sid: string, v: string) => {
-    setStore(prev => {
-      const records = { ...prev.records }; const d0 = { ...(records[date] || {}) };
-      const cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
-      cell.memo = v || undefined;
-      d0[sid] = cell; records[date] = d0; return { ...prev, records };
-    });
-  };
+  updateDayCell(date, sid, (cell) => ({
+    ...cell,
+    memo: v || undefined,
+  }));
+};
 
   /** ===== 일일 리포트 (My Daily용) ===== */
-const printDailyReport = (sid: string) => {
-  const s = students.find(x => x.id === sid);
-  const c = day[sid];
-  const name = s?.name || "학생";
-  const dt = date;
+  const printDailyReport = (sid: string) => {
+    const s = students.find(x => x.id === sid);
+    const c = day[sid];
+    const name = s?.name || "학생";
+    const dt = date;
 
-  const totalGross = (c?.time && (c.outTime || c.time))
-    ? spanMin(c.time, c.outTime || nowHM())
-    : 0;
-  const restTotal = (c ? outingTotalMin(c) : 0) + (c?.shortBreakMin || 0);
-  const running = !!(c?.time && !c?.outTime);
-  const studyNow = running ? netStudyMinLive(c) : netStudyMin(c);
+    const totalGross = (c?.time && (c.outTime || c.time))
+      ? spanMin(c.time, c.outTime || nowHM())
+      : 0;
+    const restTotal = (c ? outingTotalMin(c) : 0) + (c?.shortBreakMin || 0);
+    const running = !!(c?.time && !c?.outTime);
+    const studyNow = running ? netStudyMinLive(c) : netStudyMin(c);
 
-  const w = window.open("", "_blank", "width=900,height=700");
-  if (!w) return;
-  w.document.open();
-  w.document.write(`
+    const w = window.open("", "_blank", "width=900,height=700");
+    if (!w) return;
+    w.document.open();
+    w.document.write(`
     <html><head><meta charset="utf-8"/>
       <title>${name} - ${dt} 일일 리포트</title>
       <style>
@@ -1484,137 +1462,137 @@ const printDailyReport = (sid: string) => {
       <script>window.print()</script>
     </body></html>
   `);
-  w.document.close();
-};
+    w.document.close();
+  };
 
 
-/** ===== 집계 유틸 ===== */
-const subjectOutingMin = (c?: DayCell) => {
-  if (!c) return 0;
+  /** ===== 집계 유틸 ===== */
+  const subjectOutingMin = (c?: DayCell) => {
+    if (!c) return 0;
 
-  // ✅ 새 구조 (EditStudentModal 기반) 먼저 찾고, 없으면 예전 구조로 대체
-  const subjects =
-    (c as any).personalSchedule?.current ||
-    c.academyBySubject ||
-    c.academyFrom ||
-    {};
+    // ✅ 새 구조 (EditStudentModal 기반) 먼저 찾고, 없으면 예전 구조로 대체
+    const subjects =
+      (c as any).personalSchedule?.current ||
+      c.academyBySubject ||
+      c.academyFrom ||
+      {};
 
-  // ✅ "학교" 제외 (순공시간엔 포함되지 않음)
-  const studySubjects = Object.entries(subjects).filter(
-    ([sub]) => sub !== "학교"
-  );
+    // ✅ "학교" 제외 (순공시간엔 포함되지 않음)
+    const studySubjects = Object.entries(subjects).filter(
+      ([sub]) => sub !== "학교"
+    );
 
-  let total = 0;
-  studySubjects.forEach(([_, data]) => {
-    const slots = (data as any)?.slots || [];
-    slots.forEach((s: any) => {
-      if (!s.from || !s.to) return;
-      const [fh, fm] = s.from.split(":").map(Number);
-      const [th, tm] = s.to.split(":").map(Number);
-      total += th * 60 + tm - (fh * 60 + fm);
+    let total = 0;
+    studySubjects.forEach(([_, data]) => {
+      const slots = (data as any)?.slots || [];
+      slots.forEach((s: any) => {
+        if (!s.from || !s.to) return;
+        const [fh, fm] = s.from.split(":").map(Number);
+        const [th, tm] = s.to.split(":").map(Number);
+        total += th * 60 + tm - (fh * 60 + fm);
+      });
     });
-  });
 
-  return total;
-};
+    return total;
+  };
 
   const outingTotalMin = (c?: DayCell) => {
-  if (!c) return 0;
+    if (!c) return 0;
 
-  // ✅ personalSchedule.current 도 읽기 (EditStudentModal 저장 반영용)
-  const subjects =
-    (c as any).personalSchedule?.current ||
-    c.academyBySubject ||
-    c.academyFrom ||
-    {};
+    // ✅ personalSchedule.current 도 읽기 (EditStudentModal 저장 반영용)
+    const subjects =
+      (c as any).personalSchedule?.current ||
+      c.academyBySubject ||
+      c.academyFrom ||
+      {};
 
-  // 🟡 학교 과목은 계산에서 제외
-  const filtered = Object.entries(subjects).filter(([key]) => key !== "학교");
+    // 🟡 학교 과목은 계산에서 제외
+    const filtered = Object.entries(subjects).filter(([key]) => key !== "학교");
 
-  const legacy = spanMin(c.academyFrom, c.academyTo);
-  let total = 0;
+    const legacy = spanMin(c.academyFrom, c.academyTo);
+    let total = 0;
 
-  filtered.forEach(([_, data]: any) => {
-    const slots = data?.slots || [];
-    slots.forEach((s: any) => {
-      if (!s.from || !s.to) return;
-      const [fh, fm] = s.from.split(":").map(Number);
-      const [th, tm] = s.to.split(":").map(Number);
-      total += th * 60 + tm - (fh * 60 + fm);
+    filtered.forEach(([_, data]: any) => {
+      const slots = data?.slots || [];
+      slots.forEach((s: any) => {
+        if (!s.from || !s.to) return;
+        const [fh, fm] = s.from.split(":").map(Number);
+        const [th, tm] = s.to.split(":").map(Number);
+        total += th * 60 + tm - (fh * 60 + fm);
+      });
     });
-  });
 
-  return total + legacy + (c.restroomMin || 0) + (c.mealMin || 0);
-};
+    return total + legacy + (c.restroomMin || 0) + (c.mealMin || 0);
+  };
 
-/** 순공(하원 후 기준) 계산: 등원~하원 사이 - 외출시간 */
-const netStudyMin = (c?: DayCell) => {
-  if (!c?.time) return 0; // 등원 전이면 0
-  const excludeSubjects = ["학교", "기타"];
-  let total = 0;
-Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
-  if (excludeSubjects.includes(sub)) return; // 🚫 학교·기타 제외
+  /** 순공(하원 후 기준) 계산: 등원~하원 사이 - 외출시간 */
+  const netStudyMin = (c?: DayCell) => {
+    if (!c?.time) return 0; // 등원 전이면 0
+    const excludeSubjects = ["학교", "기타"];
+    let total = 0;
+    Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
+      if (excludeSubjects.includes(sub)) return; // 🚫 학교·기타 제외
 
-  (data.slots || []).forEach((s) => {
-    total += spanMin(s.from, s.to);
-  });
-});
+      (data.slots || []).forEach((s) => {
+        total += spanMin(s.from, s.to);
+      });
+    });
 
-  // 등원~하원 구간 전체(분)
-  const start = hmToMin(c.time);
-  const end = c.outTime ? hmToMin(c.outTime) : hmToMin(nowHM());
-  const gross = Math.max(0, end - start);
+    // 등원~하원 구간 전체(분)
+    const start = hmToMin(c.time);
+    const end = c.outTime ? hmToMin(c.outTime) : hmToMin(nowHM());
+    const gross = Math.max(0, end - start);
 
-  // 외출시간(학원·식사·화장실 등)
-  const outing = outingTotalMin(c);
+    // 외출시간(학원·식사·화장실 등)
+    const outing = outingTotalMin(c);
 
-  // 순공 = 전체시간 - 외출시간
-  return Math.max(0, gross - outing);
-};
+    // 순공 = 전체시간 - 외출시간
+    return Math.max(0, gross - outing);
+  };
 
-// 🔹 3. 현재 시각 계산
+  // 🔹 3. 현재 시각 계산
   const nowTotalMinutes = () => {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
   };
 
   // 🔹 4. 주간 범위 계산
-const getWeekRange = (dateStr: string) => {
-  const d = new Date(dateStr);
-  const dow = d.getDay();
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - ((dow + 6) % 7));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  return { start: fmtDate(monday), end: fmtDate(sunday) };
-};
-  
-  // ✅ 특정 기간 패널티 합계(개인 sid)
-//   key로 "sleepPenaltyCount" 또는 "latePenaltyCount"를 넣어 사용.
-//   (latePenaltyCount 오타(latepenaltyCount)도 자동 케어)
-const sumPenaltyForRange = (
-  studentId: string,
-  start: string,
-  end: string,
-  key: "sleepPenaltyCount" | "latePenaltyCount" = "sleepPenaltyCount"
-) => {
-  let sum = 0;
-  Object.entries(store.records).forEach(([ds, bySid]) => {
-    if (ds >= start && ds <= end) {
-      const c = bySid[studentId];
-      if (!c) return;
-      // 기본 키
-      const v = (c as any)[key] as number | undefined;
-      // latePenaltyCount를 latepenaltyCount로 저장한 경우(오타)도 커버
-      const legacyLate =
-        key === "latePenaltyCount" ? ((c as any).latepenaltyCount as number | undefined) : undefined;
+  const getWeekRange = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const dow = d.getDay();
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((dow + 6) % 7));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return { start: fmtDate(monday), end: fmtDate(sunday) };
+  };
 
-      const add = (typeof v === "number" ? v : 0) + (typeof legacyLate === "number" ? legacyLate : 0);
-      if (add) sum += add;
-    }
-  });
-  return sum;
-};
+  // ✅ 특정 기간 패널티 합계(개인 sid)
+  //   key로 "sleepPenaltyCount" 또는 "latePenaltyCount"를 넣어 사용.
+  //   (latePenaltyCount 오타(latepenaltyCount)도 자동 케어)
+  const sumPenaltyForRange = (
+    studentId: string,
+    start: string,
+    end: string,
+    key: "sleepPenaltyCount" | "latePenaltyCount" = "sleepPenaltyCount"
+  ) => {
+    let sum = 0;
+    Object.entries(store.records).forEach(([ds, bySid]) => {
+      if (ds >= start && ds <= end) {
+        const c = bySid[studentId];
+        if (!c) return;
+        // 기본 키
+        const v = (c as any)[key] as number | undefined;
+        // latePenaltyCount를 latepenaltyCount로 저장한 경우(오타)도 커버
+        const legacyLate =
+          key === "latePenaltyCount" ? ((c as any).latepenaltyCount as number | undefined) : undefined;
+
+        const add = (typeof v === "number" ? v : 0) + (typeof legacyLate === "number" ? legacyLate : 0);
+        if (add) sum += add;
+      }
+    });
+    return sum;
+  };
 
   /** 진행 중 순공(분) 계산: 하원 전이면 현재시각을 to로 보고 계산 */
   const netStudyMinLive = (c?: DayCell) => {
@@ -1622,13 +1600,13 @@ const sumPenaltyForRange = (
     let total = 0;
     const excludeSubjects = ["학교", "기타"];
 
-Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
-  if (excludeSubjects.includes(sub)) return; // 🚫 학교·기타 제외
+    Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
+      if (excludeSubjects.includes(sub)) return; // 🚫 학교·기타 제외
 
-  (data.slots || []).forEach((s) => {
-    total += spanMin(s.from, s.to);
-  });
-})
+      (data.slots || []).forEach((s) => {
+        total += spanMin(s.from, s.to);
+      });
+    })
     const start = hmToMin(c.time);
     const end = c.outTime ? hmToMin(c.outTime) : nowTotalMinutes(); // 하원 미입력 시 현재 시각
     const gross = Math.max(0, end - start);
@@ -1636,33 +1614,67 @@ Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
     return Math.max(0, gross - outing);
   };
 
-
-
-// ===================== 🧩 updateStudent 함수 =====================
-// ✅ 기존 updateStudent 함수 아래쪽 교체
-const updateStudent = (sid: string, patch: Partial<Student>) => {
+  // ==========================
+// 🔥 Firestore 저장 함수 추가
+// ==========================
+const saveRecordToFS = async (date: string, sid: string, cell: DayCell) => {
   try {
-    const safe = sanitize({
-      id: sid,
-      groupId: currentGroup?.id,
-      ...patch,
-      updatedAt: serverTimestamp(),
-    });
-
-    // 🔹 Firestore 저장
-    setDoc(doc(db, "students", sid), safe, { merge: true })
-      .then(() => console.log("✅ Firestore 학생 업데이트 성공"))
-      .catch((e) => console.error("❌ Firestore 학생 업데이트 실패:", e));
-  } catch (e) {
-    console.error("⚠️ Firestore 저장 중 오류:", e);
+    const ref = doc(db, "records", `${date}_${sid}`);
+    await setDoc(ref, { date, sid, cell }, { merge: true });
+    console.log("📌 Firestore 저장 완료:", date, sid);
+  } catch (err) {
+    console.error("❌ Firestore 저장 실패:", err);
   }
+};
 
-  // 🔹 로컬 업데이트
-  setStore((prev) => ({
-    ...prev,
-    groups: prev.groups.map((g) =>
-      g.id === currentGroup?.id
-        ? {
+// ✅ DayCell 공통 업데이트 + Firestore 동시 저장 헬퍼
+const updateDayCell = (
+  ds: string,
+  sid: string,
+  updater: (base: DayCell) => DayCell
+) => {
+  setStore(prev => {
+    const records = { ...prev.records };
+    const dayRec = { ...(records[ds] || {}) };
+    const base: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+
+    const next = updater(base);
+
+    dayRec[sid] = next;
+    records[ds] = dayRec;
+
+    // 🔥 Firestore 동기 저장 (await 안 걸고 그냥 쏘기)
+    saveRecordToFS(ds, sid, next);
+
+    return { ...prev, records };
+  });
+};
+
+  // ===================== 🧩 updateStudent 함수 =====================
+  // ✅ 기존 updateStudent 함수 아래쪽 교체
+  const updateStudent = (sid: string, patch: Partial<Student>) => {
+    try {
+      const safe = sanitize({
+        id: sid,
+        groupId: currentGroup?.id,
+        ...patch,
+        updatedAt: serverTimestamp(),
+      });
+
+      // 🔹 Firestore 저장
+      setDoc(doc(db, "students", sid), safe, { merge: true })
+        .then(() => console.log("✅ Firestore 학생 업데이트 성공"))
+        .catch((e) => console.error("❌ Firestore 학생 업데이트 실패:", e));
+    } catch (e) {
+      console.error("⚠️ Firestore 저장 중 오류:", e);
+    }
+
+    // 🔹 로컬 업데이트
+    setStore((prev) => ({
+      ...prev,
+      groups: prev.groups.map((g) =>
+        g.id === currentGroup?.id
+          ? {
             ...g,
             students: g.students.map((s) => {
               if (s.id !== sid) return s;
@@ -1672,130 +1684,138 @@ const updateStudent = (sid: string, patch: Partial<Student>) => {
               return { ...s, ...patch, personalSchedule: nextSchedule };
             }),
           }
-        : g
-    ),
-  }));
+          : g
+      ),
+    }));
 
-  setEditStudent(null);
+    setEditStudent(null);
 
-  // ✅ personalSchedule.next가 있으면 내일부터 자동 반영
-  const sched = patch.personalSchedule as any;
-  if (sched?.next?.data) {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const ds = tomorrow.toISOString().split("T")[0];
-    setTimeout(() => applyPersonalScheduleForDate(sid, ds), 100);
-  }
+    // ✅ personalSchedule.next가 있으면 내일부터 자동 반영
+    const sched = patch.personalSchedule as any;
+    if (sched?.next?.data) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const ds = tomorrow.toISOString().split("T")[0];
+      setTimeout(() => applyPersonalScheduleForDate(sid, ds), 100);
+    }
 
-  // ✅ 오늘 날짜도 강제 재적용 (반영 누락 방지)
-  applyPersonalScheduleForDate(sid, date);
-};
+    // ✅ 오늘 날짜도 강제 재적용 (반영 누락 방지)
+    applyPersonalScheduleForDate(sid, date);
+  };
 
 
   const removeStudent = async (sid: string) => {
-  if (!confirm("이 학생을 목록에서 숨기겠습니까? (기록은 유지됩니다)")) return;
+    if (!confirm("이 학생을 목록에서 숨기겠습니까? (기록은 유지됩니다)")) return;
 
-  setStore(prev => {
-    const groups = prev.groups.map(g =>
-      g.id === currentGroup.id
-        ? {
+    setStore(prev => {
+      const groups = prev.groups.map(g =>
+        g.id === currentGroup.id
+          ? {
             ...g,
             students: g.students.map(s =>
               s.id === sid ? { ...s, removed: true } : s
             ),
           }
-        : g
+          : g
+      );
+      return { ...prev, groups };
+    });
+
+    // ✅ Firestore에도 removed 상태 반영
+    try {
+      const ref = doc(db, "students", sid);
+      await setDoc(ref, { removed: true }, { merge: true });
+      console.log(`🗑️ 학생 ${sid} 숨김 처리 완료`);
+    } catch (err) {
+      console.error("❌ Firestore 숨김 실패:", err);
+    }
+  };
+
+
+  const reloadStudents = async () => {
+    const groupId = store.currentGroupId || "default";
+
+    // 1️⃣ Firestore에서 해당 그룹 학생 가져오기
+    const q = query(
+      collection(db, "students"),
+      where("groupId", "==", groupId)
     );
-    return { ...prev, groups };
-  });
+    const snap = await getDocs(q);
 
-  // ✅ Firestore에도 removed 상태 반영
-  try {
-    const ref = doc(db, "students", sid);
-    await setDoc(ref, { removed: true }, { merge: true });
-    console.log(`🗑️ 학생 ${sid} 숨김 처리 완료`);
-  } catch (err) {
-    console.error("❌ Firestore 숨김 실패:", err);
-  }
-};
+    const fsStudents = snap.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as any),
+    }));
 
+    // 2️⃣ Firestore 학생 id 목록
+    const fsIds = new Set(fsStudents.map((s) => s.id));
 
-const reloadStudents = async () => {
-  const groupId = store.currentGroupId || "default";
+    // 3️⃣ 로컬 store에서 이번 그룹 학생
+    const localStudents = store.groups
+      .find((g) => g.id === groupId)
+      ?.students || [];
 
-  // 1️⃣ Firestore에서 해당 그룹 학생 가져오기
-  const q = query(
-    collection(db, "students"),
-    where("groupId", "==", groupId)
-  );
-  const snap = await getDocs(q);
+    // 4️⃣ Firestore에 없는 로컬 학생 = 삭제 대상
+    const removedLocal = localStudents.filter((s) => !fsIds.has(s.id));
 
-  const fsStudents = snap.docs.map((d) => ({
-    id: d.id,
-    ...(d.data() as any),
-  }));
+    if (removedLocal.length > 0) {
+      console.log("🗑️ Firestore에 없어 삭제되는 로컬 학생:", removedLocal);
+    }
 
-  // 2️⃣ Firestore 학생 id 목록
-  const fsIds = new Set(fsStudents.map((s) => s.id));
-
-  // 3️⃣ 로컬 store에서 이번 그룹 학생
-  const localStudents = store.groups
-    .find((g) => g.id === groupId)
-    ?.students || [];
-
-  // 4️⃣ Firestore에 없는 로컬 학생 = 삭제 대상
-  const removedLocal = localStudents.filter((s) => !fsIds.has(s.id));
-
-  if (removedLocal.length > 0) {
-    console.log("🗑️ Firestore에 없어 삭제되는 로컬 학생:", removedLocal);
-  }
-
-  // 5️⃣ 로컬 store 정리 + Firestore에서 가져온 것으로 세팅
-  setStore((prev) => {
-    const groups = prev.groups.map((g) =>
-      g.id === groupId
-        ? {
+    // 5️⃣ 로컬 store 정리 + Firestore에서 가져온 것으로 세팅
+    setStore((prev) => {
+      const groups = prev.groups.map((g) =>
+        g.id === groupId
+          ? {
             ...g,
             students: fsStudents, // ← Firestore 학생으로 완전 덮어쓰기
           }
-        : g
-    );
+          : g
+      );
 
-    return {
-      ...prev,
-      groups,
-      students: fsStudents,
-    };
-  });
+      return {
+        ...prev,
+        groups,
+        students: fsStudents,
+      };
+    });
 
-  alert("🔄 학생 목록을 Firestore 기준으로 새로 고쳤습니다.");
-};
+    alert("🔄 학생 목록을 Firestore 기준으로 새로 고쳤습니다.");
+  };
 
-const statusBtn: React.CSSProperties = {
-  padding: "6px 14px",
-  borderRadius: 12,
-  fontSize: 13,
-  fontWeight: 700,
-  cursor: "pointer",
-  display: "inline-block",
-  border: "1px solid transparent",
-  transition: "all .15s ease",
-};
+  const statusBtn: React.CSSProperties = {
+    padding: "6px 14px",
+    borderRadius: 12,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "inline-block",
+    border: "1px solid transparent",
+    transition: "all .15s ease",
+  };
 
   const setAll = (st: StatusKey) => {
-    setStore(prev => {
-      const records = { ...prev.records };
-      const d0 = { ...(records[date] || {}) };
-      students.forEach(s => {
-        const cell: DayCell = { ...(d0[s.id] ?? { status: st }), status: st };
-        if ((st === "P" || st === "L") && !cell.time) cell.time = nowHM();
-        if (st === "A") { cell.time = undefined; cell.outTime = undefined; }
-        d0[s.id] = cell;
-      });
-      records[date] = d0;
-      return { ...prev, records };
+  setStore(prev => {
+    const records = { ...prev.records };
+    const d0 = { ...(records[date] || {}) };
+
+    students.forEach(s => {
+      const base: DayCell = { ...(d0[s.id] ?? { status: st }) };
+      const cell: DayCell = { ...base, status: st };
+
+      if ((st === "P" || st === "L") && !cell.time) cell.time = nowHM();
+      if (st === "A") { cell.time = undefined; cell.outTime = undefined; }
+
+      d0[s.id] = cell;
+
+      // 🔥 각 학생별 Firestore 저장
+      saveRecordToFS(date, s.id, cell);
     });
-  };
+
+    records[date] = d0;
+    return { ...prev, records };
+  });
+};
 
 
 
@@ -1828,43 +1848,43 @@ const statusBtn: React.CSSProperties = {
   }, [store.records, date, students]);
 
   /** ===== 스타일 공용 ===== */
-  const wrap: React.CSSProperties = { minHeight:"100vh", background:"#f5f7fb", color:"#111", padding:20 };
-  const row: React.CSSProperties = { display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" };
-  const inp: React.CSSProperties = { padding:"6px 8px", border:"1px solid #dde1ea", borderRadius:10, background:"#fff", fontSize:13 };
-  const btn: React.CSSProperties = { padding:"6px 8px", border:"1px solid #dde1ea", borderRadius:10, background:"#fff", cursor:"pointer", fontSize:12 };
-  const btnD: React.CSSProperties = { padding:"6px 8px", border:"1px solid #111", borderRadius:10, background:"#111", color:"#fff", cursor:"pointer", fontSize:12 };
+  const wrap: React.CSSProperties = { minHeight: "100vh", background: "#f5f7fb", color: "#111", padding: 20 };
+  const row: React.CSSProperties = { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" };
+  const inp: React.CSSProperties = { padding: "6px 8px", border: "1px solid #dde1ea", borderRadius: 10, background: "#fff", fontSize: 13 };
+  const btn: React.CSSProperties = { padding: "6px 8px", border: "1px solid #dde1ea", borderRadius: 10, background: "#fff", cursor: "pointer", fontSize: 12 };
+  const btnD: React.CSSProperties = { padding: "6px 8px", border: "1px solid #111", borderRadius: 10, background: "#111", color: "#fff", cursor: "pointer", fontSize: 12 };
   const chip = (active?: boolean): React.CSSProperties => ({
-    padding:"5px 9px", borderRadius:999, border: active ? "1px solid #111" : "1px solid #e5e7eb",
-    background: active ? "#111" : "#fff", color: active ? "#fff" : "#111", cursor:"pointer", fontSize:12,
-    lineHeight:1
+    padding: "5px 9px", borderRadius: 999, border: active ? "1px solid #111" : "1px solid #e5e7eb",
+    background: active ? "#111" : "#fff", color: active ? "#fff" : "#111", cursor: "pointer", fontSize: 12,
+    lineHeight: 1
   });
   const statusMenuStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "100%",
-  left: 0,
-  marginTop: 4,
-  background: "#fff",
-  border: "1px solid #ddd",
-  borderRadius: 8,
-  boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
-  padding: 4,  // ← 여백 최소
-  zIndex: 10,
-};
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    marginTop: 4,
+    background: "#fff",
+    border: "1px solid #ddd",
+    borderRadius: 8,
+    boxShadow: "0 4px 10px rgba(0,0,0,0.1)",
+    padding: 4,  // ← 여백 최소
+    zIndex: 10,
+  };
 
- const statusItemStyle: React.CSSProperties = {
-  padding: "4px 10px",
-  borderRadius: 10,
-  fontSize: 13,
-  fontWeight: 700,
-  height: 32,                // ← 동일
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  cursor: "pointer",
-  margin: "2px 0",
-  transition: "0.1s",
-};
-  
+  const statusItemStyle: React.CSSProperties = {
+    padding: "4px 10px",
+    borderRadius: 10,
+    fontSize: 13,
+    fontWeight: 700,
+    height: 32,                // ← 동일
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    margin: "2px 0",
+    transition: "0.1s",
+  };
+
   const btnXS: React.CSSProperties = {
     border: "1px solid #e5e7eb",
     background: "#fff",
@@ -1883,34 +1903,34 @@ const statusBtn: React.CSSProperties = {
   const SHOW_STUDENT_COUNT = false;
 
   // 실시간 시계
-const [nowStr, setNowStr] = useState<string>("");
-useEffect(() => {
-  const fmt = (n:number)=>String(n).padStart(2,"0");
-  const tick = () => {
-    const d = new Date();
-    setNowStr(`${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`);
+  const [nowStr, setNowStr] = useState<string>("");
+  useEffect(() => {
+    const fmt = (n: number) => String(n).padStart(2, "0");
+    const tick = () => {
+      const d = new Date();
+      setNowStr(`${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // 요일 한글
+  const dayName = (d: Date) => ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+
+  // 보기 좋은 날짜 문자열 (YYYY.MM.DD (요일))
+  const prettyDate = (ds: string) => {
+    const d = new Date(ds);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}.${m}.${dd} (${dayName(d)})`;
   };
-  tick();
-  const id = setInterval(tick, 1000);
-  return () => clearInterval(id);
-}, []);
-
-// 요일 한글
-const dayName = (d: Date) => ["일","월","화","수","목","금","토"][d.getDay()];
-
-// 보기 좋은 날짜 문자열 (YYYY.MM.DD (요일))
-const prettyDate = (ds: string) => {
-  const d = new Date(ds);
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  const dd = String(d.getDate()).padStart(2,"0");
-  return `${y}.${m}.${dd} (${dayName(d)})`;
-};
 
 
 
-   // 작은 시계박스 //
-   const timeInpTight: React.CSSProperties = {
+  // 작은 시계박스 //
+  const timeInpTight: React.CSSProperties = {
     appearance: "none",
     outline: "none",
     padding: "6px 8px",
@@ -1925,24 +1945,24 @@ const prettyDate = (ds: string) => {
     transition: "background 0.25s, box-shadow 0.25s",
     boxSizing: "border-box",
   };
-  
+
   const timeInpTightHover: React.CSSProperties = {
     ...timeInpTight,
     background: "rgba(203, 213, 225, 0.8)", // hover 시 살짝 진해짐
     boxShadow: "0 0 0 2px rgba(147, 197, 253, 0.3)", // 은은한 블루광
   };
 
-const timeInpTightFocus: React.CSSProperties = {
-  ...timeInpTight,
-  borderBottom: "1.5px solid #60a5fa", // 💡 파스텔 블루 밑줄 강조
-  color: "#111827",
-};
+  const timeInpTightFocus: React.CSSProperties = {
+    ...timeInpTight,
+    borderBottom: "1.5px solid #60a5fa", // 💡 파스텔 블루 밑줄 강조
+    color: "#111827",
+  };
   /** ===== 학생별 달력 모달 제어 ===== */
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const selectedStudent = students.find(s => s.id === selectedStudentId) ?? null;
 
   return (
-   
+
     <div className="app-main-container" style={{ minHeight: "100vh", background: "#f5f7fb", color: "#111", padding: 20 }}>
       {/* 전역 스타일: time 숫자 잘림 방지 */}
       <style>{`
@@ -1953,1842 +1973,1895 @@ const timeInpTightFocus: React.CSSProperties = {
         input[type="time"]::-webkit-date-and-time-value { min-width: 7.6ch; }
       `}</style>
 
-     <div className="app-main-container"> 
-    
+      <div className="app-main-container">
+
 
         {/* 헤더 */}
-        <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center", flexWrap:"wrap" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
 
           <div>
             <img style={{ height: 40, objectFit: "contain" }} />
-            <h1 style={{ fontSize:24, fontWeight:800, margin:0, letterSpacing:"0.5px" }}>
+            <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: "0.5px" }}>
               <span style={{ color: "#b71c1c", fontSize: 30 }}>O</span>
               <span style={{ color: "#000000", fontSize: 20 }}>PTIMUM</span>
               <span style={{ color: "#1e3a8a", fontSize: 30 }}>E</span>
               <span style={{ color: "#000000", fontSize: 20 }}>DUCORE</span>
-              <span style={{color:"#b71c1c", fontSize:16, fontStyle:"italic", margin:20}}> -YOU MAKE YOUR STUDY- </span>
+              <span style={{ color: "#b71c1c", fontSize: 16, fontStyle: "italic", margin: 20 }}> -YOU MAKE YOUR STUDY- </span>
             </h1>
           </div>
 
-          
 
-                       
-            
-{/* 깔끔한 날짜+시계 위젯 */}
 
-<div style={{
 
-display:"flex", gap:20, alignItems:"center", flexWrap:"wrap",
 
-background:"linear-gradient(135deg,#EEF2FF,#E0E7FF)",
+          {/* 깔끔한 날짜+시계 위젯 */}
 
-border:"1px solid #e5e7eb", borderRadius:14, padding:"10px 50px",
+          <div style={{
 
-boxShadow:"0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 채움
+            display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap",
 
-}}>
+            background: "linear-gradient(135deg,#EEF2FF,#E0E7FF)",
 
-{/* TODAY */}
+            border: "1px solid #e5e7eb", borderRadius: 14, padding: "10px 50px",
 
-<div style={{display:"flex", alignItems:"baseline", gap:8}}>
+            boxShadow: "0 2px 8px rgba(0,0,0,.04)", width: "100%", // ✅ 전체 가로폭 채움
 
-  <span style={{fontSize:10, fontWeight:900, color:"#6b7280", letterSpacing:".6px"}}>TODAY</span>
+          }}>
 
-  <span style={{fontSize:16, fontWeight:900, color:"#111"}}>{prettyDate(date)}</span>
+            {/* TODAY */}
 
-</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
 
+              <span style={{ fontSize: 10, fontWeight: 900, color: "#6b7280", letterSpacing: ".6px" }}>TODAY</span>
 
+              <span style={{ fontSize: 16, fontWeight: 900, color: "#111" }}>{prettyDate(date)}</span>
 
-{/* 구분점 */}
+            </div>
 
-<span style={{width:1, height:20, background:"#e5e7eb"}} />
 
 
+            {/* 구분점 */}
 
-{/* NOW */}
+            <span style={{ width: 1, height: 20, background: "#e5e7eb" }} />
 
-<div style={{display:"flex", alignItems:"baseline", gap:8}}>
 
-  <span style={{fontSize:10, fontWeight:900, color:"#1e3a8a", letterSpacing:".6px"}}>NOW</span>
 
-  <span style={{fontSize:18, fontWeight:900, color:"#1e3a8a", fontVariantNumeric:"tabular-nums"}}>{nowStr}</span>
+            {/* NOW */}
 
-</div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
 
+              <span style={{ fontSize: 10, fontWeight: 900, color: "#1e3a8a", letterSpacing: ".6px" }}>NOW</span>
 
+              <span style={{ fontSize: 18, fontWeight: 900, color: "#1e3a8a", fontVariantNumeric: "tabular-nums" }}>{nowStr}</span>
 
-{/* 우측 액션들 */}
+            </div>
 
-<div style={{display:"flex", gap:8, marginLeft:"auto"}}>
 
-  {/* 날짜 변경 (아이콘 느낌 버튼) */}
 
-  <button
+            {/* 우측 액션들 */}
 
-    style={{
+            <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
 
-      padding:"6px 10px", border:"1px solid #cbd5e1", borderRadius:10,
+              {/* 날짜 변경 (아이콘 느낌 버튼) */}
 
-      background:"#fff", cursor:"pointer", fontSize:12, fontWeight:700
+              <button
 
-    }}
+                style={{
 
-    onClick={(e)=>{
+                  padding: "6px 10px", border: "1px solid #cbd5e1", borderRadius: 10,
 
-      // 숨겨둔 input[type="date"]를 programmatic으로 열기
+                  background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700
 
-      const picker = document.getElementById("date-hidden-picker") as HTMLInputElement | null;
+                }}
 
-      picker?.showPicker?.();
+                onClick={(e) => {
 
-    }}
+                  // 숨겨둔 input[type="date"]를 programmatic으로 열기
 
-    title="날짜 선택"
+                  const picker = document.getElementById("date-hidden-picker") as HTMLInputElement | null;
 
-  >
+                  picker?.showPicker?.();
 
-    📅 날짜변경
+                }}
 
-  </button>
+                title="날짜 선택"
 
+              >
 
+                📅 날짜변경
 
-<div style={row}>
-            <select style={{ ...inp, width:150
-             }} value={currentGroup?.id || ""} onChange={(e)=>setStore(prev=>({ ...prev, currentGroupId: e.target.value }))}>
-              {store.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
+              </button>
 
-            <button
-  style={btn}
-  onClick={async () => {
-    const name = prompt("새 그룹(반) 이름을 입력하세요", "새 반");
-    if (!name) return;
 
-    const g: Group = { id: uid(), name, students: [] };
 
-    // ✅ 로컬에 그룹 추가
-    setStore((prev) => ({
-      ...prev,
-      groups: [...prev.groups, g],
-      currentGroupId: g.id,
-    }));
-
-    // ✅ Firestore에 그룹 저장
-    try {
-      await setDoc(doc(db, "groups", g.id), {
-        id: g.id,
-        name: name,
-        createdAt: serverTimestamp(),
-      });
-      console.log("✅ Firestore 그룹 등록 완료:", name);
-      alert(`그룹 '${name}'이(가) 추가되었습니다.`);
-    } catch (err) {
-      console.error("❌ Firestore 그룹 저장 실패:", err);
-      alert("그룹 추가 중 오류가 발생했습니다.");
-    }
-  }}
->
-  + 그룹 추가
-</button>
-
-            <button style={btn} onClick={()=>{
-              const name = prompt("그룹(반) 새 이름", currentGroup?.name || "");
-              if (!name || !currentGroup) return;
-              setStore(prev => ({ ...prev, groups: prev.groups.map(g => g.id === currentGroup.id ? { ...g, name } : g) }));
-            }}>이름 변경</button>
-
-            <button style={btn} onClick={()=>{
-              if (!currentGroup) return;
-              if (!confirm(`"${currentGroup.name}" 그룹을 삭제할까요? (학생/기록은 유지되지 않습니다)`)) return;
-              setStore(prev => {
-                const groups = prev.groups.filter(g => g.id !== currentGroup.id);
-                const toRemove = new Set(currentGroup.students.map(s => s.id));
-                const records: Records = {};
-                Object.entries(prev.records).forEach(([d, bySid]) => {
-                  const left: Record<string, DayCell> = {};
-                  Object.entries(bySid).forEach(([sid, cell]) => { if (!toRemove.has(sid)) left[sid] = cell; });
-                  records[d] = left;
-                });
-                return {
-                  groups: groups.length ? groups : [{ id: uid(), name: "에듀중등등", students: [] }],
-                  currentGroupId: groups.length ? groups[0].id : null,
-                  records,
-                };
-              });
-            }}>그룹 삭제</button>
-
-  {/* 프린트 */}
-
-  <button
-
-    style={{
-
-      padding:"6px 10px", border:"1px solid #1e3a8a", borderRadius:10,
-
-      background:"#1e3a8a", color:"#fff", cursor:"pointer", fontSize:12, fontWeight:700
-
-    }}
-
-    onClick={()=>window.print()}
-
-  >
-
-    🖨️ 프린트
-
-  </button>
-
-  {/* ▼ 관리자 모드 컨트롤 */}
-{!isAdmin ? (
-  <button
-    style={{
-      ...btn,
-      background: "#ffe4ec",   // 파스텔 핑크
-      border: "1px solid #f9c2d1",
-      color: "#b71c1c",
-      fontWeight: 700,
-    }}
-    onClick={enterAdmin}
-  >
-    관리자 ON
-  </button>
-) : (
-  <>
-    <button
-      style={{     ...btn,   background: "#ffe4ec",   border: "1px solid #f9c2d1",    color: "#b71c1c",     fontWeight: 700,
-      }}
-      onClick={exitAdmin}
-    >
-      관리자 OFF
-    </button>
-
-    <button
-      style={{
-        ...btn,
-        background: "#fff0f5",
-        border: "1px solid #f9c2d1",
-        color: "#c2185b",
-        fontWeight: 700,
-      }}
-      onClick={changeAdminPin}
-    >
-      PIN 변경
-    </button>
-  </>
-)}
-
-</div>
-
-
-
-  {/* 화면에 보이지 않는 date input (showPicker로만 엶) */}
-  <input
-    id="date-hidden-picker"
-    type="date"
-    value={date}
-    onChange={(e)=>setDate(e.target.value)}
-    style={{ position:"absolute", opacity:0, pointerEvents:"none", width:0, height:0 }}
-  />
-</div>
+              <div style={row}>
+                <select style={{
+                  ...inp, width: 150
+                }} value={currentGroup?.id || ""} onChange={(e) => setStore(prev => ({ ...prev, currentGroupId: e.target.value }))}>
+                  {store.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+
+                <button
+                  style={btn}
+                  onClick={async () => {
+                    const name = prompt("새 그룹(반) 이름을 입력하세요", "새 반");
+                    if (!name) return;
+
+                    const g: Group = { id: uid(), name, students: [] };
+
+                    // ✅ 로컬에 그룹 추가
+                    setStore((prev) => ({
+                      ...prev,
+                      groups: [...prev.groups, g],
+                      currentGroupId: g.id,
+                    }));
+
+                    // ✅ Firestore에 그룹 저장
+                    try {
+                      await setDoc(doc(db, "groups", g.id), {
+                        id: g.id,
+                        name: name,
+                        createdAt: serverTimestamp(),
+                      });
+                      console.log("✅ Firestore 그룹 등록 완료:", name);
+                      alert(`그룹 '${name}'이(가) 추가되었습니다.`);
+                    } catch (err) {
+                      console.error("❌ Firestore 그룹 저장 실패:", err);
+                      alert("그룹 추가 중 오류가 발생했습니다.");
+                    }
+                  }}
+                >
+                  + 그룹 추가
+                </button>
+
+                <button style={btn} onClick={() => {
+                  const name = prompt("그룹(반) 새 이름", currentGroup?.name || "");
+                  if (!name || !currentGroup) return;
+                  setStore(prev => ({ ...prev, groups: prev.groups.map(g => g.id === currentGroup.id ? { ...g, name } : g) }));
+                }}>이름 변경</button>
+
+                <button style={btn} onClick={() => {
+                  if (!currentGroup) return;
+                  if (!confirm(`"${currentGroup.name}" 그룹을 삭제할까요? (학생/기록은 유지되지 않습니다)`)) return;
+                  setStore(prev => {
+                    const groups = prev.groups.filter(g => g.id !== currentGroup.id);
+                    const toRemove = new Set(currentGroup.students.map(s => s.id));
+                    const records: Records = {};
+                    Object.entries(prev.records).forEach(([d, bySid]) => {
+                      const left: Record<string, DayCell> = {};
+                      Object.entries(bySid).forEach(([sid, cell]) => { if (!toRemove.has(sid)) left[sid] = cell; });
+                      records[d] = left;
+                    });
+                    return {
+                      groups: groups.length ? groups : [{ id: uid(), name: "에듀중등등", students: [] }],
+                      currentGroupId: groups.length ? groups[0].id : null,
+                      records,
+                    };
+                  });
+                }}>그룹 삭제</button>
+
+                {/* 프린트 */}
+
+                <button
+
+                  style={{
+
+                    padding: "6px 10px", border: "1px solid #1e3a8a", borderRadius: 10,
+
+                    background: "#1e3a8a", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700
+
+                  }}
+
+                  onClick={() => window.print()}
+
+                >
+
+                  🖨️ 프린트
+
+                </button>
+
+                {/* ▼ 관리자 모드 컨트롤 */}
+                {!isAdmin ? (
+                  <button
+                    style={{
+                      ...btn,
+                      background: "#ffe4ec",   // 파스텔 핑크
+                      border: "1px solid #f9c2d1",
+                      color: "#b71c1c",
+                      fontWeight: 700,
+                    }}
+                    onClick={enterAdmin}
+                  >
+                    관리자 ON
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      style={{
+                        ...btn, background: "#ffe4ec", border: "1px solid #f9c2d1", color: "#b71c1c", fontWeight: 700,
+                      }}
+                      onClick={exitAdmin}
+                    >
+                      관리자 OFF
+                    </button>
+
+                    <button
+                      style={{
+                        ...btn,
+                        background: "#fff0f5",
+                        border: "1px solid #f9c2d1",
+                        color: "#c2185b",
+                        fontWeight: 700,
+                      }}
+                      onClick={changeAdminPin}
+                    >
+                      PIN 변경
+                    </button>
+                  </>
+                )}
+
+              </div>
+
+
+
+              {/* 화면에 보이지 않는 date input (showPicker로만 엶) */}
+              <input
+                id="date-hidden-picker"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
+              />
+            </div>
 
           </div>
         </div>
 
-       
-       
-{/* 학생 추가 */}
-<div style={{ marginTop: 20 }}>
-
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "10px 14px",
-      background: "#f9fafb",
-      border: "1px solid #e5e7eb",
-      borderRadius: 12,
-      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-      flexWrap: "nowrap"
-    }}
-  >
-
-    {/* ▶ 왼쪽: 입력창 + 추가 */}
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <input
-        style={{ ...inp, width: 120, height: 38 }}
-        placeholder="이름"
-        value={newStu.name || ""}
-        onChange={(e)=>setNewStu(s=>({...s, name:e.target.value}))}
-      />
-
-      <select
-        style={{ ...inp, width: 90, height: 38 }}
-        value={newStu.grade || ""}
-        onChange={(e)=>setNewStu(s=>({ ...s, grade:e.target.value }))}
-      >
-        <option value="">학년</option>
-        <option value="중1">중1</option><option value="중2">중2</option><option value="중3">중3</option>
-        <option value="고1">고1</option><option value="고2">고2</option><option value="고3">고3</option>
-      </select>
-
-      <input
-        style={{ ...inp, width: 150, height: 38 }}
-        placeholder="학교"
-        value={newStu.school || ""}
-        onChange={(e)=>setNewStu(s=>({...s, school:e.target.value}))}
-      />
-
-      <input
-        style={{ ...inp, width: 140, height: 38 }}
-        placeholder="학생 연락처"
-        value={newStu.studentPhone || ""}
-        onChange={(e)=>setNewStu(s=>({...s, studentPhone:e.target.value}))}
-      />
-
-      <input
-        style={{ ...inp, width: 140, height: 38 }}
-        placeholder="부모님 연락처"
-        value={newStu.parentPhone || ""}
-        onChange={(e)=>setNewStu(s=>({...s, parentPhone:e.target.value}))}
-      />
-
-      <button
-        style={{
-          ...btnD,
-          height: 38,
-          padding: "0 20px",
-          fontWeight: 800,
-          borderRadius: 8,
-        }}
-        onClick={addStudent}
-      >
-        추가
-      </button>
-    </div>
-
-    {/* ▶ 오른쪽: 새로고침 + 숨김학생보기 */}
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <button
-        style={{
-          ...btn,
-          height: 38,
-          borderRadius: 8,
-          background: "#dbeafe",
-          color: "#1e3a8a",
-          fontWeight: 700,
-          padding: "0 14px",
-        }}
-        onClick={reloadStudents}
-      >
-        🔄 새로고침
-      </button>
-
-      <button
-        style={{
-          ...btn,
-          height: 38,
-          borderRadius: 8,
-          background: showRemoved ? "#b91c1c" : "#e5e7eb",
-          color: showRemoved ? "#fff" : "#111",
-          fontWeight: 700,
-          padding: "0 14px",
-        }}
-        onClick={() => setShowRemoved(!showRemoved)}
-      >
-        {showRemoved ? "숨김 해제" : "숨김학생보기"}
-      </button>
-    </div>
-
-  </div>
 
 
+        {/* 학생 추가 */}
+        <div style={{ marginTop: 20 }}>
 
- 
-
-
-
-          
-
-          <div style={{ 
-    padding: "20px", 
-    background: "#fff", 
-    border: "1px solid #e5eeef", // 얇은 테두리 추가
-    borderRadius: 8, // 모서리 둥글게
-    boxShadow: "0 1px 3px rgba(0,0,0,0.05)", // 은은한 그림자
-    marginBottom: 16 
-}}>
-    <h3 style={{ 
-        margin: "0 0 12px", 
-        fontSize: 16, 
-        fontWeight: 700,
-        color: "#1e3a8a", // 제목 색상 변경
-        paddingBottom: 8,
-        borderBottom: "1px solid #f0f4f7" // 얇은 구분선
-    }}>
-        🎯 일괄과제 🎯
-    </h3>
-    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        
-        {/* 1. 과제명 입력 */}
-        <input
-            type="text"
-            value={bulkTitle}
-            onChange={(e) => setBulkTitle(e.target.value)}
-            placeholder="📚 과제 제목 입력 (예: 수학 오답노트 10p)"
-            style={{ 
-                flexGrow: 2, // 입력창을 더 넓게
-                padding: "10px 12px", 
-                border: "1px solid #ccc", 
-                borderRadius: 6,
-                fontSize: 14 
-            }}
-        />
-        
-        {/* 2. 학년 선택 드롭다운 */}
-        <select 
-            value={bulkGrade} 
-            onChange={(e) => setBulkGrade(e.target.value)}
-            style={{ padding: 8, border: "1px solid #ccc", borderRadius: 4 }}
-        >
-            <option value="">전체 학년</option>
-            {uniqueGrades.map(g => <option key={g} value={g}>{g}</option>)}
-        </select>
-        
-        {/* 3. 학교 선택 드롭다운 */}
-        <select
-            value={bulkSchool}
-            // 2. onChange를 학교 상태 설정 함수로 변경
-            onChange={(e) => setBulkSchool(e.target.value)}
-            style={{ 
-                flexGrow: 1,
-                padding: "8px 5px", 
-               border: "1px solid #ccc",
-                borderRadius: 6,
-                fontSize: 14,
-                minWidth: 50 
-            }}
-        >
-            <option value="">🏫 학교 </option>
-            {uniqueSchools.map(s => <option key={s} value={s}>{s}</option>)}
-
-        </select>
-        
-        {/* 4. 추가 버튼 */}
-        <button
-            onClick={() => addTaskByFilter(bulkTitle, bulkGrade, bulkSchool)}
-            disabled={!bulkTitle.trim()}
+          <div
             style={{
-                padding: "10px 18px", // 패딩 증가
-                background: bulkTitle.trim() ? "#22c55e" : "#cbd5e1", // 밝은 초록색
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                fontWeight: 700,
-                cursor: bulkTitle.trim() ? "pointer" : "not-allowed",
-                transition: "background 0.2s",
-                boxShadow: bulkTitle.trim() ? "0 2px 4px rgba(34,197,94,0.2)" : "none" // 그림자 효과
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 14px",
+              background: "#f9fafb",
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              flexWrap: "nowrap"
             }}
-        >
-            {bulkTitle.trim() ? "➕ 과제 추가" : "제목 입력 대기"}
-        </button>
-    </div>
+          >
 
-    
-</div>
+            {/* ▶ 왼쪽: 입력창 + 추가 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <input
+                style={{ ...inp, width: 120, height: 38 }}
+                placeholder="이름"
+                value={newStu.name || ""}
+                onChange={(e) => setNewStu(s => ({ ...s, name: e.target.value }))}
+              />
+
+              <select
+                style={{ ...inp, width: 90, height: 38 }}
+                value={newStu.grade || ""}
+                onChange={(e) => setNewStu(s => ({ ...s, grade: e.target.value }))}
+              >
+                <option value="">학년</option>
+                <option value="중1">중1</option><option value="중2">중2</option><option value="중3">중3</option>
+                <option value="고1">고1</option><option value="고2">고2</option><option value="고3">고3</option>
+              </select>
+
+              <input
+                style={{ ...inp, width: 150, height: 38 }}
+                placeholder="학교"
+                value={newStu.school || ""}
+                onChange={(e) => setNewStu(s => ({ ...s, school: e.target.value }))}
+              />
+
+              <input
+                style={{ ...inp, width: 140, height: 38 }}
+                placeholder="학생 연락처"
+                value={newStu.studentPhone || ""}
+                onChange={(e) => setNewStu(s => ({ ...s, studentPhone: e.target.value }))}
+              />
+
+              <input
+                style={{ ...inp, width: 140, height: 38 }}
+                placeholder="부모님 연락처"
+                value={newStu.parentPhone || ""}
+                onChange={(e) => setNewStu(s => ({ ...s, parentPhone: e.target.value }))}
+              />
+
+              <button
+                style={{
+                  ...btnD,
+                  height: 38,
+                  padding: "0 20px",
+                  fontWeight: 800,
+                  borderRadius: 8,
+                }}
+                onClick={addStudent}
+              >
+                추가
+              </button>
+            </div>
+
+            {/* ▶ 오른쪽: 새로고침 + 숨김학생보기 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                style={{
+                  ...btn,
+                  height: 38,
+                  borderRadius: 8,
+                  background: "#dbeafe",
+                  color: "#1e3a8a",
+                  fontWeight: 700,
+                  padding: "0 14px",
+                }}
+                onClick={reloadStudents}
+              >
+                🔄 새로고침
+              </button>
+
+              <button
+                style={{
+                  ...btn,
+                  height: 38,
+                  borderRadius: 8,
+                  background: showRemoved ? "#b91c1c" : "#e5e7eb",
+                  color: showRemoved ? "#fff" : "#111",
+                  fontWeight: 700,
+                  padding: "0 14px",
+                }}
+                onClick={() => setShowRemoved(!showRemoved)}
+              >
+                {showRemoved ? "숨김 해제" : "숨김학생보기"}
+              </button>
+            </div>
+
+          </div>
+
+
+
+
+
+
+
+
+
+          <div style={{
+            padding: "20px",
+            background: "#fff",
+            border: "1px solid #e5eeef", // 얇은 테두리 추가
+            borderRadius: 8, // 모서리 둥글게
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)", // 은은한 그림자
+            marginBottom: 16
+          }}>
+            <h3 style={{
+              margin: "0 0 12px",
+              fontSize: 16,
+              fontWeight: 700,
+              color: "#1e3a8a", // 제목 색상 변경
+              paddingBottom: 8,
+              borderBottom: "1px solid #f0f4f7" // 얇은 구분선
+            }}>
+              🎯 일괄과제 🎯
+            </h3>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+
+              {/* 1. 과제명 입력 */}
+              <input
+                type="text"
+                value={bulkTitle}
+                onChange={(e) => setBulkTitle(e.target.value)}
+                placeholder="📚 과제 제목 입력 (예: 수학 오답노트 10p)"
+                style={{
+                  flexGrow: 2, // 입력창을 더 넓게
+                  padding: "10px 12px",
+                  border: "1px solid #ccc",
+                  borderRadius: 6,
+                  fontSize: 14
+                }}
+              />
+
+              {/* 2. 학년 선택 드롭다운 */}
+              <select
+                value={bulkGrade}
+                onChange={(e) => setBulkGrade(e.target.value)}
+                style={{ padding: 8, border: "1px solid #ccc", borderRadius: 4 }}
+              >
+                <option value="">전체 학년</option>
+                {uniqueGrades.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+
+              {/* 3. 학교 선택 드롭다운 */}
+              <select
+                value={bulkSchool}
+                // 2. onChange를 학교 상태 설정 함수로 변경
+                onChange={(e) => setBulkSchool(e.target.value)}
+                style={{
+                  flexGrow: 1,
+                  padding: "8px 5px",
+                  border: "1px solid #ccc",
+                  borderRadius: 6,
+                  fontSize: 14,
+                  minWidth: 50
+                }}
+              >
+                <option value="">🏫 학교 </option>
+                {uniqueSchools.map(s => <option key={s} value={s}>{s}</option>)}
+
+              </select>
+
+              {/* 4. 추가 버튼 */}
+              <button
+                onClick={() => addTaskByFilter(bulkTitle, bulkGrade, bulkSchool)}
+                disabled={!bulkTitle.trim()}
+                style={{
+                  padding: "10px 18px", // 패딩 증가
+                  background: bulkTitle.trim() ? "#22c55e" : "#cbd5e1", // 밝은 초록색
+                  color: "white",
+                  border: "none",
+                  borderRadius: 6,
+                  fontWeight: 700,
+                  cursor: bulkTitle.trim() ? "pointer" : "not-allowed",
+                  transition: "background 0.2s",
+                  boxShadow: bulkTitle.trim() ? "0 2px 4px rgba(34,197,94,0.2)" : "none" // 그림자 효과
+                }}
+              >
+                {bulkTitle.trim() ? "➕ 과제 추가" : "제목 입력 대기"}
+              </button>
+            </div>
+
+
+          </div>
 
 
 
 
           {/* 표 */}
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, minWidth:1100 }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 1100 }}>
               <thead>
-                <tr style={{ borderBottom:"1px solid #eee", background:"#f8fafc" }}>
-                  <th style={{ padding:20, textAlign:"center" }}>순번</th>
-                  <th style={{ padding:10, textAlign:"center" }}>이름</th>
-                  <th style={{ padding:10 }}>학년</th>
-                  <th style={{ padding:10 }}>학교</th>
-                  <th style={{ padding:10, width:220 }}>시간<br/><span style={{ fontSize:11, color:"#6b7280" }}>(등원/하원 - 24H)</span></th>
-                  <th style={{ padding:10, width:90 }}>출결</th>
-                  <th style={{ padding:10, width:90 }}>순공</th>
-                  <th style={{ padding:10, width:160 }}>연락처</th>
-                  <th style={{ padding:10, width:140 }}>학생정보</th>
-                  <th style={{ padding:10, width:160 }}>상세</th>
+                <tr style={{ borderBottom: "1px solid #eee", background: "#f8fafc" }}>
+                  <th style={{ padding: 20, textAlign: "center" }}>순번</th>
+                  <th style={{ padding: 10, textAlign: "center" }}>이름</th>
+                  <th style={{ padding: 10 }}>학년</th>
+                  <th style={{ padding: 10 }}>학교</th>
+                  <th style={{ padding: 10, width: 220 }}>시간<br /><span style={{ fontSize: 11, color: "#6b7280" }}>(등원/하원 - 24H)</span></th>
+                  <th style={{ padding: 10, width: 90 }}>출결</th>
+                  <th style={{ padding: 10, width: 90 }}>순공</th>
+                  <th style={{ padding: 10, width: 160 }}>연락처</th>
+                  <th style={{ padding: 10, width: 140 }}>학생정보</th>
+                  <th style={{ padding: 10, width: 160 }}>상세</th>
                 </tr>
               </thead>
 
               <tbody>
-                {students.length===0 && (
-                  <tr><td colSpan={10} style={{ padding:18, textAlign:"center", color:"#888" }}>학생을 추가해 시작하세요.</td></tr>
+                {students.length === 0 && (
+                  <tr><td colSpan={10} style={{ padding: 18, textAlign: "center", color: "#888" }}>학생을 추가해 시작하세요.</td></tr>
                 )}
 
-{students
-    .filter(s => showRemoved || !s.removed)   // 기본적으로 숨김 학생은 안보임
-    .map((s, i) => {
-      const cell = day[s.id] ?? { status: "P" as StatusKey };
+                {students
+                  .filter(s => showRemoved || !s.removed)   // 기본적으로 숨김 학생은 안보임
+                  .map((s, i) => {
+                    const cell = day[s.id] ?? { status: "P" as StatusKey };
 
-    
-const enabled = new Set(cell.enabledSubjects || []);
-const running = !!(cell.time && !cell.outTime);
 
-                  return (
-                    <React.Fragment key={s.id}>
-                      <tr style={{ borderTop:"1px solid #f3f4f6" }}>
-                      <td style={{ padding:10, textAlign:"center" }}>
-  <div
-    style={{
-      width: 28, height: 28, borderRadius: "50%",
-      background: "#1e3a8a", color: "#fff",
-      display: "flex", justifyContent: "center", alignItems: "center",
-      fontSize: 13, fontWeight: 700,
-      boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-      margin: "0 auto"
-    }}
-    title={`${i + 1}번`}
-  >
-    {i + 1}
-  </div>
-</td>
+                    const enabled = new Set(cell.enabledSubjects || []);
+                    const running = !!(cell.time && !cell.outTime);
 
-<td
-  onClick={() => setSelectedStudentId(s.id)}   // ✅ 여기만 고치면 됩니다
-  style={{
-    color: "#111",
-    textDecoration: "none",
-    cursor: "pointer",
-    fontWeight: 800,
-    fontSize: 15,
-    letterSpacing: "0.2px",
+                    return (
+                      <React.Fragment key={s.id}>
+                        <tr style={{ borderTop: "1px solid #f3f4f6" }}>
+                          <td style={{ padding: 10, textAlign: "center" }}>
+                            <div
+                              style={{
+                                width: 28, height: 28, borderRadius: "50%",
+                                background: "#1e3a8a", color: "#fff",
+                                display: "flex", justifyContent: "center", alignItems: "center",
+                                fontSize: 13, fontWeight: 700,
+                                boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+                                margin: "0 auto"
+                              }}
+                              title={`${i + 1}번`}
+                            >
+                              {i + 1}
+                            </div>
+                          </td>
+
+                          <td
+                            onClick={() => setSelectedStudentId(s.id)}   // ✅ 여기만 고치면 됩니다
+                            style={{
+                              color: "#111",
+                              textDecoration: "none",
+                              cursor: "pointer",
+                              fontWeight: 800,
+                              fontSize: 15,
+                              letterSpacing: "0.2px",
+                            }}
+                          >
+                            {s.name}
+                          </td>
+                          <td style={{ padding: 10, textAlign: "center" }}>{s.grade || "-"}</td>
+                          <td style={{ padding: 10, textAlign: "center" }}>{s.school || "-"}</td>
+
+                          {/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
+                          <td style={{ padding: 10 }}>
+                            {/* 등원 줄 */}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                      <input
+  type="time"
+  value={cell.time ?? ""}
+  onChange={(e) => {
+    const v = e.target.value;
+    updateDayCell(date, s.id, (base) => {
+      return {
+        ...base,
+        time: v || undefined
+      };
+    });
   }}
->
-  {s.name}
-</td>
-                        <td style={{ padding:10, textAlign:"center" }}>{s.grade || "-"}</td>
-                        <td style={{ padding:10, textAlign:"center" }}>{s.school || "-"}</td>
+  style={timeInp}
+/>
 
-                        {/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
-                        <td style={{ padding:10 }}>
-                          {/* 등원 줄 */}
-                          <div style={{display:"grid", gridTemplateColumns:"1fr auto auto", gap:6, alignItems:"center", marginBottom:6}}>
-                            <input type="time" value={cell.time ?? ""} onChange={(e)=>setTime(s.id, e.target.value)} style={timeInp}/>
-                            <button
-
+<button
   style={btn}
   onClick={() => {
-    setTimeNow(s.id);
-    handleCheckin(s.id); // ✅ id로 변경
+    // 직접 setTimeNow 제거 → 바로 updateDayCell로 처리
+    const now = nowHM();
+    updateDayCell(date, s.id, (base) => {
+      return {
+        ...base,
+        time: now
+      };
+    });
+    handleCheckin(s.id); // 기존 기능 유지
   }}
 >
   등원
 </button>
-                            <button
-                              style={btnXS}
-                              title="등원 시간 지우기"
-                              onClick={() => { if (confirm("이 학생의 등원 시간을 지울까요?")) setTime(s.id, ""); }}
-                            >×</button>
-                          </div>
-                          {/* 하원 줄 */}
-                          <div style={{display:"grid", gridTemplateColumns:"1fr auto auto", gap:6, alignItems:"center"}}>
-                            <input type="time" value={cell.outTime ?? ""} onChange={(e)=>setOutTime(s.id, e.target.value)} style={timeInp}/>
-                            <button
-  style={btn}
+
+<button
+  style={btnXS}
+  title="등원 시간 지우기"
   onClick={() => {
-    setOutTimeNow(s.id);      // 기존 기능 유지
-    handleCheckout(s.id); // ✅ id 기반으로 변경  // Firestore에 하원 데이터 저장
-  }}
->
-  하원
-</button>
-                            <button
-                              style={btnXS}
-                              title="하원 시간 지우기"
-                              onClick={() => { if (confirm("이 학생의 하원 시간을 지울까요?")) setOutTime(s.id, ""); }}
-                            >×</button>
-                          </div>
-                        </td>
-
-                        {/* 상태 팝업 */}
-                       <td style={{ padding: 10, position: "relative" }}>
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "center",   // 가운데 정렬
-      paddingLeft: 20,            // ←← 오른쪽으로 밀기!
-    }}
-  >
-    <button
-      style={{
-        padding: "4px 10px",
-        borderRadius: 10,
-        fontSize: 13,
-        fontWeight: 700,
-        height: 32,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: style.status[cell.status].background,
-        color: style.status[cell.status].color,
-        border: `1px solid ${style.status[cell.status].color}`,
-        cursor: "pointer",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-      }}
-      onClick={() =>
-        setStatusPickerFor(prev => (prev === s.id ? null : s.id))
-      }
-    >
-      {STATUS[cell.status].label}
-    </button>
-  </div>
-                          {statusPickerFor === s.id && (
-                            <div style={statusMenuStyle} onMouseLeave={()=>setStatusPickerFor(null)}>
-                              {(["P","L","A","E"] as StatusKey[]).map(k => (
-                               <div
-  key={k}
-  style={{
-    ...statusItemStyle,
-    background: style.status[k].background,
-    color: style.status[k].color,
-    border: `1px solid ${style.status[k].color}`,
-  }}
-  onClick={() => { setStatus(s.id, k); setStatusPickerFor(null); }}
->
-  {STATUS[k].label}
-</div>
-                              ))}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* 순공 (자동 라이브) */}
-                        <td style={{ padding:10, fontWeight:700, textAlign:"center", whiteSpace:"nowrap" }}>
-                        {(() => {
-  const _force = liveTick; // 실제 값으로 읽어서 React가 이 블록을 다시 계산하도록 보장
-  const minutes = running ? netStudyMinLive(cell) : netStudyMin(cell);
-  return (
-    <>
-      {minToHM(minutes)}
-      {running && <span style={{ marginLeft:6, fontSize:11, color:"#16a34a" }}>●</span>}
-    </>
-  );
-})()}
-                        </td>
-
-                        {/* 연락처 토글 */}
-                        <td style={{ padding:10, textAlign:"center" }}>
-                          <button style={btn} onClick={() => setShowContact(prev => ({ ...prev, [s.id]: !prev[s.id] }))}>
-                            {showContact[s.id] ? "숨기기" : "연락처"}
-                          </button>
-                          {showContact[s.id] && (
-                            <div style={{ fontSize:12, color:"#374151", marginTop:6, lineHeight:1.45, textAlign:"center" }}>
-                              <div>학생: {s.studentPhone || "-"}</div>
-                              <div>부모: {s.parentPhone || "-"}</div>
-                            </div>
-                          )}
-                        </td>
-
-                       {/* 작업 */}
-<td style={{ padding:10 }}>
-  <div style={{ display:"flex", gap:8, justifyContent:"center", alignItems:"center" }}>
-    {/* 수정 */}
-    <button style={btn} onClick={()=>setEditStudent(s.id)}>✏️ 정보 </button>
-
-    {/* 숨김 / 복원 */}
-    {!s.removed ? (
-      <button
-        style={{ ...btn, background:"#FCE7F3", color:"#9D174D", border:"1px solid #FBCFE8" }}
-        onClick={() => {
-          if (confirm(`"${s.name}" 학생을 목록에서 숨기겠습니까? (기록은 유지됩니다)`)) {
-            removeStudent(s.id);
-          }
-        }}
-      >
-        🙈 숨김
-      </button>
-    ) : (
-      <button
-        style={{ ...btn, background:"#16a34a", color:"#fff", border:"1px solid #16a34a" }}
-        onClick={() => {
-          setStore(prev => {
-            const groups = prev.groups.map(g =>
-              g.id === currentGroup.id
-                ? {
-                    ...g,
-                    students: g.students.map(x =>
-                      x.id === s.id ? { ...x, removed: false } : x
-                    ),
-                  }
-                : g
-            );
-            return { ...prev, groups };
-          });
-        }}
-      >
-        👀 복원
-      </button>
-    )}
-
-    {/* 영구삭제 (작은 회색 버튼) */}
-    <button
-      aria-label="영구삭제"
-      title="영구삭제 (모든 기록도 삭제)"
-      onClick={() => {
-  if (!confirm(`정말로 "${s.name}" 학생을 영구 삭제할까요?\n(모든 기록도 삭제됩니다)`)) return;
-
-  // 1️⃣ 로컬 기록 삭제
-  setStore(prev => {
-    const records = { ...prev.records };
-    Object.keys(records).forEach(dt => {
-      if (records[dt]?.[s.id]) {
-        const d0 = { ...records[dt] };
-        delete d0[s.id];
-        records[dt] = d0;
-      }
+    if (!confirm("이 학생의 등원 시간을 지울까요?")) return;
+    updateDayCell(date, s.id, (base) => {
+      return {
+        ...base,
+        time: undefined
+      };
     });
-    const groups = prev.groups.map(g =>
-      g.id === currentGroup.id
-        ? { ...g, students: g.students.filter(x => x.id !== s.id) }
-        : g
-    );
-    return { ...prev, groups, records };
-  });
+  }}
+>
+  ×
+</button>
+                            </div>
+                            {/* 하원 줄 */}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 6, alignItems: "center" }}>
+                              <input type="time" value={cell.outTime ?? ""} onChange={(e) => setOutTime(s.id, e.target.value)} style={timeInp} />
+                              <button
+                                style={btn}
+                                onClick={() => {
+                                  setOutTimeNow(s.id);      // 기존 기능 유지
+                                  handleCheckout(s.id); // ✅ id 기반으로 변경  // Firestore에 하원 데이터 저장
+                                }}
+                              >
+                                하원
+                              </button>
+                              <button
+                                style={btnXS}
+                                title="하원 시간 지우기"
+                                onClick={() => { if (confirm("이 학생의 하원 시간을 지울까요?")) setOutTime(s.id, ""); }}
+                              >×</button>
+                            </div>
+                          </td>
 
-  // 2️⃣ Firestore에서도 완전 삭제
-  deleteStudentFromFS(s.id);
+                          {/* 상태 팝업 */}
+                          <td style={{ padding: 10, position: "relative" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "center",   // 가운데 정렬
+                                paddingLeft: 20,            // ←← 오른쪽으로 밀기!
+                              }}
+                            >
+                              <button
+                                style={{
+                                  padding: "4px 10px",
+                                  borderRadius: 10,
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  height: 32,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  background: style.status[cell.status].background,
+                                  color: style.status[cell.status].color,
+                                  border: `1px solid ${style.status[cell.status].color}`,
+                                  cursor: "pointer",
+                                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                                }}
+                                onClick={() =>
+                                  setStatusPickerFor(prev => (prev === s.id ? null : s.id))
+                                }
+                              >
+                                {STATUS[cell.status].label}
+                              </button>
+                            </div>
+                            {statusPickerFor === s.id && (
+                              <div style={statusMenuStyle} onMouseLeave={() => setStatusPickerFor(null)}>
+                                {(["P", "L", "A", "E"] as StatusKey[]).map(k => (
+                                  <div
+                                    key={k}
+                                    style={{
+                                      ...statusItemStyle,
+                                      background: style.status[k].background,
+                                      color: style.status[k].color,
+                                      border: `1px solid ${style.status[k].color}`,
+                                    }}
+                                    onClick={() => { setStatus(s.id, k); setStatusPickerFor(null); }}
+                                  >
+                                    {STATUS[k].label}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
 
-  // 3️⃣ 안내
-  alert(`🗑️ "${s.name}" 학생이 완전히 삭제되었습니다.`);
-}}
-      style={{
-        width: 26,
-        height: 60,
-        borderRadius: 6,
-        border: "1px solid #CBD5E1",
-        background: "#F8FAFC",
-        color: "#1E3A8A",
-        fontSize: 13,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: 0.7,
-        transition: "all .2s",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.opacity = "1";
-        (e.currentTarget as HTMLButtonElement).style.background = "#e5e7eb";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.opacity = "0.7";
-        (e.currentTarget as HTMLButtonElement).style.background = "#f3f4f6";
-      }}
-    >
-      삭제🗑️
-    </button>
-  </div>
-</td>
-                        {/* 상세 버튼 */}
-<td style={{ padding:10, textAlign:"center", verticalAlign:"middle" }}>
-  <button
-    style={{
-      ...btn,
-      margin: "0 auto",
-      display: "block",
-      width: 60,
-      background: showDetail[s.id] ? "#1e3a8a" : "#fff",
-      color: showDetail[s.id] ? "#fff" : "#111",
-      border: showDetail[s.id] ? "1px solid #1e3a8a" : "1px solid #dde1ea",
-      fontWeight: 600,
-      transition: "0.2s",
-    }}
-    onClick={() => setShowDetail(prev => ({ ...prev, [s.id]: !prev[s.id] }))}
-  >
-    {showDetail[s.id] ? "닫기" : "상세"}
-  </button>
-</td>
-                      </tr>
+                          {/* 순공 (자동 라이브) */}
+                          <td style={{ padding: 10, fontWeight: 700, textAlign: "center", whiteSpace: "nowrap" }}>
+                            {(() => {
+                              const _force = liveTick; // 실제 값으로 읽어서 React가 이 블록을 다시 계산하도록 보장
+                              const minutes = running ? netStudyMinLive(cell) : netStudyMin(cell);
+                              return (
+                                <>
+                                  {minToHM(minutes)}
+                                  {running && <span style={{ marginLeft: 6, fontSize: 11, color: "#16a34a" }}>●</span>}
+                                </>
+                              );
+                            })()}
+                          </td>
 
-                      {/* 상세 펼침 */}
-                      {showDetail[s.id] && (
-                        <tr>
-                          <td colSpan={10} style={{ background:"#fcfcfd", borderTop:"1px dashed #374151", padding:8 }}>
+                          {/* 연락처 토글 */}
+                          <td style={{ padding: 10, textAlign: "center" }}>
+                            <button style={btn} onClick={() => setShowContact(prev => ({ ...prev, [s.id]: !prev[s.id] }))}>
+                              {showContact[s.id] ? "숨기기" : "연락처"}
+                            </button>
+                            {showContact[s.id] && (
+                              <div style={{ fontSize: 12, color: "#374151", marginTop: 6, lineHeight: 1.45, textAlign: "center" }}>
+                                <div>학생: {s.studentPhone || "-"}</div>
+                                <div>부모: {s.parentPhone || "-"}</div>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* 작업 */}
+                          <td style={{ padding: 10 }}>
+                            <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
+                              {/* 수정 */}
+                              <button style={btn} onClick={() => setEditStudent(s.id)}>✏️ 정보 </button>
+
+                              {/* 숨김 / 복원 */}
+                              {!s.removed ? (
+                                <button
+                                  style={{ ...btn, background: "#FCE7F3", color: "#9D174D", border: "1px solid #FBCFE8" }}
+                                  onClick={() => {
+                                    if (confirm(`"${s.name}" 학생을 목록에서 숨기겠습니까? (기록은 유지됩니다)`)) {
+                                      removeStudent(s.id);
+                                    }
+                                  }}
+                                >
+                                  🙈 숨김
+                                </button>
+                              ) : (
+                                <button
+                                  style={{ ...btn, background: "#16a34a", color: "#fff", border: "1px solid #16a34a" }}
+                                  onClick={() => {
+                                    setStore(prev => {
+                                      const groups = prev.groups.map(g =>
+                                        g.id === currentGroup.id
+                                          ? {
+                                            ...g,
+                                            students: g.students.map(x =>
+                                              x.id === s.id ? { ...x, removed: false } : x
+                                            ),
+                                          }
+                                          : g
+                                      );
+                                      return { ...prev, groups };
+                                    });
+                                  }}
+                                >
+                                  👀 복원
+                                </button>
+                              )}
+
+                              {/* 영구삭제 (작은 회색 버튼) */}
+                              <button
+                                aria-label="영구삭제"
+                                title="영구삭제 (모든 기록도 삭제)"
+                                onClick={() => {
+                                  if (!confirm(`정말로 "${s.name}" 학생을 영구 삭제할까요?\n(모든 기록도 삭제됩니다)`)) return;
+
+                                  // 1️⃣ 로컬 기록 삭제
+                                  setStore(prev => {
+                                    const records = { ...prev.records };
+                                    Object.keys(records).forEach(dt => {
+                                      if (records[dt]?.[s.id]) {
+                                        const d0 = { ...records[dt] };
+                                        delete d0[s.id];
+                                        records[dt] = d0;
+                                      }
+                                    });
+                                    const groups = prev.groups.map(g =>
+                                      g.id === currentGroup.id
+                                        ? { ...g, students: g.students.filter(x => x.id !== s.id) }
+                                        : g
+                                    );
+                                    return { ...prev, groups, records };
+                                  });
+
+                                  // 2️⃣ Firestore에서도 완전 삭제
+                                  deleteStudentFromFS(s.id);
+
+                                  // 3️⃣ 안내
+                                  alert(`🗑️ "${s.name}" 학생이 완전히 삭제되었습니다.`);
+                                }}
+                                style={{
+                                  width: 26,
+                                  height: 60,
+                                  borderRadius: 6,
+                                  border: "1px solid #CBD5E1",
+                                  background: "#F8FAFC",
+                                  color: "#1E3A8A",
+                                  fontSize: 13,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  opacity: 0.7,
+                                  transition: "all .2s",
+                                }}
+                                onMouseEnter={(e) => {
+                                  (e.currentTarget as HTMLButtonElement).style.opacity = "1";
+                                  (e.currentTarget as HTMLButtonElement).style.background = "#e5e7eb";
+                                }}
+                                onMouseLeave={(e) => {
+                                  (e.currentTarget as HTMLButtonElement).style.opacity = "0.7";
+                                  (e.currentTarget as HTMLButtonElement).style.background = "#f3f4f6";
+                                }}
+                              >
+                                삭제🗑️
+                              </button>
+                            </div>
+                          </td>
+                          {/* 상세 버튼 */}
+                          <td style={{ padding: 10, textAlign: "center", verticalAlign: "middle" }}>
+                            <button
+                              style={{
+                                ...btn,
+                                margin: "0 auto",
+                                display: "block",
+                                width: 60,
+                                background: showDetail[s.id] ? "#1e3a8a" : "#fff",
+                                color: showDetail[s.id] ? "#fff" : "#111",
+                                border: showDetail[s.id] ? "1px solid #1e3a8a" : "1px solid #dde1ea",
+                                fontWeight: 600,
+                                transition: "0.2s",
+                              }}
+                              onClick={() => setShowDetail(prev => ({ ...prev, [s.id]: !prev[s.id] }))}
+                            >
+                              {showDetail[s.id] ? "닫기" : "상세"}
+                            </button>
+                          </td>
+                        </tr>
+
+                        {/* 상세 펼침 */}
+                        {showDetail[s.id] && (
+                          <tr>
+                            <td colSpan={10} style={{ background: "#fcfcfd", borderTop: "1px dashed #374151", padding: 8 }}>
 
                               {/* ✅ 반응형 그리드 레이아웃 / 4구역 공통 박스스 */}
                               <div
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", // 👈 최소폭 기준으로 자동 줄바꿈
+                                  gap: 12,
+                                  alignItems: "stretch",
+                                }}
+                              >
+                                {/* 과목 토글 + 시간 입력 */}
+                                <div style={{ background: "#fff", border: "2px solid #1e3a8a", borderRadius: 15, padding: 7 }}>
+                                  <div style={sectionTitle}>ACADEMY SUBJECTS</div>
+
+                                  {/* ✅ 과목 버튼들 */}
+                                  <div
+                                    style={{
+                                      marginTop: 6,
+                                      display: "grid",
+                                      gridTemplateColumns: "repeat(6, 1fr)",
+                                      gap: 6,
+                                      justifyItems: "center",
+                                    }}
+                                  >
+                                    {(["영어", "수학", "국어", "과학", "기타", "학교"] as AcademyType[]).map((sub) => {
+                                      const on = enabled.has(sub);
+                                      return (
+                                        <button
+                                          key={sub}
+                                          style={{
+                                            ...chip(on),
+                                            width: "100%",
+                                            fontWeight: 500,
+                                            fontSize: 12,
+                                            borderRadius: 8,
+                                            height: 36,
+                                            transition: "all 0.2s",
+                                          }}
+                                          onClick={() => toggleSubject(s.id, sub)}
+                                        >
+                                          {sub}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* ✅ 오늘 켠 과목들만 시간칸 표시 */}
+                                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                                    {(cell.enabledSubjects || []).map((sub) => {
+                                      const subjectData = cell.academyBySubject?.[sub] || {};
+                                      const slots = (subjectData.slots || []) as TimeSlot[];
+                                      const slot = slots[0] || {};
+                                      const sumMin = getSubjectSumMin(cell, sub);
+
+                                      return (
+                                        <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                          <span style={subjectLabel(sub)}>{sub}</span>
+
+                                          <input
+                                            type="time"
+                                            value={slot.from ?? ""}
+                                            onChange={(e) => setAcademyTime(s.id, sub, "from", e.target.value)}
+                                            style={{
+                                              ...timeInpTight,
+                                              flex: "1 1 90px",
+                                              fontWeight: 600,
+                                              color: "#2b2b2b",
+                                            }}
+                                          />
+
+                                          <span style={{ fontSize: 12, color: "#1f1f1f", fontWeight: 600 }}>~</span>
+
+                                          <input
+                                            type="time"
+                                            value={slot.to ?? ""}
+                                            onChange={(e) => setAcademyTime(s.id, sub, "to", e.target.value)}
+                                            style={{
+                                              ...timeInpTight,
+                                              flex: "1 1 90px",
+                                              fontWeight: 600,
+                                              color: "#2b2b2b",
+                                            }}
+                                          />
+
+                                          <div style={{ marginLeft: "auto", fontSize: 12, color: "#374151" }}>
+                                            누적 <b>{minToHM(sumMin)}</b>
+                                          </div>
+
+                                          <button
+                                            style={btnXS}
+                                            title="시간이 있으면 초기화 / 없으면 과목 해제"
+                                            onClick={() => smartClearOrDisable(s.id, sub)}
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* ✅ 학원 보충/연장 등록 (카드 내부 통합) */}
+                                  <div style={{ marginTop: 15, paddingTop: 8, borderTop: "1px dashed #cbd5e1" }}>
+                                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 6 }}>
+                                      🕓 보충 / 연장 등록
+                                    </div>
+
+                                    {/* 새 보충 입력줄 */}
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                                      <select id="supplement-subject" style={{ ...inp, width: 60, fontSize: 12 }} defaultValue="">
+                                        <option value="">과목</option>
+                                        {["영어", "수학", "국어", "과학", "기타", "학교"].map((sub) => (
+                                          <option key={sub} value={sub}>{sub}</option>
+                                        ))}
+                                      </select>
+
+                                      <input
+                                        type="time"
+                                        id="supplement-from"
+                                        style={{
+                                          ...inp,
+                                          width: 165,           // ⬅️ 크기 늘림 (기존 85 → 110)
+                                          height: 32,           // ⬅️ 버튼 안 잘리게 높이 추가
+                                          background: "#e0f2fe",  // 🌤️ 파스텔 하늘색 (Tailwind sky-100 계열)
+                                          border: "none",
+                                          borderRadius: 6,
+                                          fontWeight: 600,
+                                          color: "#1e3a8a",       // 글자는 조금 진한 네이비톤
+                                          textAlign: "center",
+                                        }}
+                                      />
+                                      <span style={{ fontSize: 12 }}>~</span>
+                                      <input
+                                        type="time"
+                                        id="supplement-to"
+                                        style={{
+                                          ...inp,
+                                          width: 180,           // ⬅️ 동일하게
+                                          height: 32,
+                                          background: "#e0f2fe",  // 🌤️ 파스텔 하늘색 (Tailwind sky-100 계열)
+                                          border: "none",
+                                          borderRadius: 6,
+                                          fontWeight: 600,
+                                          color: "#1e3a8a",       // 글자는 조금 진한 네이비톤
+                                          textAlign: "center",
+                                        }}
+                                      />
+
+                                      <button
+                                        style={{
+                                          ...btn,
+                                          background: "#93C5FD",
+                                          color: "#fff",
+                                          fontSize: 12,
+                                          padding: "5px 10px",
+                                          borderRadius: 8,
+                                        }}
+                                        onClick={() => {
+                                          const sub = (document.getElementById("supplement-subject") as HTMLSelectElement)?.value;
+                                          const from = (document.getElementById("supplement-from") as HTMLInputElement)?.value;
+                                          const to = (document.getElementById("supplement-to") as HTMLInputElement)?.value;
+                                          if (!sub || !from || !to) return alert("과목과 시간을 모두 입력하세요.");
+
+                                          setStore((prev) => {
+  const records = { ...prev.records };
+  const d0 = { ...(records[date] || {}) };
+  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+
+  cell.overrideAcademyTimes = cell.overrideAcademyTimes || {};
+  cell.overrideAcademyTimes[sub] = {
+    subject: sub,
+    from,
+    to,
+    date,
+  };
+
+  d0[s.id] = cell;
+  records[date] = d0;
+
+  // 🔥 Firestore 동기 저장
+  saveRecordToFS(date, s.id, cell);
+
+  return { ...prev, records };
+});
+
+                                          (document.getElementById("supplement-subject") as HTMLSelectElement).value = "";
+                                          (document.getElementById("supplement-from") as HTMLInputElement).value = "";
+                                          (document.getElementById("supplement-to") as HTMLInputElement).value = "";
+                                        }}
+                                      >
+                                        등록
+                                      </button>
+                                    </div>
+
+                                    {/* 등록된 보충 리스트 */}
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                      {cell.overrideAcademyTimes && Object.entries(cell.overrideAcademyTimes).length > 0 ? (
+                                        Object.entries(cell.overrideAcademyTimes).map(([key, t]) => (
+                                          <div
+                                            key={key}
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              justifyContent: "space-between",
+                                              background: "#f0f9ff",  // 💎 연한 하늘색
+                                              border: "1px solid #bae6fd",
+                                              borderRadius: 8,
+                                              padding: "4px 8px",
+                                              fontSize: 12,
+                                            }}
+                                          >
+                                            <div>
+                                              <b style={{ color: "#1d4ed8" }}>{t.subject}</b> — {t.from} ~ {t.to}
+                                              <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 6 }}>
+                                                ({t.date})
+                                              </span>
+                                            </div>
+
+                                            <button
+                                              style={{
+                                                background: "#fee2e2",
+                                                border: "1px solid #fecaca",
+                                                color: "#b91c1c",
+                                                fontWeight: 700,
+                                                fontSize: 14,
+                                                borderRadius: 8,
+                                                width: 28,
+                                                height: 28,
+                                                display: "grid",
+                                                placeItems: "center",
+                                                cursor: "pointer",
+                                                transition: "all 0.15s ease",
+                                              }}
+                                              title="삭제"
+                                              onClick={() => {
+                                                if (!confirm(`${t.subject} (${t.date}) 보충시간을 삭제할까요?`)) return;
+                                               setStore((prev) => {
+  const records = { ...prev.records };
+  const d0 = { ...(records[date] || {}) };
+  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+  if (cell.overrideAcademyTimes) delete cell.overrideAcademyTimes[key];
+  d0[s.id] = cell;
+  records[date] = d0;
+
+  saveRecordToFS(date, s.id, cell);
+
+  return { ...prev, records };
+});
+                                              }}
+                                              onMouseOver={(e) => (e.currentTarget.style.background = "#fecaca")}
+                                              onMouseOut={(e) => (e.currentTarget.style.background = "#fee2e2")}
+                                            >
+                                              ×
+                                            </button>
+                                          </div>
+                                        ))
+                                      ) : (
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>등록된 보충이 없습니다.</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+
+
+                                {/* 화장실/식사/Sleep — RESET ZONE */}
+                                <div style={{ background: "#fff", border: "3px solid #b71c1c", borderRadius: 10, padding: 10, height: "100%", }}>
+                                  <div style={sectionTitle}> RESET ZONE </div>
+
+                                  <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                                    {/* 화장실 & 물 — 7분씩 가감 */}
+                                    <div>
+                                      <div style={{ fontSize: 12, color: "#059669", fontWeight: 700, marginBottom: 6 }}>
+                                        ***   화장실 & 물
+                                      </div>
+
+                                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                        {/* -1 (최소 0회) */}
+                                        <button
+                                          style={{ ...btn, width: 32 }}
+                                          onClick={() => {
+                                            const curr = cell.restroomCount || 0;
+                                            const next = Math.max(0, curr - 1);
+                                            setRestroomCount(s.id, next); // 내부에서 next*7분 반영
+                                          }}
+                                          title="한 번 누를 때마다 7분 차감"
+                                        >
+                                          −
+                                        </button>
+
+                                        {/* +1 (최대 5회에서 멈춤) */}
+                                        <button
+                                          style={{ ...btn }}
+                                          onClick={() => {
+                                            const curr = cell.restroomCount || 0;
+                                            const next = Math.min(5, curr + 1);
+                                            setRestroomCount(s.id, next); // 내부에서 next*7분 반영
+                                          }}
+                                          title="한 번 누를 때마다 7분 추가"
+                                        >
+                                          +1회 (+7분)
+                                        </button>
+
+                                        {/* 현재 합계 표시 */}
+                                        <div style={{ fontSize: 12, color: "#374151" }}>
+                                          합계: <b>{cell.restroomCount || 0}회</b> / <b>{cell.restroomMin || 0}분</b>
+                                        </div>
+                                      </div>
+
+                                      <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+                                        * 1회 = 7분, 최소 0회 · 최대 5회
+                                      </div>
+
+                                      {/* 이동 / 통학 */}
+                                      <div>
+                                        <div style={{ fontSize: 12, color: "#2563eb", fontWeight: 700, marginBottom: 6 }}>
+                                          🚍 이동 / 통학
+                                        </div>
+
+                                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                          {/* +30분 */}
+                                          <button
+                                            style={btn}
+                                            onClick={() => {
+                                              const curr = cell.commuteMin || 0;
+                                              const next = curr + 30;
+                                              setStore(prev => {
+  const records = { ...prev.records };
+  const d0 = { ...(records[date] || {}) };
+  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+  const curr = (cell as any).commuteMin || 0;
+  const next: DayCell = { ...cell, commuteMin: curr + 30 };
+
+  d0[s.id] = next;
+  records[date] = d0;
+
+  saveRecordToFS(date, s.id, next);
+
+  return { ...prev, records };
+});
+                                            }}
+                                          >
+                                            +30분
+                                          </button>
+
+                                          {/* +60분 */}
+                                          <button
+                                            style={btn}
+                                            onClick={() => {
+                                              const curr = cell.commuteMin || 0;
+                                              const next = curr + 60;
+                                              setStore(prev => {
+  const records = { ...prev.records };
+  const d0 = { ...(records[date] || {}) };
+  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+  const curr = (cell as any).commuteMin || 0;
+  const next: DayCell = { ...cell, commuteMin: curr + 60 };
+
+  d0[s.id] = next;
+  records[date] = d0;
+
+  saveRecordToFS(date, s.id, next);
+
+  return { ...prev, records };
+});
+                                            }}
+                                          >
+                                            +60분
+                                          </button>
+
+
+
+                                          {/* 직접입력 */}
+                                          <span style={{ fontSize: 12, color: "#6b7280" }}>직접:</span>
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            placeholder="분"
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                const v = Number((e.target as HTMLInputElement).value);
+                                                if (Number.isFinite(v) && v > 0) {
+                                                  setStore(prev => {
+                                                    const records = { ...prev.records };
+                                                    const d0 = { ...(records[date] || {}) };
+                                                    const newCell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+                                                    (newCell as any).commuteMin = (newCell as any).commuteMin || 0;
+                                                    (newCell as any).commuteMin += v;
+                                                    d0[s.id] = newCell;
+                                                    records[date] = d0;
+                                                    return { ...prev, records };
+                                                  });
+                                                  (e.target as HTMLInputElement).value = "";
+                                                }
+                                              }
+                                            }}
+                                            style={{ ...inp, width: 80, textAlign: "right" }}
+                                          />
+
+                                          {/* 합계 표시 */}
+                                          <div style={{ fontSize: 12, color: "#374151" }}>
+                                            합계: <b>{cell.commuteMin || 0}분</b>
+                                          </div>
+                                        </div>
+                                      </div>
+
+
+
+                                    </div>
+                                    {/* 식사 — 버튼 + 직접입력(Enter시 합계에 바로 반영) */}
+                                    <div>
+                                      <div style={{ fontSize: 12, color: "#059669", fontWeight: 700, marginBottom: 6 }}>
+                                        *** 식사
+                                      </div>
+
+                                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                                        {/* 단축 버튼 */}
+                                        <button style={btn} onClick={() => addMealMinutes(s.id, 60)}>+60분</button>
+                                        <button
+                                          style={{ ...btn, background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FCA5A5" }}
+                                          onClick={() => subtractMealMinutes(s.id, 30)}
+                                        >
+                                          −30분
+                                        </button>
+
+                                        <span style={{ fontSize: 12, color: "#6b7280" }}>직접:</span>
+
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          placeholder="분"
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              const el = e.target as HTMLInputElement;
+                                              const v = Number(el.value);
+                                              if (Number.isFinite(v) && v > 0) {
+                                                addMealMinutes(s.id, v); // 합계 즉시 반영
+                                                el.value = "";
+                                              }
+                                            }
+                                          }}
+                                          onBlur={(e) => {
+                                            const v = Number(e.currentTarget.value);
+                                            if (Number.isFinite(v) && v > 0) {
+                                              addMealMinutes(s.id, v);
+                                              e.currentTarget.value = "";
+                                            }
+                                          }}
+                                          style={{ ...inp, width: 80, textAlign: "right" }}
+                                        />
+                                      </div>
+
+                                      <div style={{ fontSize: 12, color: "#374151" }}>
+                                        합계: <b>{cell.mealMin || 0}분</b>
+                                      </div>
+                                    </div>
+
+                                    {/* ⚠️ Penalty Zone */}
+                                    <div
+                                      style={{
+                                        background: "#fff",
+                                        borderRadius: 10,
+                                        padding: 10,
+                                        marginTop: 10
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          fontSize: 13,
+                                          fontWeight: 1000,
+                                          color: "#b91c1c",
+                                          textAlign: "center",
+                                          background: "#fee2e2",
+                                          borderRadius: 9,
+                                          padding: "9px 0",
+                                          marginBottom: 10,
+                                          letterSpacing: "0.5px"
+                                        }}
+                                      >
+                                        PENALTY ZONE
+                                      </div>
+
+                                      {/* 💤 Sleep Penalty */}
+                                      <div
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "auto 28px 46px 28px", // 라벨 | − | 숫자 | +
+                                          alignItems: "center",
+                                          gap: 10,
+                                          background: "#FFF5F5",
+                                          borderRadius: 10,
+                                          padding: "6px 12px",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            gridColumn: "1 / 2",
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            color: "#B91C1C",
+                                            textAlign: "center",
+                                            whiteSpace: "nowrap",
+                                          }}
+                                        >
+                                          Sleep penalty
+                                        </span>
+
+                                        <button
+                                          style={{
+                                            ...btn,
+                                            gridColumn: "2 / 3",
+                                            width: 28,
+                                            height: 28,
+                                            padding: 0,
+                                            display: "grid",
+                                            placeItems: "center",
+                                            border: "3px solid #FAC5A5",
+                                            background: "#FFF",
+                                            color: "#B91C1C",
+                                            fontWeight: 800,
+                                          }}
+                                          onClick={() => {
+                                            setStore((prev) => {
+                                              const records = { ...prev.records };
+                                              const d0 = { ...(records[date] || {}) };
+                                              const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+                                              const current = (cell as any).sleepPenaltyCount || 0;
+                                              (cell as any).sleepPenaltyCount = Math.max(0, current - 1);
+                                              d0[s.id] = cell;
+                                              records[date] = d0;
+                                              return { ...prev, records };
+                                            });
+                                          }}
+                                        >
+                                          −
+                                        </button>
+
+                                        <span
+                                          style={{
+                                            gridColumn: "3 / 4",
+                                            width: 46,
+                                            textAlign: "center",
+                                            fontSize: 14,
+                                            fontWeight: 800,
+                                            color: "#B91C1C",
+                                          }}
+                                        >
+                                          {cell.sleepPenaltyCount || 0}회
+                                        </span>
+
+                                       <button
   style={{
+    ...btn,
+    gridColumn: "4 / 5",
+    width: 28,
+    height: 28,
+    padding: 0,
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", // 👈 최소폭 기준으로 자동 줄바꿈
-    gap: 12,
-    alignItems: "stretch",
+    placeItems: "center",
+    background: "#FFF",
+    border: "3px solid #FAC5A5",
+    color: "#B91C1C",
+    fontWeight: 800,
+  }}
+  onClick={() => {
+    updateDayCell(date, s.id, (cell) => {
+      const curr = cell.sleepPenaltyCount || 0;
+      return { ...cell, sleepPenaltyCount: curr + 1 };
+    });
   }}
 >
-                        {/* 과목 토글 + 시간 입력 */}
-<div style={{ background: "#fff", border: "2px solid #1e3a8a", borderRadius: 15, padding: 7 }}>
-  <div style={sectionTitle}>ACADEMY SUBJECTS</div>
+  +
+</button>
+                                      </div>
 
-  {/* ✅ 과목 버튼들 */}
-  <div
-    style={{
-      marginTop: 6,
-      display: "grid",
-      gridTemplateColumns: "repeat(6, 1fr)",
-      gap: 6,
-      justifyItems: "center",
-    }}
-  >
-    {(["영어", "수학", "국어", "과학", "기타", "학교"] as AcademyType[]).map((sub) => {
-      const on = enabled.has(sub);
-      return (
-        <button
-          key={sub}
-          style={{
-            ...chip(on),
-            width: "100%",
-            fontWeight: 500,
-            fontSize: 12,
-            borderRadius: 8,
-            height: 36,
-            transition: "all 0.2s",
-          }}
-          onClick={() => toggleSubject(s.id, sub)}
-        >
-          {sub}
-        </button>
-      );
-    })}
-  </div>
+                                      {/* ⏰ Late Penalty */}
+                                      <div
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "auto 28px 46px 28px", // 라벨 | − | 숫자 | +
+                                          alignItems: "center",
+                                          gap: 10,
+                                          background: "#F5F3FF",
+                                          borderRadius: 10,
+                                          padding: "6px 12px",
+                                          marginTop: 8,
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            gridColumn: "1 / 2",
+                                            fontSize: 12,
+                                            fontWeight: 700,
+                                            color: "#6B21A8",
+                                            textAlign: "center",
+                                            whiteSpace: "nowrap",
+                                          }}
+                                        >
+                                          Late penalty
+                                        </span>
 
-  {/* ✅ 오늘 켠 과목들만 시간칸 표시 */}
-  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-    {(cell.enabledSubjects || []).map((sub) => {
-      const subjectData = cell.academyBySubject?.[sub] || {};
-      const slots = (subjectData.slots || []) as TimeSlot[];
-      const slot = slots[0] || {};
-      const sumMin = getSubjectSumMin(cell, sub);
-
-      return (
-        <div key={sub} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={subjectLabel(sub)}>{sub}</span>
-
-          <input
-            type="time"
-            value={slot.from ?? ""}
-            onChange={(e) => setAcademyTime(s.id, sub, "from", e.target.value)}
-            style={{
-              ...timeInpTight,
-              flex: "1 1 90px",
-              fontWeight: 600,
-              color: "#2b2b2b",
-            }}
-          />
-
-          <span style={{ fontSize: 12, color: "#1f1f1f", fontWeight: 600 }}>~</span>
-
-          <input
-            type="time"
-            value={slot.to ?? ""}
-            onChange={(e) => setAcademyTime(s.id, sub, "to", e.target.value)}
-            style={{
-              ...timeInpTight,
-              flex: "1 1 90px",
-              fontWeight: 600,
-              color: "#2b2b2b",
-            }}
-          />
-
-          <div style={{ marginLeft: "auto", fontSize: 12, color: "#374151" }}>
-            누적 <b>{minToHM(sumMin)}</b>
-          </div>
-
-          <button
-            style={btnXS}
-            title="시간이 있으면 초기화 / 없으면 과목 해제"
-            onClick={() => smartClearOrDisable(s.id, sub)}
-          >
-            ×
-          </button>
-        </div>
-      );
-    })}
-  </div>
-
-  {/* ✅ 학원 보충/연장 등록 (카드 내부 통합) */}
-<div style={{ marginTop: 15, paddingTop: 8, borderTop: "1px dashed #cbd5e1" }}>
-  <div style={{ fontSize: 12, fontWeight: 700, color: "#1d4ed8", marginBottom: 6 }}>
-    🕓 보충 / 연장 등록
-  </div>
-
-  {/* 새 보충 입력줄 */}
-  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-    <select id="supplement-subject" style={{ ...inp, width: 60, fontSize: 12 }} defaultValue="">
-      <option value="">과목</option>
-      {["영어", "수학", "국어", "과학", "기타", "학교"].map((sub) => (
-        <option key={sub} value={sub}>{sub}</option>
-      ))}
-    </select>
-
-    <input
-  type="time"
-  id="supplement-from"
+                                        <button
   style={{
-    ...inp,
-    width: 165,           // ⬅️ 크기 늘림 (기존 85 → 110)
-    height: 32,           // ⬅️ 버튼 안 잘리게 높이 추가
-    background: "#e0f2fe",  // 🌤️ 파스텔 하늘색 (Tailwind sky-100 계열)
-    border: "none",
-    borderRadius: 6,
-    fontWeight: 600,
-    color: "#1e3a8a",       // 글자는 조금 진한 네이비톤
-    textAlign: "center",
-  }}
-/>
-<span style={{ fontSize: 12 }}>~</span>
-<input
-  type="time"
-  id="supplement-to"
-  style={{
-    ...inp,
-    width: 180,           // ⬅️ 동일하게
-    height: 32,
-    background: "#e0f2fe",  // 🌤️ 파스텔 하늘색 (Tailwind sky-100 계열)
-    border: "none",
-    borderRadius: 6,
-    fontWeight: 600,
-    color: "#1e3a8a",       // 글자는 조금 진한 네이비톤
-    textAlign: "center",
-  }}
-/>
-
-    <button
-      style={{
-        ...btn,
-        background: "#93C5FD",
-        color: "#fff",
-        fontSize: 12,
-        padding: "5px 10px",
-        borderRadius: 8,
-      }}
-      onClick={() => {
-        const sub = (document.getElementById("supplement-subject") as HTMLSelectElement)?.value;
-        const from = (document.getElementById("supplement-from") as HTMLInputElement)?.value;
-        const to = (document.getElementById("supplement-to") as HTMLInputElement)?.value;
-        if (!sub || !from || !to) return alert("과목과 시간을 모두 입력하세요.");
-
-        setStore((prev) => {
-          const records = { ...prev.records };
-          const d0 = { ...(records[date] || {}) };
-          const cell = { ...(d0[s.id] ?? { status: "P" }) };
-          cell.overrideAcademyTimes = cell.overrideAcademyTimes || {};
-          cell.overrideAcademyTimes[sub] = {
-  subject: sub,
-  from,
-  to,
-  date, // 📅 오늘 날짜 변수 (이미 상단에 있음)
-};
-          d0[s.id] = cell;
-          records[date] = d0;
-          return { ...prev, records };
-        });
-
-        (document.getElementById("supplement-subject") as HTMLSelectElement).value = "";
-        (document.getElementById("supplement-from") as HTMLInputElement).value = "";
-        (document.getElementById("supplement-to") as HTMLInputElement).value = "";
-      }}
-    >
-      등록
-    </button>
-  </div>
-
- {/* 등록된 보충 리스트 */}
-<div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-  {cell.overrideAcademyTimes && Object.entries(cell.overrideAcademyTimes).length > 0 ? (
-    Object.entries(cell.overrideAcademyTimes).map(([key, t]) => (
-      <div
-        key={key}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: "#f0f9ff",  // 💎 연한 하늘색
-          border: "1px solid #bae6fd",
-          borderRadius: 8,
-          padding: "4px 8px",
-          fontSize: 12,
-        }}
-      >
-        <div>
-          <b style={{ color: "#1d4ed8" }}>{t.subject}</b> — {t.from} ~ {t.to}
-          <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 6 }}>
-            ({t.date})
-          </span>
-        </div>
-
-        <button
-          style={{
-            background: "#fee2e2",
-            border: "1px solid #fecaca",
-            color: "#b91c1c",
-            fontWeight: 700,
-            fontSize: 14,
-            borderRadius: 8,
-            width: 28,
-            height: 28,
-            display: "grid",
-            placeItems: "center",
-            cursor: "pointer",
-            transition: "all 0.15s ease",
-          }}
-          title="삭제"
-          onClick={() => {
-            if (!confirm(`${t.subject} (${t.date}) 보충시간을 삭제할까요?`)) return;
-            setStore((prev) => {
-              const records = { ...prev.records };
-              const d0 = { ...(records[date] || {}) };
-              const cell = { ...(d0[s.id] ?? { status: "P" }) };
-              if (cell.overrideAcademyTimes) delete cell.overrideAcademyTimes[key];
-              d0[s.id] = cell;
-              records[date] = d0;
-              return { ...prev, records };
-            });
-          }}
-          onMouseOver={(e) => (e.currentTarget.style.background = "#fecaca")}
-          onMouseOut={(e) => (e.currentTarget.style.background = "#fee2e2")}
-        >
-          ×
-        </button>
-      </div>
-    ))
-  ) : (
-    <div style={{ fontSize: 12, color: "#6b7280" }}>등록된 보충이 없습니다.</div>
-  )}
-</div>
-</div>
-</div>
- 
-  
-
-                             {/* 화장실/식사/Sleep — RESET ZONE */}
-<div style={{ background:"#fff", border:"3px solid #b71c1c", borderRadius:10, padding:10, height:"100%", }}>
-  <div style={sectionTitle}> RESET ZONE </div>
-
-  <div style={{ display:"grid", gap:8, marginTop:8 }}>
-    {/* 화장실 & 물 — 7분씩 가감 */}
-<div>
-  <div style={{ fontSize:12, color:"#059669", fontWeight:700, marginBottom:6 }}>
-  ***   화장실 & 물
-  </div>
-
-  <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
-    {/* -1 (최소 0회) */}
-    <button
-      style={{ ...btn, width:32 }}
-      onClick={() => {
-        const curr = cell.restroomCount || 0;
-        const next = Math.max(0, curr - 1);
-        setRestroomCount(s.id, next); // 내부에서 next*7분 반영
-      }}
-      title="한 번 누를 때마다 7분 차감"
-    >
-      −
-    </button>
-
-    {/* +1 (최대 5회에서 멈춤) */}
-    <button
-      style={{ ...btn }}
-      onClick={() => {
-        const curr = cell.restroomCount || 0;
-        const next = Math.min(5, curr + 1);
-        setRestroomCount(s.id, next); // 내부에서 next*7분 반영
-      }}
-      title="한 번 누를 때마다 7분 추가"
-    >
-      +1회 (+7분)
-    </button>
-
-    {/* 현재 합계 표시 */}
-    <div style={{ fontSize:12, color:"#374151" }}>
-      합계: <b>{cell.restroomCount || 0}회</b> / <b>{cell.restroomMin || 0}분</b>
-    </div>
-  </div>
-
-  <div style={{ fontSize:11, color:"#6b7280", marginTop:4 }}>
-    * 1회 = 7분, 최소 0회 · 최대 5회
-  </div>
-
-{/* 이동 / 통학 */}
-<div>
-  <div style={{ fontSize:12, color:"#2563eb", fontWeight:700, marginBottom:6 }}>
-    🚍 이동 / 통학
-  </div>
-
-  <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
-    {/* +30분 */}
-    <button
-      style={btn}
-      onClick={() => {
-        const curr = cell.commuteMin || 0;
-        const next = curr + 30;
-        setStore(prev => {
-          const records = { ...prev.records };
-          const d0 = { ...(records[date] || {}) };
-          const newCell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-          (newCell as any).commuteMin = next;
-          d0[s.id] = newCell;
-          records[date] = d0;
-          return { ...prev, records };
-        });
-      }}
-    >
-      +30분
-    </button>
-
-    {/* +60분 */}
-    <button
-      style={btn}
-      onClick={() => {
-        const curr = cell.commuteMin || 0;
-        const next = curr + 60;
-        setStore(prev => {
-          const records = { ...prev.records };
-          const d0 = { ...(records[date] || {}) };
-          const newCell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-          (newCell as any).commuteMin = next;
-          d0[s.id] = newCell;
-          records[date] = d0;
-          return { ...prev, records };
-        });
-      }}
-    >
-      +60분
-    </button>
-
-   
-
-    {/* 직접입력 */}
-    <span style={{ fontSize:12, color:"#6b7280" }}>직접:</span>
-    <input
-      type="number"
-      min={0}
-      placeholder="분"
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          const v = Number((e.target as HTMLInputElement).value);
-          if (Number.isFinite(v) && v > 0) {
-            setStore(prev => {
-              const records = { ...prev.records };
-              const d0 = { ...(records[date] || {}) };
-              const newCell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-              (newCell as any).commuteMin = (newCell as any).commuteMin || 0;
-              (newCell as any).commuteMin += v;
-              d0[s.id] = newCell;
-              records[date] = d0;
-              return { ...prev, records };
-            });
-            (e.target as HTMLInputElement).value = "";
-          }
-        }
-      }}
-      style={{ ...inp, width:80, textAlign:"right" }}
-    />
-
-    {/* 합계 표시 */}
-    <div style={{ fontSize:12, color:"#374151" }}>
-      합계: <b>{cell.commuteMin || 0}분</b>
-    </div>
-  </div>
-</div>
-   
-
-
-</div>
-    {/* 식사 — 버튼 + 직접입력(Enter시 합계에 바로 반영) */}
-<div>
-  <div style={{ fontSize: 12, color: "#059669", fontWeight: 700, marginBottom: 6 }}>
-    *** 식사
-  </div>
-
-  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-    {/* 단축 버튼 */}
-    <button style={btn} onClick={() => addMealMinutes(s.id, 60)}>+60분</button>
-    <button
-      style={{ ...btn, background: "#FEE2E2", color: "#B91C1C", border: "1px solid #FCA5A5" }}
-      onClick={() => subtractMealMinutes(s.id, 30)}
-    >
-      −30분
-    </button>
-
-    <span style={{ fontSize: 12, color: "#6b7280" }}>직접:</span>
-
-    <input
-      type="number"
-      min={0}
-      placeholder="분"
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          const el = e.target as HTMLInputElement;
-          const v = Number(el.value);
-          if (Number.isFinite(v) && v > 0) {
-            addMealMinutes(s.id, v); // 합계 즉시 반영
-            el.value = "";
-          }
-        }
-      }}
-      onBlur={(e) => {
-        const v = Number(e.currentTarget.value);
-        if (Number.isFinite(v) && v > 0) {
-          addMealMinutes(s.id, v);
-          e.currentTarget.value = "";
-        }
-      }}
-      style={{ ...inp, width: 80, textAlign: "right" }}
-    />
-  </div>
-
-  <div style={{ fontSize: 12, color: "#374151" }}>
-    합계: <b>{cell.mealMin || 0}분</b>
-  </div>
-</div>
-
-   {/* ⚠️ Penalty Zone */}
-<div
-  style={{
-    background:"#fff",
-        borderRadius:10,
-    padding:10,
-    marginTop:10
-  }}
->
-  <div
-    style={{
-      fontSize:13,
-      fontWeight:1000,
-      color:"#b91c1c",
-      textAlign:"center",
-      background:"#fee2e2",
-      borderRadius:9,
-      padding:"9px 0",
-      marginBottom:10,
-      letterSpacing:"0.5px"
-    }}
-  >
-     PENALTY ZONE
-  </div>
-
-    {/* 💤 Sleep Penalty */}
-<div
-  style={{
+    ...btn,
+    gridColumn: "2 / 3",
+    width: 28,
+    height: 28,
+    padding: 0,
     display: "grid",
-    gridTemplateColumns: "auto 28px 46px 28px", // 라벨 | − | 숫자 | +
-    alignItems: "center",
-    gap: 10,
-    background: "#FFF5F5",
-    borderRadius: 10,
-    padding: "6px 12px",
+    placeItems: "center",
+    background: "#FFF",
+    border: "3px solid #C7BFF5",
+    color: "#6B21A8",
+    fontWeight: 800,
+  }}
+  onClick={() => {
+    updateDayCell(date, s.id, (cell) => {
+      const current = cell.latePenaltyCount || 0;
+      return { ...cell, latePenaltyCount: Math.max(0, current - 1) };
+    });
   }}
 >
-  <span
-    style={{
-      gridColumn: "1 / 2",
-      fontSize: 12,
-      fontWeight: 700,
-      color: "#B91C1C",
-      textAlign: "center",
-      whiteSpace: "nowrap",
-    }}
-  >
-    Sleep penalty
-  </span>
+  −
+</button>
 
-  <button
-    style={{
-      ...btn,
-      gridColumn: "2 / 3",
-      width: 28,
-      height: 28,
-      padding: 0,
-      display: "grid",
-      placeItems: "center",
-      border: "3px solid #FAC5A5",
-      background: "#FFF",
-      color: "#B91C1C",
-      fontWeight: 800,
-    }}
-    onClick={() => {
-      setStore((prev) => {
-        const records = { ...prev.records };
-        const d0 = { ...(records[date] || {}) };
-        const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-        const current = (cell as any).sleepPenaltyCount || 0;
-        (cell as any).sleepPenaltyCount = Math.max(0, current - 1);
-        d0[s.id] = cell;
-        records[date] = d0;
-        return { ...prev, records };
-      });
-    }}
-  >
-    −
-  </button>
+                                        <span
+                                          style={{
+                                            gridColumn: "3 / 4",
+                                            width: 46,
+                                            textAlign: "center",
+                                            fontSize: 14,
+                                            fontWeight: 800,
+                                            color: "#6B21A8",
+                                          }}
+                                        >
+                                          {(cell as any).latePenaltyCount || 0}회
+                                        </span>
 
-  <span
-    style={{
-      gridColumn: "3 / 4",
-      width: 46,
-      textAlign: "center",
-      fontSize: 14,
-      fontWeight: 800,
-      color: "#B91C1C",
-    }}
-  >
-    {cell.sleepPenaltyCount || 0}회
-  </span>
-
-  <button
-    style={{
-      ...btn,
-      gridColumn: "4 / 5",
-      width: 28,
-      height: 28,
-      padding: 0,
-      display: "grid",
-      placeItems: "center",
-      background: "#FFF",
-      border: "3px solid #FAC5A5",
-      color: "#B91C1C",
-      fontWeight: 800,
-    }}
-    onClick={() => addSleepPenalty(s.id, 1)}
-  >
-    +
-  </button>
-</div>
-
- {/* ⏰ Late Penalty */}
-<div
+                                       <button
   style={{
+    ...btn,
+    gridColumn: "4 / 5",
+    width: 28,
+    height: 28,
+    padding: 0,
     display: "grid",
-    gridTemplateColumns: "auto 28px 46px 28px", // 라벨 | − | 숫자 | +
-    alignItems: "center",
-    gap: 10,
-    background: "#F5F3FF",
-    borderRadius: 10,
-    padding: "6px 12px",
-    marginTop: 8,
+    placeItems: "center",
+    background: "#FFF",
+    border: "3px solid #C7BFF5",
+    color: "#6B21A8",
+    fontWeight: 800,
+  }}
+  onClick={() => {
+    updateDayCell(date, s.id, (cell) => {
+      const current = cell.latePenaltyCount || 0;
+      return { ...cell, latePenaltyCount: current + 1 };
+    });
   }}
 >
-  <span
-    style={{
-      gridColumn: "1 / 2",
-      fontSize: 12,
-      fontWeight: 700,
-      color: "#6B21A8",
-      textAlign: "center",
-      whiteSpace: "nowrap",
-    }}
-  >
-    Late penalty
-  </span>
-
-  <button
-    style={{
-      ...btn,
-      gridColumn: "2 / 3",
-      width: 28,
-      height: 28,
-      padding: 0,
-      display: "grid",
-      placeItems: "center",
-      background: "#FFF",
-      border: "3px solid #C7BFF5",
-      color: "#6B21A8",
-      fontWeight: 800,
-    }}
-    onClick={() => {
-      setStore((prev) => {
-        const records = { ...prev.records };
-        const d0 = { ...(records[date] || {}) };
-        const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-        const current = (cell as any).latePenaltyCount || 0;
-        (cell as any).latePenaltyCount = Math.max(0, current - 1);
-
-        d0[s.id] = cell;
-        records[date] = d0;
-        return { ...prev, records };
-      });
-    }}
-  >
-    −
-  </button>
-
-  <span
-    style={{
-      gridColumn: "3 / 4",
-      width: 46,
-      textAlign: "center",
-      fontSize: 14,
-      fontWeight: 800,
-      color: "#6B21A8",
-    }}
-  >
-    {(cell as any).latePenaltyCount || 0}회
-  </span>
-
-  <button
-    style={{
-      ...btn,
-      gridColumn: "4 / 5",
-      width: 28,
-      height: 28,
-      padding: 0,
-      display: "grid",
-      placeItems: "center",
-      background: "#FFF",
-      border: "3px solid #C7BFF5",
-      color: "#6B21A8",
-      fontWeight: 800,
-    }}
-    onClick={() => {
-      setStore((prev) => {
-        const records = { ...prev.records };
-        const d0 = { ...(records[date] || {}) };
-        const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-        const current = (cell as any).latePenaltyCount || 0;
-        (cell as any).latePenaltyCount = current + 1;
-        d0[s.id] = cell;
-        records[date] = d0;
-        return { ...prev, records };
-      });
-    }}
-  >
-    +
-  </button>
-</div>
-</div>
+  +
+</button>
+                                      </div>
+                                    </div>
 
 
 
-    </div>
+                                  </div>
 
-    </div>
+                                </div>
 
 
 
 
-                             {/* MY Daily */}
-<div style={{ background:"#fff", border:"3px solid #1e3a8a", borderRadius:10, padding:10, height:"100%",
- textAlign:"left", position:"relative", minHeight:100 }}>
-  <div style={sectionTitle}> My Daily </div>
+                                {/* MY Daily */}
+                                <div style={{
+                                  background: "#fff", border: "3px solid #1e3a8a", borderRadius: 10, padding: 10, height: "100%",
+                                  textAlign: "left", position: "relative", minHeight: 100
+                                }}>
+                                  <div style={sectionTitle}> My Daily </div>
 
-  {(() => {
-     // ===== 당일 집계 =====
-    const baseAcademyMin = subjectOutingMin(cell);
-const overrideMin =
-  cell.overrideAcademyTimes
-    ? Object.values(cell.overrideAcademyTimes).reduce((sum, t) => {
-        if (t.from && t.to) return sum + spanMin(t.from, t.to);
-        return sum;
-      }, 0)
-    : 0;
+                                  {(() => {
+                                    // ===== 당일 집계 =====
+                                    const baseAcademyMin = subjectOutingMin(cell);
+                                    const overrideMin =
+                                      cell.overrideAcademyTimes
+                                        ? Object.values(cell.overrideAcademyTimes).reduce((sum, t) => {
+                                          if (t.from && t.to) return sum + spanMin(t.from, t.to);
+                                          return sum;
+                                        }, 0)
+                                        : 0;
 
-const academyMin = baseAcademyMin + overrideMin; // ✅ 보충 포함
+                                    const academyMin = baseAcademyMin + overrideMin; // ✅ 보충 포함
 
-const restBreakMin = (cell.restroomMin || 0) + (cell.mealMin || 0);
-const running = !!(cell.time && !cell.outTime);
-const netMin = running ? netStudyMinLive(cell) : netStudyMin(cell);
-const gross = cell.time
-  ? (running
-      ? hmToMin(nowHM()) - hmToMin(cell.time)
-      : spanMin(cell.time, cell.outTime))
-  : 0;
+                                    const restBreakMin = (cell.restroomMin || 0) + (cell.mealMin || 0);
+                                    const running = !!(cell.time && !cell.outTime);
+                                    const netMin = running ? netStudyMinLive(cell) : netStudyMin(cell);
+                                    const gross = cell.time
+                                      ? (running
+                                        ? hmToMin(nowHM()) - hmToMin(cell.time)
+                                        : spanMin(cell.time, cell.outTime))
+                                      : 0;
 
-const commute = cell.commuteMin || 0;
-const rest = restBreakMin;
-const other = Math.max(0, gross - (netMin + academyMin + rest));
-    const segs = [
-  { label: `순공 ${minToHM(netMin)}`, value: netMin, color: "#16a34a" },
-  { label: `학원 ${minToHM(academyMin)}`, value: academyMin, color: "#1d4ed8" },
-  { label: `이동 ${minToHM(commute)}`, value: commute, color: "#93C5FD" }, // 💎 파스텔 하늘색
-  { label: `휴식 ${minToHM(rest)}`, value: rest, color: "#f59e0b" },
-  { label: `기타 ${minToHM(other)}`, value: other, color: "#9CA3AF" },
-];
+                                    const commute = cell.commuteMin || 0;
+                                    const rest = restBreakMin;
+                                    const other = Math.max(0, gross - (netMin + academyMin + rest));
+                                    const segs = [
+                                      { label: `순공 ${minToHM(netMin)}`, value: netMin, color: "#16a34a" },
+                                      { label: `학원 ${minToHM(academyMin)}`, value: academyMin, color: "#1d4ed8" },
+                                      { label: `이동 ${minToHM(commute)}`, value: commute, color: "#93C5FD" }, // 💎 파스텔 하늘색
+                                      { label: `휴식 ${minToHM(rest)}`, value: rest, color: "#f59e0b" },
+                                      { label: `기타 ${minToHM(other)}`, value: other, color: "#9CA3AF" },
+                                    ];
 
-    const sum = segs.reduce((a,b)=>a+b.value,0);
-    const wk = getWeekRange(date);
-    const wkPenalty = sumPenaltyForRange(s.id, wk.start, wk.end);
-    const mr = monthRange(date);
-    const moPenalty = mr ? sumPenaltyForRange(s.id, mr.start, mr.end) : 0;
+                                    const sum = segs.reduce((a, b) => a + b.value, 0);
+                                    const wk = getWeekRange(date);
+                                    const wkPenalty = sumPenaltyForRange(s.id, wk.start, wk.end);
+                                    const mr = monthRange(date);
+                                    const moPenalty = mr ? sumPenaltyForRange(s.id, mr.start, mr.end) : 0;
 
-    return (
-      <div style={{ marginTop:6, fontSize:12, color:"#444", lineHeight:1.7 }}>
-        {/* ===== 도넛(원형) 차트 ===== */}
-        {sum > 0 ? (
-          <div style={{ marginTop:10, display:"flex", justifyContent:"center" }}>
-            <Donut size={120} stroke={18} segments={segs} />
-          </div>
-        ) : (
-          <div style={{ marginTop:10, color:"#9ca3af" }}>아직 집계할 시간이 없어요.</div>
-        )}
+                                    return (
+                                      <div style={{ marginTop: 6, fontSize: 12, color: "#444", lineHeight: 1.7 }}>
+                                        {/* ===== 도넛(원형) 차트 ===== */}
+                                        {sum > 0 ? (
+                                          <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                                            <Donut size={120} stroke={18} segments={segs} />
+                                          </div>
+                                        ) : (
+                                          <div style={{ marginTop: 10, color: "#9ca3af" }}>아직 집계할 시간이 없어요.</div>
+                                        )}
 
-        <div>🏫 총 Academy Subjects: <b>{minToHM(academyMin)}</b></div>
-        <div>🚌 이동 / 통학: <b>{minToHM(cell.commuteMin || 0)}</b></div>
-        <div>⏰ 총 순공시간: <b>{minToHM(netMin)}</b>{running && <span style={{ marginLeft:6, fontSize:11, color:"#16a34a" }}>●</span>}</div>
-        <div>🚰 총 외출(화장실·물·식사): <b>{minToHM(restBreakMin)}</b></div>
-        
-
-        <div
-  style={{
-    marginTop: 6,
-    display: "grid",
-    gridTemplateColumns: "repeat(2, 1fr)", // 2열씩 자동 정렬
-    gap: 8,
-  }}
->
- {/* Sleep (주간) */}
- <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
-    <div style={{ fontSize: 11, color: "#6b7280" }}>Sleep 패널티 (주간)</div>
-    <div style={{ fontSize: 14, fontWeight: 800, color: "#b71c1c" }}>{wkPenalty}회</div>
-  </div>
-
-  {/* Sleep (월간) */}
-  <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
-    <div style={{ fontSize: 11, color: "#6b7280" }}>Sleep 패널티 (월간)</div>
-    <div style={{ fontSize: 14, fontWeight: 800, color: "#b71c1c" }}>{moPenalty}회</div>
-  </div>
-
-  {/* Late (주간) */}
-  <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
-    <div style={{ fontSize: 11, color: "#6b7280" }}>Late 패널티 (주간)</div>
-    <div style={{ fontSize: 14, fontWeight: 800, color: "#B45309" }}>
-      {sumPenaltyForRange(s.id, wk.start, wk.end, "latePenaltyCount")}회
-    </div>
-  </div>
-
-  {/* Late (월간) */}
-  <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
-    <div style={{ fontSize: 13, color: "#6b7280" }}>Late 패널티 (월간)</div>
-    <div style={{ fontSize: 14, fontWeight: 800, color: "#B45309" }}>
-      {mr ? sumPenaltyForRange(s.id, mr.start, mr.end, "latePenaltyCount") : 0}회
-    </div>
-  </div>
-  </div>
-  </div>
-
-    );
-  })()}
-  </div>                       
- {/* COMMENT (메모/학습) — 아웃박스 1개만 */}
- <div
-  style={{
-    background: "#fff",
-    border: "2px solid #374151",
-    borderRadius: 10,
-    padding: 10,
-    height: "100%", // 칸 전체 높이 채움
-    display: "grid",
-    gridTemplateRows: "auto 1fr 1fr auto", // 제목 + 코멘트칸 + 학습칸 + 여백
-    gap: 10,
-  }}
->
-
-  <div style={sectionTitle}>COMMENT</div>
-
-  {/* 🗒️ 오늘의 코멘트 */}
-  <div
-    style={{
-      display:"flex", flexDirection:"column", gap:6, marginTop:8,
-      border:"1px solid #e5e7eb", borderRadius:8, padding:"8px 10px", background:"#f9fafb"
-    }}
-  >
-    <div style={{ fontWeight:700, fontSize:12, color:"#374151" }}>🗒️ 오늘의 코멘트</div>
-    <textarea
-      placeholder="오늘 태도/집중/컨디션 등 코멘트를 작성하세요."
-      value={day[s.id]?.comment || ""}
-      onChange={(e) => {
-        const val = e.target.value;
-        setStore(prev => {
-          const recs = { ...prev.records };
-          const d0 = { ...(recs[date] || {}) };
-          const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-          (cell as any).comment = val;
-          d0[s.id] = cell; recs[date] = d0;
-          return { ...prev, records: recs };
-        });
-      }}
-      style={{
-        border:"1px solid #dde1ea", borderRadius:6, padding:"6px 8px",
-        resize:"vertical", fontSize:12, minHeight:60, background:"#fff", width:"100%"
-      }}
-    />
-  </div>
-
-  {/* 📚 학습 내용 */}
-  <div
-    style={{
-      display:"flex", flexDirection:"column", gap:6, marginTop:10,
-      border:"1px solid #e5e7eb", borderRadius:8, padding:"8px 10px", background:"#f9fafb"
-    }}
-  >
-    <div style={{ fontWeight:700, fontSize:12, color:"#374151" }}>📚 학습 내용</div>
-    <textarea
-      placeholder="오늘 수행한 학습(과목/범위/페이지 등)을 기록하세요."
-      value={day[s.id]?.studyNote || ""}
-      onChange={(e) => {
-        const val = e.target.value;
-        setStore(prev => {
-          const recs = { ...prev.records };
-          const d0 = { ...(recs[date] || {}) };
-          const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-          (cell as any).studyNote = val;
-          d0[s.id] = cell; recs[date] = d0;
-          return { ...prev, records: recs };
-        });
-      }}
-      style={{
-        border:"1px solid #dde1ea", borderRadius:6, padding:"6px 8px",
-        resize:"vertical", fontSize:12, minHeight:80, background:"#fff", width:"100%"
-      }}
-    />
-  </div>
-
-   {/* 📌 과제/수행 */}
-<div style={{ background:"#fff", border:"2px solid #0ea5e9", borderRadius:12, padding:10 }}>
-  <div style={{ textAlign:"center", fontWeight:800, color:"#0ea5e9", fontSize:14, marginBottom:8 }}>
-    📌 과제 / 수행 체크
-  </div>
-
-  {/* 입력 + 추가 */}
-  <div style={{ display:"flex", gap:6, marginBottom:8 }}>
-    <input
-      placeholder="과제명 입력 후 Enter"
-      style={{ ...inp, flex:1 }}
-      onKeyDown={(e)=>{
-        if(e.key==="Enter"){
-          const v=(e.target as HTMLInputElement).value;
-          addTask(s.id, date, v);
-          (e.target as HTMLInputElement).value="";
-        }
-      }}
-    />
-    <button
-      style={btn}
-      onClick={()=>{
-        const v = prompt("과제명")?.trim();
-        if (v) addTask(s.id, date, v);
-      }}
-    >추가</button>
-  </div>
-
-  {/* 리스트 */}
-  <div style={{ display:"grid", gap:6 }}>
-    {(cell.tasks || []).length===0 ? (
-      <div style={{ fontSize:12, color:"#6b7280", textAlign:"center" }}>
-        오늘 등록된 과제가 없습니다.
-      </div>
-    ) : (
-      (cell.tasks || []).map(t=>(
-            <div key={t.id} style={{  display:"grid",   gridTemplateColumns:"auto 1fr auto",   alignItems:"center", gap:8,  border:"1px solid #e5e7eb", borderRadius:8, padding:"6px 8px"
-        }}>
-          <input
-            type="checkbox"    checked={!!t.done}
-            onChange={()=>toggleTask(s.id, date, t.id)}
-            style={{ width:16, height:16 }}
-          />
-          <div>
-            <div style={{ fontSize:13, fontWeight:700, textDecoration: t.done?"line-through":"none" }}>
-              {t.title}
-            </div>
-            <input
-              placeholder="메모(선택)"
-              defaultValue={t.note || ""}
-              onBlur={(e)=>setTaskNote(s.id, date, t.id, e.currentTarget.value)}
-              style={{ ...inp, width:"100%", marginTop:4 }}
-            />
-          </div>
-          <button style={btnXS} onClick={()=>removeTask(s.id, date, t.id)}>삭제</button>
-        </div>
-      ))
-    )}
-  </div>
-
-  {/* 이월 */}
-  <div style={{ marginTop:10, textAlign:"right" }}>
-    <button
-      style={{ ...btn, borderColor:"#0ea5e9", color:"#0ea5e9" }}
-      onClick={()=>carryOverIncompleteTasks(s.id, date)}
-      title="미완료 과제를 내일 날짜로 복사"
-    >
-      ⏭️ 미완료 → 내일로 이월
-    </button>
-  </div>
-</div>
+                                        <div>🏫 총 Academy Subjects: <b>{minToHM(academyMin)}</b></div>
+                                        <div>🚌 이동 / 통학: <b>{minToHM(cell.commuteMin || 0)}</b></div>
+                                        <div>⏰ 총 순공시간: <b>{minToHM(netMin)}</b>{running && <span style={{ marginLeft: 6, fontSize: 11, color: "#16a34a" }}>●</span>}</div>
+                                        <div>🚰 총 외출(화장실·물·식사): <b>{minToHM(restBreakMin)}</b></div>
 
 
-  {/* Report 버튼 */}
-  <div style={{ textAlign:"right", marginTop:10 }}>
-    <button
-      style={{ background:"#8a0f16", color:"#fff", border:"none", borderRadius:999, padding:"6px 14px", fontWeight:700, fontSize:10, cursor:"pointer", boxShadow:"0 2px 5px rgba(0,0,0,0.2)"
-      }}
-      onClick={()=>printDailyReport(s.id)}
-      title="일일 리포트 열기"
-    >
-      Report
-    </button>
-  </div>
-</div>
-</div>
+                                        <div
+                                          style={{
+                                            marginTop: 6,
+                                            display: "grid",
+                                            gridTemplateColumns: "repeat(2, 1fr)", // 2열씩 자동 정렬
+                                            gap: 8,
+                                          }}
+                                        >
+                                          {/* Sleep (주간) */}
+                                          <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
+                                            <div style={{ fontSize: 11, color: "#6b7280" }}>Sleep 패널티 (주간)</div>
+                                            <div style={{ fontSize: 14, fontWeight: 800, color: "#b71c1c" }}>{wkPenalty}회</div>
+                                          </div>
 
-    </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
+                                          {/* Sleep (월간) */}
+                                          <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
+                                            <div style={{ fontSize: 11, color: "#6b7280" }}>Sleep 패널티 (월간)</div>
+                                            <div style={{ fontSize: 14, fontWeight: 800, color: "#b71c1c" }}>{moPenalty}회</div>
+                                          </div>
+
+                                          {/* Late (주간) */}
+                                          <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
+                                            <div style={{ fontSize: 11, color: "#6b7280" }}>Late 패널티 (주간)</div>
+                                            <div style={{ fontSize: 14, fontWeight: 800, color: "#B45309" }}>
+                                              {sumPenaltyForRange(s.id, wk.start, wk.end, "latePenaltyCount")}회
+                                            </div>
+                                          </div>
+
+                                          {/* Late (월간) */}
+                                          <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", textAlign: "center" }}>
+                                            <div style={{ fontSize: 13, color: "#6b7280" }}>Late 패널티 (월간)</div>
+                                            <div style={{ fontSize: 14, fontWeight: 800, color: "#B45309" }}>
+                                              {mr ? sumPenaltyForRange(s.id, mr.start, mr.end, "latePenaltyCount") : 0}회
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                    );
+                                  })()}
+                                </div>
+                                {/* COMMENT (메모/학습) — 아웃박스 1개만 */}
+                                <div
+                                  style={{
+                                    background: "#fff",
+                                    border: "2px solid #374151",
+                                    borderRadius: 10,
+                                    padding: 10,
+                                    height: "100%", // 칸 전체 높이 채움
+                                    display: "grid",
+                                    gridTemplateRows: "auto 1fr 1fr auto", // 제목 + 코멘트칸 + 학습칸 + 여백
+                                    gap: 10,
+                                  }}
+                                >
+
+                                  <div style={sectionTitle}>COMMENT</div>
+
+                                  {/* 🗒️ 오늘의 코멘트 */}
+                                  <div
+                                    style={{
+                                      display: "flex", flexDirection: "column", gap: 6, marginTop: 8,
+                                      border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px", background: "#f9fafb"
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 700, fontSize: 12, color: "#374151" }}>🗒️ 오늘의 코멘트</div>
+                                    <textarea
+                                      placeholder="오늘 태도/집중/컨디션 등 코멘트를 작성하세요."
+                                      value={day[s.id]?.comment || ""}
+                                      onChange={(e) => {
+  const val = e.target.value;
+  updateDayCell(date, s.id, (cell) => ({
+    ...cell,
+    comment: val || undefined,
+  }));
+}}
+                                      style={{
+                                        border: "1px solid #dde1ea", borderRadius: 6, padding: "6px 8px",
+                                        resize: "vertical", fontSize: 12, minHeight: 60, background: "#fff", width: "100%"
+                                      }}
+                                    />
+                                  </div>
+
+                                  {/* 📚 학습 내용 */}
+                                  <div
+                                    style={{
+                                      display: "flex", flexDirection: "column", gap: 6, marginTop: 10,
+                                      border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px", background: "#f9fafb"
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 700, fontSize: 12, color: "#374151" }}>📚 학습 내용</div>
+                                    <textarea
+                                      placeholder="오늘 수행한 학습(과목/범위/페이지 등)을 기록하세요."
+                                      value={day[s.id]?.studyNote || ""}
+                                     onChange={(e) => {
+  const val = e.target.value;
+  updateDayCell(date, s.id, (cell) => ({
+    ...cell,
+    studyNote: val || undefined,
+  }));
+}}
+                                      style={{
+                                        border: "1px solid #dde1ea", borderRadius: 6, padding: "6px 8px",
+                                        resize: "vertical", fontSize: 12, minHeight: 80, background: "#fff", width: "100%"
+                                      }}
+                                    />
+                                  </div>
+
+                                  {/* 📌 과제/수행 */}
+                                  <div style={{ background: "#fff", border: "2px solid #0ea5e9", borderRadius: 12, padding: 10 }}>
+                                    <div style={{ textAlign: "center", fontWeight: 800, color: "#0ea5e9", fontSize: 14, marginBottom: 8 }}>
+                                      📌 과제 / 수행 체크
+                                    </div>
+
+                                    {/* 입력 + 추가 */}
+                                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                                      <input
+                                        placeholder="과제명 입력 후 Enter"
+                                        style={{ ...inp, flex: 1 }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            const v = (e.target as HTMLInputElement).value;
+                                            addTask(s.id, date, v);
+                                            (e.target as HTMLInputElement).value = "";
+                                          }
+                                        }}
+                                      />
+                                      <button
+                                        style={btn}
+                                        onClick={() => {
+                                          const v = prompt("과제명")?.trim();
+                                          if (v) addTask(s.id, date, v);
+                                        }}
+                                      >추가</button>
+                                    </div>
+
+                                    {/* 리스트 */}
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      {(cell.tasks || []).length === 0 ? (
+                                        <div style={{ fontSize: 12, color: "#6b7280", textAlign: "center" }}>
+                                          오늘 등록된 과제가 없습니다.
+                                        </div>
+                                      ) : (
+                                        (cell.tasks || []).map(t => (
+                                          <div key={t.id} style={{
+                                            display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 8, border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px"
+                                          }}>
+                                            <input
+                                              type="checkbox" checked={!!t.done}
+                                              onChange={() => toggleTask(s.id, date, t.id)}
+                                              style={{ width: 16, height: 16 }}
+                                            />
+                                            <div>
+                                              <div style={{ fontSize: 13, fontWeight: 700, textDecoration: t.done ? "line-through" : "none" }}>
+                                                {t.title}
+                                              </div>
+                                              <input
+                                                placeholder="메모(선택)"
+                                                defaultValue={t.note || ""}
+                                                onBlur={(e) => setTaskNote(s.id, date, t.id, e.currentTarget.value)}
+                                                style={{ ...inp, width: "100%", marginTop: 4 }}
+                                              />
+                                            </div>
+                                            <button style={btnXS} onClick={() => removeTask(s.id, date, t.id)}>삭제</button>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+
+                                    {/* 이월 */}
+                                    <div style={{ marginTop: 10, textAlign: "right" }}>
+                                      <button
+                                        style={{ ...btn, borderColor: "#0ea5e9", color: "#0ea5e9" }}
+                                        onClick={() => carryOverIncompleteTasks(s.id, date)}
+                                        title="미완료 과제를 내일 날짜로 복사"
+                                      >
+                                        ⏭️ 미완료 → 내일로 이월
+                                      </button>
+                                    </div>
+                                  </div>
+
+
+                                  {/* Report 버튼 */}
+                                  <div style={{ textAlign: "right", marginTop: 10 }}>
+                                    <button
+                                      style={{
+                                        background: "#8a0f16", color: "#fff", border: "none", borderRadius: 999, padding: "6px 14px", fontWeight: 700, fontSize: 10, cursor: "pointer", boxShadow: "0 2px 5px rgba(0,0,0,0.2)"
+                                      }}
+                                      onClick={() => printDailyReport(s.id)}
+                                      title="일일 리포트 열기"
+                                    >
+                                      Report
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
               </tbody>
             </table>
- {/* 오늘 요약 */}
- <div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))", // ✅ 4등분, 내용이 넘쳐도 균등 유지
-    gap: 16,
-    marginTop: 10,
-    width: "100%",
-    alignItems: "stretch",
-  }}
->
-  {(["P","L","A","E"] as StatusKey[]).map((k) => {
-    const count = students.reduce((acc, s) => acc + ((day[s.id]?.status === k) ? 1 : 0), 0);
+            {/* 오늘 요약 */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))", // ✅ 4등분, 내용이 넘쳐도 균등 유지
+                gap: 16,
+                marginTop: 10,
+                width: "100%",
+                alignItems: "stretch",
+              }}
+            >
+              {(["P", "L", "A", "E"] as StatusKey[]).map((k) => {
+                const count = students.reduce((acc, s) => acc + ((day[s.id]?.status === k) ? 1 : 0), 0);
 
-    const colors: Record<StatusKey, { bg: string; color: string; border: string }> = {
-  P: { bg: "#F0FAF7", color: "#0E7F63", border: "#A8E1D1" }, // 출석
-  L: { bg: "#FFF8E7", color: "#A87A05", border: "#F3D899" }, // 지각
-  A: { bg: "#FCECEC", color: "#C23B3B", border: "#F4B3B3" }, // 결석
-  E: { bg: "#F1F3FF", color: "#3F4ACD", border: "#C7CCFA" }, // 조퇴
-};
+                const colors: Record<StatusKey, { bg: string; color: string; border: string }> = {
+                  P: { bg: "#F0FAF7", color: "#0E7F63", border: "#A8E1D1" }, // 출석
+                  L: { bg: "#FFF8E7", color: "#A87A05", border: "#F3D899" }, // 지각
+                  A: { bg: "#FCECEC", color: "#C23B3B", border: "#F4B3B3" }, // 결석
+                  E: { bg: "#F1F3FF", color: "#3F4ACD", border: "#C7CCFA" }, // 조퇴
+                };
 
-    const isActive = focusStatus === k;
+                const isActive = focusStatus === k;
 
-    return (
-      <div
-        key={k}
-        role="button"
-        onClick={() => {
-          if (!students.length) return alert("등록된 학생이 없습니다.");
-          setSelectedStudentId((prev) => prev ?? students[0].id);
-          setFocusStatus(k);
-        }}
-        style={{
-          // ✅ 카드 공통
-          width: "100%",
-          boxSizing: "border-box",
-          minWidth: 0,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "14px 18px",
-          borderRadius: 14,
-          cursor: "pointer",
-          transition: "transform .1s ease, box-shadow .2s ease, border .2s ease",
-          // ✅ 컬러/테두리
-          background: colors[k].bg,
-          border: isActive ? `2px solid ${colors[k].color}` : `1px solid ${colors[k].border}`,
-          boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-        }}
-        onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.99)")}
-        onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-        onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-      >
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#4b5563" }}>
-          {STATUS[k].label}
-        </div>
-        <div style={{ fontWeight: 900, fontSize: 18, color: colors[k].color, textAlign: "right" }}>
-          {count}
-        </div>
-      </div>
-    );
-  })}
-</div>
-
- </div>
+                return (
+                  <div
+                    key={k}
+                    role="button"
+                    onClick={() => {
+                      if (!students.length) return alert("등록된 학생이 없습니다.");
+                      setSelectedStudentId((prev) => prev ?? students[0].id);
+                      setFocusStatus(k);
+                    }}
+                    style={{
+                      // ✅ 카드 공통
+                      width: "100%",
+                      boxSizing: "border-box",
+                      minWidth: 0,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "14px 18px",
+                      borderRadius: 14,
+                      cursor: "pointer",
+                      transition: "transform .1s ease, box-shadow .2s ease, border .2s ease",
+                      // ✅ 컬러/테두리
+                      background: colors[k].bg,
+                      border: isActive ? `2px solid ${colors[k].color}` : `1px solid ${colors[k].border}`,
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
+                    }}
+                    onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.99)")}
+                    onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#4b5563" }}>
+                      {STATUS[k].label}
+                    </div>
+                    <div style={{ fontWeight: 900, fontSize: 18, color: colors[k].color, textAlign: "right" }}>
+                      {count}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
 
           </div>
 
-          
         </div>
-  {/* 달력 모달 */}
-{selectedStudent && (
-  <StudentCalendarModal        
-    student={selectedStudent}
-    records={store.records}
-    monthDate={date}
-    onClose={() => { setSelectedStudentId(null); setFocusStatus(null);}}
 
-    // 상태 변경
-    onSetStatus={(sid, ds, st) => {
-      setStore(prev => {
-        const records = { ...prev.records };
-        const dayRec  = { ...(records[ds] || {}) };
-        const cell: DayCell = { ...(dayRec[sid] ?? { status: st }), status: st };
 
-        // 출석/지각이면 등원시간 자동 입력(없을 때만)
-        if ((st === "P" || st === "L") && !cell.time) cell.time = nowHM();
-        // 결석이면 시간 초기화
-        if (st === "A") { cell.time = undefined; cell.outTime = undefined; }
+      </div>
+      {/* 달력 모달 */}
+      {selectedStudent && (
+        <StudentCalendarModal
+          student={selectedStudent}
+          records={store.records}
+          monthDate={date}
+          onClose={() => { setSelectedStudentId(null); setFocusStatus(null); }}
 
-        dayRec[sid] = cell;
-        records[ds]  = dayRec;
-        return { ...prev, records };
-      });
-    }}
+          // 상태 변경
+        onSetStatus={(sid, ds, st) => {
+  setStore(prev => {
+    const records = { ...prev.records };
+    const dayRec = { ...(records[ds] || {}) };
+    const base: DayCell = { ...(dayRec[sid] ?? { status: st }), status: st };
 
-    // 기존 memo 필드 저장(유지)
-    onSetMemo={(sid, ds, memo) => {
-      setStore(prev => {
-        const records = { ...prev.records };
-        const dayRec  = { ...(records[ds] || {}) };
-        const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" as StatusKey }) };
-        cell.memo = memo || undefined;
-        dayRec[sid] = cell;
-        records[ds]  = dayRec;
-        return { ...prev, records };
-      });
-    }}
+    if ((st === "P" || st === "L") && !base.time) base.time = nowHM();
+    if (st === "A") { base.time = undefined; base.outTime = undefined; }
 
-    // 새 코멘트/학습 저장 (comment, studyNote)
-    onSaveNotes={(sid, ds, patch) => {
-      setStore(prev => {
-        const records = { ...prev.records };
-        const dayRec  = { ...(records[ds] || {}) };
-        const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" as StatusKey }) };
+    const next: DayCell = base;
 
-        if (patch.comment !== undefined)   cell.comment   = patch.comment || undefined;
-        if (patch.studyNote !== undefined) cell.studyNote = patch.studyNote || undefined;
+    dayRec[sid] = next;
+    records[ds] = dayRec;
 
-        dayRec[sid] = cell;
-        records[ds]  = dayRec;
-        return { ...prev, records };
-      });
-    }}
+    saveRecordToFS(ds, sid, next);
 
-    focusStatus={focusStatus}   // ← 이 줄 추가
-  />
-)}
+    return { ...prev, records };
+  });
+}}
 
-       {/* 학생 정보 수정 모달 */}
-{editStudent && (() => {
-  const st = (currentGroup?.students || []).find(s => s.id === editStudent);
-  if (!st) return null;
-  return (
-    <EditStudentModal
-      student={st}
-      onClose={() => setEditStudent(null)}
-      onSave={(patch) => updateStudent(st.id, patch)}
-    />
+          // 기존 memo 필드 저장(유지)
+         onSetMemo={(sid, ds, memo) => {
+  setStore(prev => {
+    const records = { ...prev.records };
+    const dayRec = { ...(records[ds] || {}) };
+    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" as StatusKey }) };
+    const next: DayCell = { ...cell, memo: memo || undefined };
+
+    dayRec[sid] = next;
+    records[ds] = dayRec;
+
+    saveRecordToFS(ds, sid, next);
+
+    return { ...prev, records };
+  });
+}}
+
+          // 새 코멘트/학습 저장 (comment, studyNote)
+         onSaveNotes={(sid, ds, patch) => {
+  setStore(prev => {
+    const records = { ...prev.records };
+    const dayRec = { ...(records[ds] || {}) };
+    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" as StatusKey }) };
+
+    const next: DayCell = {
+      ...cell,
+      comment: patch.comment !== undefined ? (patch.comment || undefined) : cell.comment,
+      studyNote: patch.studyNote !== undefined ? (patch.studyNote || undefined) : cell.studyNote,
+    };
+
+    dayRec[sid] = next;
+    records[ds] = dayRec;
+
+    saveRecordToFS(ds, sid, next);
+
+    return { ...prev, records };
+  });
+}}
+
+          focusStatus={focusStatus}   // ← 이 줄 추가
+        />
+      )}
+
+      {/* 학생 정보 수정 모달 */}
+      {editStudent && (() => {
+        const st = (currentGroup?.students || []).find(s => s.id === editStudent);
+        if (!st) return null;
+        return (
+          <EditStudentModal
+            student={st}
+            onClose={() => setEditStudent(null)}
+            onSave={(patch) => updateStudent(st.id, patch)}
+          />
+        );
+      })()}
+    </div>
+
   );
-})()}
-  </div>
- 
-);
 }
 
 /** ✅ StudentPage에서도 쓸 수 있는 독립 순공 계산 함수 (MyDaily와 분리됨) */
@@ -3811,7 +3884,7 @@ type StudentCalendarModalProps = {
   onClose: () => void;
   onSetStatus: (sid: string, date: string, st: StatusKey) => void;
   onSetMemo: (sid: string, date: string, memo: string) => void;
-  onSaveNotes: (sid: string,  date: string,  patch: { comment?: string; studyNote?: string }   ) => void;
+  onSaveNotes: (sid: string, date: string, patch: { comment?: string; studyNote?: string }) => void;
   focusStatus?: StatusKey | null; // 추가
 };
 
@@ -3912,8 +3985,8 @@ function StudentCalendarModal({
   })();
 
   // ===== 메모 팝업 상태 (comment + studyNote 확장)
-const [memoPopup, setMemoPopup] = React.useState<
-null | { date: string; comment: string; studyNote: string }>(null);
+  const [memoPopup, setMemoPopup] = React.useState<
+    null | { date: string; comment: string; studyNote: string }>(null);
 
   // ===== 스타일
   const badge: React.CSSProperties = {
@@ -4000,54 +4073,54 @@ null | { date: string; comment: string; studyNote: string }>(null);
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더: 좌(버튼들) / 중앙(월 표시) / 우(학생정보) */}
-<div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "1fr auto 1fr",
-    alignItems: "center",
-    marginBottom: 10,
-  }}
->
-  {/* 왼쪽: 버튼들 */}
-  <div style={{ display: "flex", gap: 8 }}>
-    <button className="no-print" style={btn} onClick={() => window.print()}>
-      프린트
-    </button>
-    <button className="no-print" style={btn} onClick={onClose}>
-      닫기
-    </button>
-  </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          {/* 왼쪽: 버튼들 */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="no-print" style={btn} onClick={() => window.print()}>
+              프린트
+            </button>
+            <button className="no-print" style={btn} onClick={onClose}>
+              닫기
+            </button>
+          </div>
 
-  {/* 중앙: 월 표기 */}
-  <div style={{ textAlign: "center" }}>
-    <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: ".5px" }}>
-      {yyyy}년 {mm}월
-    </div>
-  </div>
+          {/* 중앙: 월 표기 */}
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: ".5px" }}>
+              {yyyy}년 {mm}월
+            </div>
+          </div>
 
-  {/* 오른쪽: 학생 이름/학교 */}
-  <div style={{ textAlign: "right" }}>
-    <div
-      style={{
-        fontSize: 20,         // ✅ 이름 크게
-        fontWeight: 900,
-        color: "#111",
-        lineHeight: 1.1,
-      }}
-    >
-      {student.name}
-    </div>
-    <div
-      style={{
-        fontSize: 15,         // ✅ 학교 작게, 연한 회색
-        color: "#6b7280",
-        marginTop: 2,
-      }}
-    >
-      {student.school || "학교 미지정"}
-    </div>
-  </div>
-</div>
+          {/* 오른쪽: 학생 이름/학교 */}
+          <div style={{ textAlign: "right" }}>
+            <div
+              style={{
+                fontSize: 20,         // ✅ 이름 크게
+                fontWeight: 900,
+                color: "#111",
+                lineHeight: 1.1,
+              }}
+            >
+              {student.name}
+            </div>
+            <div
+              style={{
+                fontSize: 15,         // ✅ 학교 작게, 연한 회색
+                color: "#6b7280",
+                marginTop: 2,
+              }}
+            >
+              {student.school || "학교 미지정"}
+            </div>
+          </div>
+        </div>
 
         {/* 패널티 월 합계 배지 */}
         <div style={{ display: "flex", justifyContent: "center", gap: 12, margin: "4px 0 10px" }}>
@@ -4060,20 +4133,20 @@ null | { date: string; comment: string; studyNote: string }>(null);
         </div>
 
         {/* ✅ 상태 하이라이트 표시 */}
-{focusStatus && (
-  <div
-    className="no-print"
-    style={{
-      textAlign: "right",
-      fontSize: 12,
-      fontWeight: 800,
-      color: "#1e3a8a",
-      marginBottom: 8,
-    }}
-  >
-    상태 하이라이트: {STATUS[focusStatus].label}
-  </div>
-)}
+        {focusStatus && (
+          <div
+            className="no-print"
+            style={{
+              textAlign: "right",
+              fontSize: 12,
+              fontWeight: 800,
+              color: "#1e3a8a",
+              marginBottom: 8,
+            }}
+          >
+            상태 하이라이트: {STATUS[focusStatus].label}
+          </div>
+        )}
 
 
 
@@ -4089,308 +4162,303 @@ null | { date: string; comment: string; studyNote: string }>(null);
                 ))}
               </tr>
             </thead>
-            
+
             <tbody>
-  {rows.map((row, idx) => (
-    <tr key={idx}>
-      {row.map((ds, i2) => { if (!ds) {   return (
-            <td
-              key={i2}
-              style={{ borderBottom: "1px solid #eee", padding: 8 }}
-            />
-          );
-        }
+              {rows.map((row, idx) => (
+                <tr key={idx}>
+                  {row.map((ds, i2) => {
+                    if (!ds) {
+                      return (
+                        <td
+                          key={i2}
+                          style={{ borderBottom: "1px solid #eee", padding: 8 }}
+                        />
+                      );
+                    }
 
-        // 날짜, 요일, 상태 관련 계산
-        const dt = new Date(ds);
-        const dow = dt.getDay(); // 0=일~6=토
-        const isSun = dow === 0;
-        const isSat = dow === 6;
-        const isHol = isHoliday(ds);
-        const c = records[ds]?.[student.id];
+                    // 날짜, 요일, 상태 관련 계산
+                    const dt = new Date(ds);
+                    const dow = dt.getDay(); // 0=일~6=토
+                    const isSun = dow === 0;
+                    const isSat = dow === 6;
+                    const isHol = isHoliday(ds);
+                    const c = records[ds]?.[student.id];
 
 
-// 🟡 일요일 자동 결석 처리 (등원 기록 없을 때만)
-if (new Date(ds).getDay() === 0) {
-  if (!c || !c.time) {
-    // c가 아예 없으면 기본결석으로
-    records[ds] = records[ds] || {};
-    records[ds][student.id] = { ...(c || {}), status: "A" };
-  }
-}
+                    
 
-// 상태 다시 읽기
-const status: StatusKey | null = c?.status ?? null;
-        const isFocused = focusStatus && status === focusStatus;
-        const todayStr = fmtDate(new Date());
-         const isFuture = ds > todayStr;
-         const isToday = ds === todayStr;
-         const isLate  = status === "L";
-         const isAbs   = status === "A";
-         const isEarly = status === "E";
+                    // 상태 다시 읽기
+                    const status: StatusKey | null = c?.status ?? null;
+                    const isFocused = focusStatus && status === focusStatus;
+                    const todayStr = fmtDate(new Date());
+                    const isFuture = ds > todayStr;
+                    const isToday = ds === todayStr;
+                    const isLate = status === "L";
+                    const isAbs = status === "A";
+                    const isEarly = status === "E";
 
-// 캘린더 셀 배경색 (상태가 우선, 그다음 휴일/주말)
-// 상태에 따른 배경색 (토·일·공휴일은 흰색 유지)
-const cellBg =
-  isLate  ? "#FFF6E5" :
-  isAbs   ? "#FEECEC" :
-  isEarly ? "#EAF6FF" :
-  "#FFFFFF";
+                    // 캘린더 셀 배경색 (상태가 우선, 그다음 휴일/주말)
+                    // 상태에 따른 배경색 (토·일·공휴일은 흰색 유지)
+                    const cellBg =
+                      isLate ? "#FFF6E5" :
+                        isAbs ? "#FEECEC" :
+                          isEarly ? "#EAF6FF" :
+                            "#FFFFFF";
 
-// 요일·공휴일에 따른 글자색만 강조
-const textColor =
-  isHol ? "#DC2626" :        // 공휴일: 빨강
-  isSun ? "#DC2626" :        // 일요일: 빨강
-  isSat ? "#2563EB" :        // 토요일: 파랑
-  "#111";                    // 기본 검정
-        
+                    // 요일·공휴일에 따른 글자색만 강조
+                    const textColor =
+                      isHol ? "#DC2626" :        // 공휴일: 빨강
+                        isSun ? "#DC2626" :        // 일요일: 빨강
+                          isSat ? "#2563EB" :        // 토요일: 파랑
+                            "#111";                    // 기본 검정
 
-        // ===== 날짜 영역 색상 =====
-        const bg = isHol
-          ? "#fee2e2"
-          : isSun
-          ? "#fee2e2"
-          : isSat
-          ? "#e0e7ff"
-          : "#f9fafb";
 
-        const fg = isHol || isSun ? "#b91c1c" : isSat ? "#1e3a8a" : "#111";
+                    // ===== 날짜 영역 색상 =====
+                    const bg = isHol
+                      ? "#fee2e2"
+                      : isSun
+                        ? "#fee2e2"
+                        : isSat
+                          ? "#e0e7ff"
+                          : "#f9fafb";
 
-        return (
-          <td
-  key={ds}
-  style={{
-    borderBottom: "1px solid #eee",
-    padding: 8,
-    verticalAlign: "top",
-    background: cellBg,                    // ← 상태별 배경
-    boxShadow: isLate ? "inset 0 0 0 2px #FDBA74" : "none" // ← 지각이면 테두리 강조(주황)
-   
-  }}
->
-            {/* 상단 라인: 날짜 + 상태 */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 6,
-                alignItems: "center",
-                gap: 6,
-              }}
-                       >
-              
-              {/* 날짜 동그라미 */}
-              <div
-  style={{
-    width: 28,
-    height: 28,
-    borderRadius: "50%",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    fontWeight: 800,
-    fontSize: 13,
-    background: bg,
-    color: fg,
-    boxShadow: isFocused ? "0 0 0 3px rgba(30,58,138,.35)" : "inset 0 1px 2px rgba(0,0,0,0.05)", // ✅ 강조
-    border: isToday ? "2px solid #1e3a8a" : "none",
-  }}
->
-  {Number(ds.slice(8))}
-</div>
-{isLate  && <span style={{ marginLeft: 4, fontSize: 11, color:"#B45309" }}>⏰</span>}
-  {isAbs   && <span style={{ marginLeft: 4, fontSize: 11, color:"#DC2626" }}>✖</span>}
-  {isEarly && <span style={{ marginLeft: 4, fontSize: 11, color:"#2563EB" }}>↘</span>}
+                    const fg = isHol || isSun ? "#b91c1c" : isSat ? "#1e3a8a" : "#111";
 
-              {/* 상태 뱃지 */}
-              <span
-  style={{
-    ...badge,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    fontWeight: 700,
-  }}
->
-  {(() => {
-    // 📌 기록 없는 날 → 상태 표시 안함
-    if (!status) {
-      return (
-        <>
-          <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius: "50%",
-              background: "#e5e7eb",
-              display: "inline-block",
-            }}
-          />
-        </>
-      );
-    }
+                    return (
+                      <td
+                        key={ds}
+                        style={{
+                          borderBottom: "1px solid #eee",
+                          padding: 8,
+                          verticalAlign: "top",
+                          background: cellBg,                    // ← 상태별 배경
+                          boxShadow: isLate ? "inset 0 0 0 2px #FDBA74" : "none" // ← 지각이면 테두리 강조(주황)
 
-    // 📌 미래 날짜
-    if (isFuture) {
-      return (
-        <>
-          <span
-            style={{
-              width: 10,
-              height: 10,
-              borderRadius:"50%",
-              background:"#e5e7eb",
-              display:"inline-block",
-            }}
-          />
-        </>
-      );
-    }
+                        }}
+                      >
+                        {/* 상단 라인: 날짜 + 상태 */}
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            marginBottom: 6,
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
 
-    // 📌 상태 있는 날짜 (P/L/A/E)
-    const color =
-      status === "P"
-        ? "#16a34a"
-        : status === "L"
-        ? "#eab308"
-        : status === "A"
-        ? "#dc2626"
-        : "#6d28d9";
+                          {/* 날짜 동그라미 */}
+                          <div
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: "50%",
+                              display: "flex",
+                              justifyContent: "center",
+                              alignItems: "center",
+                              fontWeight: 800,
+                              fontSize: 13,
+                              background: bg,
+                              color: fg,
+                              boxShadow: isFocused ? "0 0 0 3px rgba(30,58,138,.35)" : "inset 0 1px 2px rgba(0,0,0,0.05)", // ✅ 강조
+                              border: isToday ? "2px solid #1e3a8a" : "none",
+                            }}
+                          >
+                            {Number(ds.slice(8))}
+                          </div>
+                          {isLate && <span style={{ marginLeft: 4, fontSize: 11, color: "#B45309" }}>⏰</span>}
+                          {isAbs && <span style={{ marginLeft: 4, fontSize: 11, color: "#DC2626" }}>✖</span>}
+                          {isEarly && <span style={{ marginLeft: 4, fontSize: 11, color: "#2563EB" }}>↘</span>}
 
-    return (
-      <>
-        <span
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: color,
-            display: "inline-block",
-          }}
-        />
-        {STATUS[status].short}
-      </>
-    );
-  })()}
-</span>
-            </div>
+                          {/* 상태 뱃지 */}
+                          <span
+                            style={{
+                              ...badge,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {(() => {
+                              // 📌 기록 없는 날 → 상태 표시 안함
+                              if (!status) {
+                                return (
+                                  <>
+                                    <span
+                                      style={{
+                                        width: 10,
+                                        height: 10,
+                                        borderRadius: "50%",
+                                        background: "#e5e7eb",
+                                        display: "inline-block",
+                                      }}
+                                    />
+                                  </>
+                                );
+                              }
 
-            {/* 메모 / 학습 미리보기 */}
-            <div style={{ display: "grid", gap: 6 }}>
-            {c?.comment && (
-  <div
-    style={{
-      fontSize: 11,
-      color: "#374151",
-      background: "transparent",   // ✅ 배경 제거
-      borderRadius: 0,
-      padding: 0,
-      lineHeight: 1.4,
-      fontWeight: 500,
-    }}
-  >
-    🗒️{" "}
-    {c.comment.length > 36      
-      ? c.comment.slice(0, 28) + "…"
-      : c.comment}
-  </div>
-)}
-{c?.studyNote && (
-  <div
-    style={{
-      fontSize: 11,
-      color: "#374151",
-      background: "transparent",   // ✅ 배경 제거
-      borderRadius: 0,
-      padding: 0,
-      lineHeight: 1.4,
-      fontWeight: 500,
-    }}
-  >
-    📚{" "}
-    {c.studyNote.length > 28
-      ? c.studyNote.slice(0, 28) + "…"
-      : c.studyNote}
-  </div>
-)}
+                              // 📌 미래 날짜
+                              if (isFuture) {
+                                return (
+                                  <>
+                                    <span
+                                      style={{
+                                        width: 10,
+                                        height: 10,
+                                        borderRadius: "50%",
+                                        background: "#e5e7eb",
+                                        display: "inline-block",
+                                      }}
+                                    />
+                                  </>
+                                );
+                              }
 
-              {/* 팝업 버튼 */}
-              <button
-                className="no-print"
-                onClick={() =>
-                  setMemoPopup({
-                    date: ds,
-                    comment: c?.comment || "",
-                    studyNote: c?.studyNote || "",
-                  })
-                }
-                style={{
-                  padding: "2px 6px",
-                  borderRadius: 6,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                {c?.comment || c?.studyNote
-                  ? "메모/학습 수정"
-                  : "메모/학습 추가"}
-              </button>
-            </div>
-          </td>
-        );
-      })}
-    </tr>
-  ))}
-</tbody>
+                              // 📌 상태 있는 날짜 (P/L/A/E)
+                              const color =
+                                status === "P"
+                                  ? "#16a34a"
+                                  : status === "L"
+                                    ? "#eab308"
+                                    : status === "A"
+                                      ? "#dc2626"
+                                      : "#6d28d9";
+
+                              return (
+                                <>
+                                  <span
+                                    style={{
+                                      width: 10,
+                                      height: 10,
+                                      borderRadius: "50%",
+                                      background: color,
+                                      display: "inline-block",
+                                    }}
+                                  />
+                                  {STATUS[status].short}
+                                </>
+                              );
+                            })()}
+                          </span>
+                        </div>
+
+                        {/* 메모 / 학습 미리보기 */}
+                        <div style={{ display: "grid", gap: 6 }}>
+                          {c?.comment && (
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "#374151",
+                                background: "transparent",   // ✅ 배경 제거
+                                borderRadius: 0,
+                                padding: 0,
+                                lineHeight: 1.4,
+                                fontWeight: 500,
+                              }}
+                            >
+                              🗒️{" "}
+                              {c.comment.length > 36
+                                ? c.comment.slice(0, 28) + "…"
+                                : c.comment}
+                            </div>
+                          )}
+                          {c?.studyNote && (
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "#374151",
+                                background: "transparent",   // ✅ 배경 제거
+                                borderRadius: 0,
+                                padding: 0,
+                                lineHeight: 1.4,
+                                fontWeight: 500,
+                              }}
+                            >
+                              📚{" "}
+                              {c.studyNote.length > 28
+                                ? c.studyNote.slice(0, 28) + "…"
+                                : c.studyNote}
+                            </div>
+                          )}
+
+                          {/* 팝업 버튼 */}
+                          <button
+                            className="no-print"
+                            onClick={() =>
+                              setMemoPopup({
+                                date: ds,
+                                comment: c?.comment || "",
+                                studyNote: c?.studyNote || "",
+                              })
+                            }
+                            style={{
+                              padding: "2px 6px",
+                              borderRadius: 6,
+                              border: "1px solid #e5e7eb",
+                              background: "#fff",
+                              fontSize: 11,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {c?.comment || c?.studyNote
+                              ? "메모/학습 수정"
+                              : "메모/학습 추가"}
+                          </button>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
 
         {memoPopup && (
-  <div className="no-print" onClick={() => setMemoPopup(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.35)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:100 }}>
-    <div onClick={(e)=>e.stopPropagation()} style={{ width:420, maxWidth:"95vw", background:"#fff", borderRadius:10, padding:14, boxShadow:"0 10px 30px rgba(0,0,0,.2)" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-        <div style={{ fontWeight:800, fontSize:14 }}>🗓️ {memoPopup.date}</div>
-        <button style={{ padding:"4px 8px", borderRadius:8, border:"1px solid #e5e7eb", background:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }} onClick={() => setMemoPopup(null)}>닫기</button>
-      </div>
+          <div className="no-print" onClick={() => setMemoPopup(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: "95vw", background: "#fff", borderRadius: 10, padding: 14, boxShadow: "0 10px 30px rgba(0,0,0,.2)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>🗓️ {memoPopup.date}</div>
+                <button style={{ padding: "4px 8px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }} onClick={() => setMemoPopup(null)}>닫기</button>
+              </div>
 
-      {/* 코멘트 */}
-      <div style={{ fontWeight:700, fontSize:12, color:"#374151", marginBottom:6 }}>🗒️ 오늘의 코멘트</div>
-      <textarea
-        value={memoPopup.comment}
-        onChange={(e)=>setMemoPopup({ ...memoPopup, comment: e.target.value })}
-        placeholder="오늘 태도/집중/컨디션 등"
-        style={{ width:"100%", minHeight:80, border:"1px solid #dde1ea", borderRadius:8, padding:"8px 10px", resize:"vertical", fontSize:12, marginBottom:10 }}
-      />
+              {/* 코멘트 */}
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#374151", marginBottom: 6 }}>🗒️ 오늘의 코멘트</div>
+              <textarea
+                value={memoPopup.comment}
+                onChange={(e) => setMemoPopup({ ...memoPopup, comment: e.target.value })}
+                placeholder="오늘 태도/집중/컨디션 등"
+                style={{ width: "100%", minHeight: 80, border: "1px solid #dde1ea", borderRadius: 8, padding: "8px 10px", resize: "vertical", fontSize: 12, marginBottom: 10 }}
+              />
 
-      {/* 학습 내용 */}
-      <div style={{ fontWeight:700, fontSize:12, color:"#374151", marginBottom:6 }}>📚 학습 내용</div>
-      <textarea
-        value={memoPopup.studyNote}
-        onChange={(e)=>setMemoPopup({ ...memoPopup, studyNote: e.target.value })}
-        placeholder="과목/범위/페이지 등"
-        style={{ width:"100%", minHeight:100, border:"1px solid #dde1ea", borderRadius:8, padding:"8px 10px", resize:"vertical", fontSize:12 }}
-      />
+              {/* 학습 내용 */}
+              <div style={{ fontWeight: 700, fontSize: 12, color: "#374151", marginBottom: 6 }}>📚 학습 내용</div>
+              <textarea
+                value={memoPopup.studyNote}
+                onChange={(e) => setMemoPopup({ ...memoPopup, studyNote: e.target.value })}
+                placeholder="과목/범위/페이지 등"
+                style={{ width: "100%", minHeight: 100, border: "1px solid #dde1ea", borderRadius: 8, padding: "8px 10px", resize: "vertical", fontSize: 12 }}
+              />
 
-      <div style={{ textAlign:"right", marginTop:10 }}>
-        <button
-          onClick={()=>{
-            onSaveNotes(student.id, memoPopup.date, {
-              comment: memoPopup.comment,
-              studyNote: memoPopup.studyNote
-            });
-            setMemoPopup(null);
-          }}
-          style={{ border:"1px solid #111", background:"#111", color:"#fff", padding:"6px 10px", borderRadius:8, cursor:"pointer", fontSize:12, fontWeight:800 }}
-        >
-          저장
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-        
+              <div style={{ textAlign: "right", marginTop: 10 }}>
+                <button
+                  onClick={() => {
+                    onSaveNotes(student.id, memoPopup.date, {
+                      comment: memoPopup.comment,
+                      studyNote: memoPopup.studyNote
+                    });
+                    setMemoPopup(null);
+                  }}
+                  style={{ border: "1px solid #111", background: "#111", color: "#fff", padding: "6px 10px", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 800 }}
+                >
+                  저장
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

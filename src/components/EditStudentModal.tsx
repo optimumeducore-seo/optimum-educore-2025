@@ -4,7 +4,7 @@ import GradeChartModal from "./GradeChartModal";
 import type { AcademyType, WeeklyTime } from "../App";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 type PersonalSchedule = {
@@ -154,14 +154,15 @@ const SUBJECTS: AcademyType[] = [
 
   /** ✅ 시간표 구조를 ‘현재/예약(next)’으로 확장 */
   const [sched, setSched] = useState<{
-    current: Partial<Record<AcademyType, WeeklyTime>>;
-    next?: {
-      effectiveDate: string;
-      data: Partial<Record<AcademyType, WeeklyTime>>;
-    };
-  }>({
-    current: (student.personalSchedule as any)?.current ?? student.personalSchedule ?? {},
-  });
+  current: Partial<Record<AcademyType, WeeklyTime>>;
+  next?: {
+    effectiveDate: string;
+    data: Partial<Record<AcademyType, WeeklyTime>>;
+  };
+}>({
+  current: student.personalSchedule?.current ?? {},
+  next: student.personalSchedule?.next ?? undefined, // ← null 절대 넣지 말기
+});
 const [timeBlocks, setTimeBlocks] = useState<
   {
     day?: string;          // 기존 필드
@@ -173,29 +174,66 @@ const [timeBlocks, setTimeBlocks] = useState<
   }[]
 >([]);
 
-// ✅ Firestore에 저장된 개별시간 불러오기
-  // ✅ 학생별 개별시간 불러오기 및 동기화
+// 🔥 학생 정보 최신 Firestore 로딩 (모달 열릴 때 자동 반영)
+// === Firestore의 최신 학생 정보 불러오기 ===
 useEffect(() => {
   if (!student?.id) return;
 
-  // 1️⃣ localStorage 우선 불러오기
-  const localKey = `timeBlocks_${student.id}`;
-  const saved = localStorage.getItem(localKey);
-  if (saved) {
-    const parsed = JSON.parse(saved);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      setTimeBlocks(parsed);
-      return; // ✅ 로컬에 값이 있으면 그대로 사용
+  async function loadFullStudent() {
+    const ref = doc(db, "students", student.id);
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) return;
+    const data = snap.data();
+
+    // 1) 기본 정보
+    setForm(prev => ({ ...prev, ...data }));
+
+    // 2) 스케줄
+    setSched({
+      current: data.personalSchedule?.current ?? {},
+      next: data.personalSchedule?.next ?? undefined,
+    });
+
+    // 3) 개별 시간표
+    if (Array.isArray(data.personalSchedule?.timeBlocks)) {
+      setTimeBlocks(data.personalSchedule.timeBlocks);
+      localStorage.setItem(
+        `timeBlocks_${student.id}`,
+        JSON.stringify(data.personalSchedule.timeBlocks)
+      );
+    } else {
+      setTimeBlocks([]);
+      localStorage.removeItem(`timeBlocks_${student.id}`);
     }
   }
 
-  // 2️⃣ Firestore 값이 있으면 불러와서 localStorage에 동기화
-  const fireBlocks = student.personalSchedule?.timeBlocks;
-  if (Array.isArray(fireBlocks) && fireBlocks.length > 0) {
-    setTimeBlocks(fireBlocks);
-    localStorage.setItem(localKey, JSON.stringify(fireBlocks));
+  loadFullStudent();
+}, [student?.id]);
+// === 여기까지 ===
+
+
+// ✅ Firestore에 저장된 개별시간 불러오기
+// 🔥 Firestore → timeBlocks 정확히 가져오기
+// 🔥 Firestore → timeBlocks 정확히 가져오기
+useEffect(() => {
+  if (!student?.id) return;
+
+  const fire = student.personalSchedule?.timeBlocks;
+
+  // Firestore에 있는 데이터 그대로 사용
+  if (Array.isArray(fire)) {
+    setTimeBlocks(fire);
+    localStorage.setItem(`timeBlocks_${student.id}`, JSON.stringify(fire));
+    return;
   }
+
+  // 없으면 빈 배열
+  setTimeBlocks([]);
+  localStorage.removeItem(`timeBlocks_${student.id}`);
 }, [student]);
+
+
 
 // ✅ 변경 시 localStorage 동기화
 useEffect(() => {
@@ -1205,7 +1243,7 @@ await setDoc(
           ),
         },
       },
-      next: JSON.parse(JSON.stringify(sched.next ?? null)),
+     next: sched.next ? JSON.parse(JSON.stringify(sched.next)) : undefined,
 
       // ✅ 개별 시간(timeBlocks) 함께 저장
       timeBlocks: JSON.parse(JSON.stringify(timeBlocks || [])),
