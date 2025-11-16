@@ -3,6 +3,7 @@ import { db } from "./firebase";
 import GradeModal from "./components/GradeModal";
 import GradeChartModal from "./components/GradeChartModal";  // ✅ 중괄호 제거
 import EditStudentModal from "./components/EditStudentModal";
+import { deleteField } from "firebase/firestore";
 import {
   collection,
   doc,
@@ -38,7 +39,7 @@ const hmToMin = (hm?: string) => {
   return h * 60 + m;
 };
 /** 총 분 -> "HH:MM" */
-const minToHM = (min: number) => {
+export const minToHM = (min: number) => {
   const mm = Math.max(0, Math.round(min));
   const h = Math.floor(mm / 60);
   const m = mm % 60;
@@ -133,42 +134,26 @@ export interface DayCell {
   status: StatusKey;
   time?: string;
   outTime?: string;
-
-  // (구버전 호환)
   academyFrom?: string;
   academyTo?: string;
   enabledSubjects?: AcademyType[];
-
-  // 과목별 시간
   academyBySubject?: Partial<Record<AcademyType, SubjectEntry>>;
   overrideAcademyTimes?: Record<string, { subject: string; from: string; to: string; date: string }>;
-
-  // 휴식/식사
   restroomCount?: number;
   restroomMin?: number;
   mealMin?: number;
   commuteMin?: number; // 이동 / 통학 시간(분 단위)
-
-  // 메모/과제
   memo?: string;
   comment?: string;
   studyNote?: string;
   tasks?: TaskItem[];
   hwDone?: boolean;
-
-  // 패널티/기타
   sleepPenaltyCount?: number;
   latePenaltyCount?: number;     // ✅ 새 이름
   latepenaltyCount?: number;     // 🟡 레거시(코드 다 바꾸면 삭제)
   shortBreakCount?: number;
   shortBreakMin?: number;
   focusScore?: number;
-
-  // 과거 오타는 제거 권장(필요시만 임시로 유지)
-  // addSleepPenalty?: number;
-  // addSllatePenalty?: number;
-
-  // 개인시간표 적용 여부
   scheduleAppliedDate?: string;
 }
 
@@ -515,6 +500,11 @@ function loadStore(): StoreShape {
       return s;
     }
 
+    const [monthly, setMonthly] = useState<{
+  open: boolean;
+  student: Student | null;
+}>({ open: false, student: null });
+
     const g0: Group = { id: "default", name: "우리반", students: [] };
     const init: StoreShape = {
       groups: [g0],
@@ -559,75 +549,67 @@ export default function App() {
   }
 
   // === 선생님용 등원 ===
-  async function handleCheckin(studentId: string) {
-    const ref = doc(db, "records", studentId);
-    const snap = await getDoc(ref);
+ async function handleCheckin(studentId: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const nowHM = new Date().toISOString().slice(11, 16);
 
-    let logs: any[] = [];
-    if (snap.exists()) {
-      const data = snap.data();
-      logs = Array.isArray(data.logs) ? data.logs.slice() : [];
-    }
+  const ref = doc(db, "records", studentId);
+  const snap = await getDoc(ref);
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const now = new Date().toISOString();
+  const data = snap.exists() ? snap.data() : {};
+  const prev = data[today] || null;   // ← 오늘 날짜로 저장해야 함
 
-    // 오늘 이미 등원했는지 확인 (하원 안한 경우)
-    const alreadyIn = logs.some(
-      (l) => l.date === todayStr && l.inTime
-    );
-
-    if (alreadyIn) {
-      alert("이미 등원 처리되었습니다.");
-      return;
-    }
-
-    logs.push({
-      date: todayStr,
-      inTime: now,
-      outTime: null,
-    });
-
-    await setDoc(ref, { logs }, { merge: true });
-
-    alert("등원 처리 완료!");
+  // 이미 등원했는지 검사
+  if (prev?.time) {
+    alert("이미 등원 처리되었습니다.");
+    return;
   }
+
+  const newCell = {
+    ...(prev || {}),
+    status: "P",
+    time: nowHM,
+    outTime: "",
+    date: today,
+    sid: studentId,
+  };
+
+  await setDoc(ref, { [today]: newCell }, { merge: true });  // ← 날짜 key로 저장
+
+  alert("등원 처리 완료!");
+}
+
 
   // === 선생님용 하원 ===
-  async function handleCheckout(studentId: string) {
-    const ref = doc(db, "records", studentId);
-    const snap = await getDoc(ref);
+async function handleCheckout(studentId: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const nowHM = new Date().toISOString().slice(11, 16);
 
-    if (!snap.exists()) {
-      alert("등원 기록이 없습니다.");
-      return;
-    }
+  const ref = doc(db, "records", studentId);
+  const snap = await getDoc(ref);
 
-    const data = snap.data();
-    let logs: any[] = Array.isArray(data.logs) ? data.logs.slice() : [];
+  const data = snap.exists() ? snap.data() : {};
+  const prev = data[today] || null;     // ← 오늘 key에서 읽기
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const now = new Date().toISOString();
-
-    // 오늘 등원했지만 아직 outTime 없는 기록 찾기
-    const idx = logs
-      .map((l, i) => ({ ...l, _idx: i }))
-      .filter((l) => l.date === todayStr && l.inTime && !l.outTime)
-      .map((l) => l._idx)
-      .pop();
-
-    if (idx === undefined) {
-      alert("하원 처리할 등원 기록이 없습니다.");
-      return;
-    }
-
-    logs[idx] = { ...logs[idx], outTime: now };
-
-    await setDoc(ref, { logs }, { merge: true });
-
-    alert("하원 처리 완료!");
+  if (!prev || !prev.time) {
+    alert("하원 처리할 등원 기록이 없습니다.");
+    return;
   }
 
+  if (prev.outTime) {
+    alert("이미 하원 처리가 완료되었습니다.");
+    return;
+  }
+
+  const newCell = {
+    ...prev,
+    outTime: nowHM,
+  };
+
+  await setDoc(ref, { [today]: newCell }, { merge: true }); // ← 날짜 key로 저장
+
+  alert("하원 처리 완료!");
+}
   async function saveStudentToFS(groupId: string, s: any) {
     try {
       // undefined 값 제거 (Firestore는 undefined 허용 안 함)
@@ -656,6 +638,39 @@ export default function App() {
       console.error("❌ Firestore 학생 저장 실패:", e);
     }
   }
+
+
+  // DayCell 기본 구조 정의
+const defaultDayCell: DayCell = {
+  status: "P",
+  time: undefined,
+  outTime: undefined,
+
+  // 🔥 기본 메모류
+  comment: "",
+  studyNote: "",
+  memo: "",
+
+  // 🔥 기본 시간/패널티 값
+  restroomCount: 0,
+  restroomMin: 0,
+  mealMin: 0,
+  commuteMin: 0,   // ← outingMin은 없음! commuteMin이 맞음
+  shortBreakCount: 0,
+  shortBreakMin: 0,
+
+  // 🔥 과제/수행
+  tasks: [],
+  hwDone: false,
+
+  // 🔥 패널티
+  sleepPenaltyCount: 0,
+  latePenaltyCount: 0,
+  latepenaltyCount: 0, // legacy
+
+  // 스케줄
+  scheduleAppliedDate: "",
+};
 
   // 새 과제 생성(아이디가 이미 있으면 upsert로 동작)
   async function upsertAssignmentFS(a: AssignmentFS) {
@@ -784,6 +799,7 @@ export default function App() {
 
     return () => unsub();
   }, [store.currentGroupId]); // ✅ 그룹 바뀔 때마다 새로 구독
+
 
 
   // 학생 추가 함수 (공유용)
@@ -938,9 +954,6 @@ export default function App() {
   // ✅ 순공 실시간 갱신 (5초마다)
   const [liveTick, setLiveTick] = useState(0);
 
-
-
-
   // ✅ 관리자 모드 상태 및 함수
   const [isAdmin, setIsAdmin] = useState<boolean>(() => localStorage.getItem("is_admin") === "1");
   useEffect(() => saveStore(store), [store]);
@@ -1061,6 +1074,7 @@ export default function App() {
 
     if (students.length) loadRecords();
   }, [students]);
+
 
 
   // ✅ 학년 목록 생성
@@ -1434,7 +1448,7 @@ const resetMeal = (sid: string) => {
     const totalGross = (c?.time && (c.outTime || c.time))
       ? spanMin(c.time, c.outTime || nowHM())
       : 0;
-    const restTotal = (c ? outingTotalMin(c) : 0) + (c?.shortBreakMin || 0);
+    const restTotal = (c ? commuteTotalMin(c) : 0) + (c?.shortBreakMin || 0);
     const running = !!(c?.time && !c?.outTime);
     const studyNow = running ? netStudyMinLive(c) : netStudyMin(c);
 
@@ -1456,7 +1470,7 @@ const resetMeal = (sid: string) => {
       <div class="small">${dt}${running ? " (진행중)" : ""}</div>
       <table>
         <tr><th>등원</th><td>${c?.time || "-"}</td><th>하원</th><td>${c?.outTime || (running ? "진행중" : "-")}</td></tr>
-        <tr><th>총 체류</th><td>${minToHM(totalGross)}</td><th>학원/식사/화장실</th><td>${minToHM(outingTotalMin(c))}</td></tr>
+        <tr><th>총 체류</th><td>${minToHM(totalGross)}</td><th>학원/식사/화장실</th><td>${minToHM(commuteTotalMin(c))}</td></tr>
         <tr><th>순공</th><td><b>${minToHM(studyNow)}</b></td><th>메모</th><td>${c?.memo || "-"}</td></tr>
       </table>
       <script>window.print()</script>
@@ -1467,63 +1481,64 @@ const resetMeal = (sid: string) => {
 
 
   /** ===== 집계 유틸 ===== */
-  const subjectOutingMin = (c?: DayCell) => {
-    if (!c) return 0;
+ const subjectCommuteMin = (c?: DayCell) => {
+  if (!c) return 0;
 
-    // ✅ 새 구조 (EditStudentModal 기반) 먼저 찾고, 없으면 예전 구조로 대체
-    const subjects =
-      (c as any).personalSchedule?.current ||
-      c.academyBySubject ||
-      c.academyFrom ||
-      {};
+  // 새로운 저장 구조 기준
+  const subjects =
+    (c as any).personalSchedule?.current ||
+    c.academyBySubject ||
+    {};
 
-    // ✅ "학교" 제외 (순공시간엔 포함되지 않음)
-    const studySubjects = Object.entries(subjects).filter(
-      ([sub]) => sub !== "학교"
-    );
+  const studySubjects = Object.entries(subjects).filter(
+    ([sub]) => sub !== "학교" // 학교 시간 제외
+  );
 
-    let total = 0;
-    studySubjects.forEach(([_, data]) => {
-      const slots = (data as any)?.slots || [];
-      slots.forEach((s: any) => {
-        if (!s.from || !s.to) return;
-        const [fh, fm] = s.from.split(":").map(Number);
-        const [th, tm] = s.to.split(":").map(Number);
-        total += th * 60 + tm - (fh * 60 + fm);
-      });
+  let total = 0;
+
+  studySubjects.forEach(([_, data]: any) => {
+    const slots = data?.slots || [];
+    slots.forEach((s: any) => {
+      if (!s.from || !s.to) return;
+      const [fh, fm] = s.from.split(":").map(Number);
+      const [th, tm] = s.to.split(":").map(Number);
+      total += th * 60 + tm - (fh * 60 + fm);
     });
+  });
 
-    return total;
-  };
+  return total;
+};
 
-  const outingTotalMin = (c?: DayCell) => {
-    if (!c) return 0;
+const commuteTotalMin = (c?: DayCell) => {
+  if (!c) return 0;
 
-    // ✅ personalSchedule.current 도 읽기 (EditStudentModal 저장 반영용)
-    const subjects =
-      (c as any).personalSchedule?.current ||
-      c.academyBySubject ||
-      c.academyFrom ||
-      {};
+  const subjects =
+    (c as any).personalSchedule?.current ||
+    c.academyBySubject ||
+    {};
 
-    // 🟡 학교 과목은 계산에서 제외
-    const filtered = Object.entries(subjects).filter(([key]) => key !== "학교");
+  const filtered = Object.entries(subjects).filter(
+    ([sub]) => sub !== "학교"
+  );
 
-    const legacy = spanMin(c.academyFrom, c.academyTo);
-    let total = 0;
+  let total = 0;
 
-    filtered.forEach(([_, data]: any) => {
-      const slots = data?.slots || [];
-      slots.forEach((s: any) => {
-        if (!s.from || !s.to) return;
-        const [fh, fm] = s.from.split(":").map(Number);
-        const [th, tm] = s.to.split(":").map(Number);
-        total += th * 60 + tm - (fh * 60 + fm);
-      });
+  filtered.forEach(([_, data]: any) => {
+    const slots = data?.slots || [];
+    slots.forEach((s: any) => {
+      if (!s.from || !s.to) return;
+      const [fh, fm] = s.from.split(":").map(Number);
+      const [th, tm] = s.to.split(":").map(Number);
+      total += th * 60 + tm - (fh * 60 + fm);
     });
+  });
 
-    return total + legacy + (c.restroomMin || 0) + (c.mealMin || 0);
-  };
+  // legacy 학원 from~to
+  const legacy = spanMin(c.academyFrom, c.academyTo);
+
+  // 🔥 이동시간(commuteMin) + 화장실(restroomMin) + 식사(mealMin)
+  return total + legacy + (c.commuteMin || 0) + (c.restroomMin || 0) + (c.mealMin || 0);
+};
 
   /** 순공(하원 후 기준) 계산: 등원~하원 사이 - 외출시간 */
   const netStudyMin = (c?: DayCell) => {
@@ -1544,7 +1559,7 @@ const resetMeal = (sid: string) => {
     const gross = Math.max(0, end - start);
 
     // 외출시간(학원·식사·화장실 등)
-    const outing = outingTotalMin(c);
+    const outing =commuteTotalMin(c);
 
     // 순공 = 전체시간 - 외출시간
     return Math.max(0, gross - outing);
@@ -1610,7 +1625,7 @@ const resetMeal = (sid: string) => {
     const start = hmToMin(c.time);
     const end = c.outTime ? hmToMin(c.outTime) : nowTotalMinutes(); // 하원 미입력 시 현재 시각
     const gross = Math.max(0, end - start);
-    const outing = outingTotalMin(c);
+    const outing = commuteTotalMin(c);
     return Math.max(0, gross - outing);
   };
 
@@ -1619,31 +1634,53 @@ const resetMeal = (sid: string) => {
 // ==========================
 const saveRecordToFS = async (date: string, sid: string, cell: DayCell) => {
   try {
-    const ref = doc(db, "records", `${date}_${sid}`);
-    await setDoc(ref, { date, sid, cell }, { merge: true });
-    console.log("📌 Firestore 저장 완료:", date, sid);
+    const ref = doc(db, "records", sid);  // 문서ID = 학생ID (그대로 OK)
+
+    const safeCell: any = { ...cell };
+
+    Object.keys(safeCell).forEach((k) => {
+      if (safeCell[k] === undefined) {
+        safeCell[k] = deleteField(); // undefined 대신 deleteField()
+      }
+    });
+
+    await setDoc(
+      ref,
+      {
+        // ✅ 필드 이름은 날짜!
+        [date]: safeCell,
+      },
+      { merge: true }
+    );
+
+    console.log("🔥 Firestore 저장 완료:", date, sid);
   } catch (err) {
     console.error("❌ Firestore 저장 실패:", err);
   }
 };
 
-// ✅ DayCell 공통 업데이트 + Firestore 동시 저장 헬퍼
+// DayCell 공통 업데이트 + Firestore 동시 저장 헬퍼
 const updateDayCell = (
   ds: string,
   sid: string,
   updater: (base: DayCell) => DayCell
 ) => {
+
   setStore(prev => {
     const records = { ...prev.records };
     const dayRec = { ...(records[ds] || {}) };
-    const base: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+
+    const base: DayCell = {
+      ...defaultDayCell,
+      ...(dayRec[sid] || {})
+    };
 
     const next = updater(base);
 
     dayRec[sid] = next;
     records[ds] = dayRec;
 
-    // 🔥 Firestore 동기 저장 (await 안 걸고 그냥 쏘기)
+    // 🔥 Firestore에도 동일하게 저장
     saveRecordToFS(ds, sid, next);
 
     return { ...prev, records };
@@ -2646,7 +2683,7 @@ const updateDayCell = (
                             <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
                               {/* 수정 */}
                               <button style={btn} onClick={() => setEditStudent(s.id)}>✏️ 정보 </button>
-
+                              
                               {/* 숨김 / 복원 */}
                               {!s.removed ? (
                                 <button
@@ -3447,7 +3484,7 @@ const updateDayCell = (
 
                                   {(() => {
                                     // ===== 당일 집계 =====
-                                    const baseAcademyMin = subjectOutingMin(cell);
+                                    const baseAcademyMin = subjectCommuteMin(cell);
                                     const overrideMin =
                                       cell.overrideAcademyTimes
                                         ? Object.values(cell.overrideAcademyTimes).reduce((sum, t) => {
@@ -3871,7 +3908,7 @@ export const calcNetStudyMin = (record: any) => {
   if (!inTime) return 0;
 
   const diff = Math.max(0, (outTime.getTime() - inTime.getTime()) / 60000); // 분 단위 계산
-  const outing = record.outingMin || 0;
+const outing = record.commuteMin || 0;
   const rest = record.restroomMin || 0;
   return Math.max(0, diff - outing - rest);
 };
@@ -4182,7 +4219,15 @@ function StudentCalendarModal({
                     const isSun = dow === 0;
                     const isSat = dow === 6;
                     const isHol = isHoliday(ds);
-                    const c = records[ds]?.[student.id];
+                   // 🔥 옛날 필드(commentToday, studyContent)까지 한번에 정리해서 쓰기
+const raw = records[ds]?.[student.id] as any;
+const c: DayCell | undefined = raw
+  ? {
+      ...raw,
+      comment: raw.comment ?? raw.commentToday ?? "",
+      studyNote: raw.studyNote ?? raw.studyContent ?? "",
+    }
+  : undefined;
 
 
                     
@@ -4463,3 +4508,5 @@ function StudentCalendarModal({
     </div>
   );
 }
+
+

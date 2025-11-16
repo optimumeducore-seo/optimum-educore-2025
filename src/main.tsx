@@ -5,17 +5,22 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "./App";
 import StudentPage from "./pages/StudentPage";
 import "./index.css";
+import ParentMonthlyReport from "./pages/ParentMonthlyReport";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <BrowserRouter>
-      <Routes>
-        {/* 🎓 학생용 페이지 */}
-        <Route path="/student" element={<StudentPage />} />
-        {/* 🏫 관리자용 기존 화면 */}
-        <Route path="/" element={<App />} />
-      </Routes>
-    </BrowserRouter>
+  <Routes>
+    {/* 학생별 페이지 */}
+    <Route path="/student" element={<StudentPage />} />
+
+    {/* 부모 월간 보고서 */}
+    <Route path="/parent-report/:id" element={<ParentMonthlyReport />} />
+
+    {/* 관리자용 기본 화면 */}
+    <Route path="/" element={<App />} />
+  </Routes>
+</BrowserRouter>
   </React.StrictMode>
 );
 
