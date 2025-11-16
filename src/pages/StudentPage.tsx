@@ -68,34 +68,40 @@ export default function StudentPage() {
 
   // 🔹 학생 선택 시 Firestore에서 출결 로그 로드
   const handleSelectStudent = async (student: any) => {
-    setSelected(student);
-    setVerified(false);
-    setPasswordInput("");
-    setTodayInTime(null);
-   
-    // 🔥 자동 포커스
+  setSelected(student);
+  setVerified(false);
+  setPasswordInput("");
+  setTodayInTime(null);
+
+  // 자동 포커스
   setTimeout(() => {
     const el = document.getElementById("pw-input");
     el?.focus();
   }, 50);
 
-    const snap = await getDoc(doc(db, "records", student.id));
-    if (!snap.exists()) {
-      setRecords([]);
-      setMonthStats({});
-      return;
-    }
-    const data = snap.data();
-    const logs = Array.isArray((data as any).logs) ? (data as any).logs : [];
-    setRecords(logs);
-    calculateMonthlyStats(logs);
+  const snap = await getDoc(doc(db, "records", student.id));
+  if (!snap.exists()) {
+    setRecords([]);
+    setMonthStats({});
+    return;
+  }
 
-    setTimeout(() => {
-  const el = document.getElementById("pw-input");
-  el?.focus();
-}, 10);
-  
-  };
+  const data = snap.data() as any;
+
+  // 🔥 DayCell 기반으로 변환
+  const logs: any[] = Object.entries(data).map(([date, cell]: any) => ({
+    date,
+    ...cell,
+  }));
+
+  setRecords(logs);
+  calculateMonthlyStats(logs);
+
+  setTimeout(() => {
+    const el = document.getElementById("pw-input");
+    el?.focus();
+  }, 10);
+};
 
   // 🔹 비밀번호 인증
 const verifyPassword = () => {
@@ -169,93 +175,86 @@ const summary = (() => {
 })();
 
   const getStatus = (rec: any) => {
-  if (!rec.inTime) return "A"; // 결석
-  const inHM = new Date(rec.inTime).getHours() * 60 + new Date(rec.inTime).getMinutes();
-  const cutoff = 16 * 60 + 30; // 16:30 기준
-  if (inHM > cutoff) return "L"; // 지각
-  return "P"; // 출석
+  if (!rec.time) return "A"; // 결석
+
+  const [h, m] = rec.time.split(":").map(Number);
+  const inHM = h * 60 + m;
+
+  const cutoff = 16 * 60 + 30;
+  if (inHM > cutoff) return "L";
+  return "P";
 };
+
 
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
 const [viewMonth, setViewMonth] = useState(new Date().getMonth()); 
 
   // 🔹 학생용 등원 처리 (logs 기반)
-  const checkIn = async () => {
-    if (!selected) return;
-    const ref = doc(db, "records", selected.id);
-    const snap = await getDoc(ref);
+// 🔥 학생용 checkIn: App 구조로 저장
+const checkIn = async () => {
+  if (!selected) return;
 
-    let logs: any[] = [];
-    if (snap.exists()) {
-      const data = snap.data() as any;
-      logs = Array.isArray(data.logs) ? data.logs.slice() : [];
-    }
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0, 5); // HH:MM
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const now = new Date().toISOString();
+  const ref = doc(db, "records", selected.id);
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : {};
 
-    // 오늘 이미 등원했는지 검사 (하원 안 한 기록)
-    const alreadyIn = logs.some(
-      (l) => l.date === todayStr && l.inTime && !l.outTime
-    );
-    if (alreadyIn) {
-      alert("이미 등원 처리된 상태입니다.");
-      return;
-    }
+  const prev = data[today] || {};
 
-    logs.push({ date: todayStr, inTime: now, outTime: null });
+  if (prev.time) {
+    alert("이미 등원 처리되었습니다.");
+    return;
+  }
 
-    await setDoc(ref, { logs }, { merge: true });
-    setTodayInTime(now);
-    alert("✅ 등원 처리 완료");
-
-    // 로컬 기록 갱신
-    setRecords(logs);
-    calculateMonthlyStats(logs);
-    setSearch("");
-setSelected(null);
-setVerified(false);
+  const next = {
+    ...prev,
+    time: hhmm,
+    status: "P",
+    outTime: undefined,
   };
+
+  await setDoc(ref, { [today]: next }, { merge: true });
+
+  setTodayInTime(now.toISOString());
+  alert("✅ 등원 처리 완료");
+};
 
   // 🔹 학생용 하원 처리 (logs 기반)
   const checkOut = async () => {
-    if (!selected) return;
-    const ref = doc(db, "records", selected.id);
-    const snap = await getDoc(ref);
+  if (!selected) return;
 
-    if (!snap.exists()) {
-      alert("등원 기록이 없습니다.");
-      return;
-    }
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0, 5);
 
-    const data = snap.data() as any;
-    let logs: any[] = Array.isArray(data.logs) ? data.logs.slice() : [];
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const now = new Date().toISOString();
+  const ref = doc(db, "records", selected.id);
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : {};
 
-    // 오늘 등원했지만 아직 outTime 없는 기록 찾기
-    const idx = logs
-      .map((l, i) => ({ ...l, _idx: i }))
-      .filter((l) => l.date === todayStr && l.inTime && !l.outTime)
-      .map((l) => l._idx)
-      .pop();
+  const prev = data[today];
 
-    if (idx === undefined) {
-      alert("하원 처리할 등원 기록이 없습니다.");
-      return;
-    }
+  if (!prev?.time) {
+    alert("등원 기록이 없습니다.");
+    return;
+  }
 
-    logs[idx] = { ...logs[idx], outTime: now };
+  if (prev.outTime) {
+    alert("이미 하원 처리되었습니다.");
+    return;
+  }
 
-    await setDoc(ref, { logs }, { merge: true });
-    alert("👋 하원 처리 완료");
-
-    setRecords(logs);
-    calculateMonthlyStats(logs);
-    setSearch("");
-setSelected(null);
-setVerified(false);
+  const next = {
+    ...prev,
+    outTime: hhmm,
   };
+
+  await setDoc(ref, { [today]: next }, { merge: true });
+
+  alert("👋 하원 처리 완료");
+};
 
   
 
@@ -282,8 +281,7 @@ const realAbsences = (() => {
   const monthStr = `${y}-${String(m).padStart(2, "0")}`;  
   
   const presentDays = new Set(  
-    records  
-      .filter(r => r.date.startsWith(monthStr) && r.inTime)  
+    records.filter(r => r.date.startsWith(monthStr) && r.time)
       .map(r => r.date)  
   );  
   
@@ -461,8 +459,7 @@ const renderCalendar = () => {
           }
 
           const inTimeLabel =
-            log?.inTime &&
-            new Date(log.inTime).toLocaleTimeString("ko-KR", {
+            log?.time && log.time.toLocaleTimeString("ko-KR", {
               hour: "2-digit",
               minute: "2-digit",
             });

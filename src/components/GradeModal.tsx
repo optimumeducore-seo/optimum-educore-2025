@@ -1,7 +1,7 @@
 // src/components/GradeModal.tsx
 import React, { useState, useEffect } from "react";
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
-import { db } from "../firebase"; // ✅ firebase.ts에서 export한 db 사용
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../firebase";
 import { loadGrade, saveGrade } from "../services/firestore";
 
 interface GradeModalProps {
@@ -11,7 +11,15 @@ interface GradeModalProps {
 }
 
 const subjects = [
-  "국어", "영어", "수학", "과학", "역사", "도덕", "기술가정", "한문", "일본어",
+  "국어",
+  "영어",
+  "수학",
+  "과학",
+  "역사",
+  "도덕",
+  "기술가정",
+  "한문",
+  "일본어",
 ];
 
 const termOptions = {
@@ -30,7 +38,7 @@ const pastelThemes: Record<string, string> = {
 
 const gradeColors = ["#4caf50", "#8bc34a", "#cddc39", "#ffc107", "#f44336"];
 
-// ✅ 등급 계산
+// 등급 계산
 const getLevel = (my: number, avg: number) => {
   if (!avg) return 0;
   const diff = my - avg;
@@ -41,22 +49,20 @@ const getLevel = (my: number, avg: number) => {
   return 5;
 };
 
-// ✅ Firestore 저장 / 불러오기
-
-
-// ✅ AI 피드백
+// AI COMMENT 생성
 const generateFeedback = (scores: Record<string, any>) => {
   const comments: string[] = [];
   let total = 0;
   let count = 0;
 
   for (const [subject, terms] of Object.entries(scores)) {
+    const values = Object.values(terms) as any[];
+    if (!values.length) continue;
+
     const myAvg =
-      Object.values(terms).reduce((a: number, t: any) => a + (t.my || 0), 0) /
-      Object.keys(terms).length;
+      values.reduce((a, t) => a + (t.my || 0), 0) / values.length;
     const schoolAvg =
-      Object.values(terms).reduce((a: number, t: any) => a + (t.avg || 0), 0) /
-      Object.keys(terms).length;
+      values.reduce((a, t) => a + (t.avg || 0), 0) / values.length;
 
     total += myAvg;
     count++;
@@ -66,8 +72,10 @@ const generateFeedback = (scores: Record<string, any>) => {
     else if (myAvg - schoolAvg >= -5)
       comments.push(`${subject}은(는) 평균 수준으로 꾸준한 유지가 필요합니다.`);
     else
-      comments.push(`${subject}은(는) 평균 이하로, 기초 보완이 요구됩니다.`);
+      comments.push(`${subject}은(는) 평균 이하로 보완이 필요합니다.`);
   }
+
+  if (!count) return "📘 아직 입력된 성적이 없습니다.";
 
   const overall = total / count;
   let summary = "";
@@ -77,91 +85,99 @@ const generateFeedback = (scores: Record<string, any>) => {
     summary = "전반적으로 안정적이며, 일부 과목 보완으로 더 성장할 수 있습니다.";
   else if (overall >= 70)
     summary = "기초 개념 정리와 복습을 통해 향상 가능성이 있습니다.";
-  else
-    summary = "학습 습관의 재정비와 목표 설정을 통한 동기 강화가 필요합니다.";
+  else summary = "학습 습관 재정비와 동기 강화가 필요합니다.";
 
   return `📘 ${summary}\n${comments.join(" ")}`;
 };
 
-export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModalProps) {
-  const [activeTab, setActiveTab] = useState<"중1" | "중2" | "중3" | "브랜치">("중1");
+export default function GradeModal({
+  studentId,
+  gradeLevel,
+  onClose,
+}: GradeModalProps) {
+  const [activeTab, setActiveTab] =
+    useState<"중1" | "중2" | "중3" | "브랜치">("중1");
   const [teacherComment, setTeacherComment] = useState("");
   const [loading, setLoading] = useState(true);
 
-   // ✅ 1. 최초 Firestore에서 한 번 불러오기
-  useEffect(() => {
-    const fetchData = async () => {
-      const saved = await loadGrade(studentId);
-      if (saved) {
-        setGrades(saved.scores || {});
-        setTeacherComment(saved.teacherComment || "");
-        console.log("🔥 초기 불러오기 완료:", saved);
-      } else {
-        console.log("⚠️ 저장된 성적 없음");
-      }
-      setLoading(false);
-    };
-    fetchData();
-  }, [studentId]);
-
-  // ✅ 2. 실시간 구독 (자동 반영)
-  useEffect(() => {
-  const unsubscribe = onSnapshot(doc(db, "grades", studentId), (snap: any) => {
-    if (snap.exists()) {
-      const data = snap.data();
-      setGrades(data.scores || {});
-      setTeacherComment(data.teacherComment || "");
-      console.log("⚡ 실시간 갱신:", data);
-    }
-  });
-  return () => unsubscribe();
-}, [studentId]);
-
-  // ✅ 초기 구조 생성
+  // 기본 구조
   const [grades, setGrades] = useState(() => {
     const allSubjects = {
       중1: subjects,
       중2: subjects,
       중3: subjects,
       브랜치: ["국어", "수학", "영어", "통합과학", "통합사회", "역사"],
-    };
+    } as const;
+
     return Object.fromEntries(
       Object.keys(termOptions).map((year) => [
         year,
         Object.fromEntries(
-          allSubjects[year as keyof typeof allSubjects].map((s) => [
+          (allSubjects as any)[year].map((s: string) => [
             s,
             Object.fromEntries(
-              termOptions[year as keyof typeof termOptions].map((t) => [t, { my: 0, avg: 0 }])
+              (termOptions as any)[year].map((t: string) => [
+                t,
+                { my: 0, avg: 0 },
+              ])
             ),
           ])
         ),
       ])
     );
   });
-
-  // ✅ Firestore에서 기존 데이터 불러오기
+  /** 🔥 최초 1회 Firestore에서 불러오기 */
   useEffect(() => {
     (async () => {
       const saved = await loadGrade(studentId);
-      if (saved) {
-        setGrades(saved.scores || grades);
+      if (saved && saved.scores) {
+        setGrades((prev: any) => ({
+          ...prev,
+          ...saved.scores,
+        }));
         setTeacherComment(saved.teacherComment || "");
+        console.log("🔥 초기 성적 불러오기:", saved);
+      } else {
+        console.log("⚠️ 저장된 성적 없음:", studentId);
       }
       setLoading(false);
     })();
   }, [studentId]);
 
-  // ✅ 입력 변경
-  const handleChange = (year: string, subject: string, term: string, field: "my" | "avg", value: string) => {
-    setGrades((prev) => ({
+  /** 🔥 실시간 구독 */
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, "grades", studentId), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as any;
+        if (data.scores) {
+          setGrades((prev: any) => ({
+            ...prev,
+            ...data.scores,
+          }));
+        }
+        setTeacherComment(data.teacherComment || "");
+        console.log("⚡ 실시간 갱신:", data);
+      }
+    });
+    return () => unsubscribe();
+  }, [studentId]);
+
+  /** 입력 변경 */
+  const handleChange = (
+    year: string,
+    subject: string,
+    term: string,
+    field: "my" | "avg",
+    value: string
+  ) => {
+    setGrades((prev: any) => ({
       ...prev,
       [year]: {
         ...prev[year],
         [subject]: {
-          ...prev[year][subject],
+          ...prev[year]?.[subject],
           [term]: {
-            ...prev[year][subject][term],
+            ...prev[year]?.[subject]?.[term],
             [field]: Number(value),
           },
         },
@@ -169,7 +185,7 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
     }));
   };
 
-  // ✅ Firestore 저장
+  /** 저장 */
   const handleSave = async () => {
     try {
       const data = {
@@ -187,7 +203,7 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
     }
   };
 
-  // ✅ 표 렌더링
+  /** 표 렌더링 (모양 그대로 유지) */
   const renderTable = (year: string) => {
     const terms = termOptions[year as keyof typeof termOptions];
     const subjList =
@@ -196,12 +212,23 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
         : subjects;
 
     return (
-      <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "center", fontSize: 12 }}>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          textAlign: "center",
+          fontSize: 12,
+        }}
+      >
         <thead>
           <tr style={{ background: pastelThemes[year], color: "#333" }}>
             <th style={{ padding: "7px 0", border: "1px solid #ddd" }}>과목</th>
             {terms.map((term) => (
-              <th key={term} colSpan={year === "브랜치" ? 2 : 3} style={{ border: "1px solid #ddd" }}>
+              <th
+                key={term}
+                colSpan={year === "브랜치" ? 2 : 3}
+                style={{ border: "1px solid #ddd" }}
+              >
                 {term}
               </th>
             ))}
@@ -210,36 +237,61 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
             <th></th>
             {terms.map((term) =>
               year === "브랜치" ? (
-                <>
+                <React.Fragment key={term}>
                   <th>내 점수</th>
                   <th>등급</th>
-                </>
+                </React.Fragment>
               ) : (
-                <>
+                <React.Fragment key={term}>
                   <th>내 점수</th>
                   <th>평균</th>
                   <th>등급</th>
-                </>
+                </React.Fragment>
               )
             )}
           </tr>
         </thead>
+
         <tbody>
           {subjList.map((subject) => (
             <tr key={subject}>
-              <td style={{ fontWeight: 600, background: "#fdfcfb" }}>{subject}</td>
+              <td
+                style={{
+                  fontWeight: 600,
+                  background: "#fdfcfb",
+                  border: "1px solid #eee",
+                }}
+              >
+                {subject}
+              </td>
+
               {terms.map((term) => {
-                const { my, avg } = grades[year][subject][term];
-                const level = year === "브랜치" ? Number(avg) : getLevel(my, avg);
+                const current =
+                  (grades as any)?.[year]?.[subject]?.[term] || {
+                    my: 0,
+                    avg: 0,
+                  };
+                const { my, avg } = current;
+                const level =
+                  year === "브랜치" ? Number(avg) : getLevel(my, avg);
+
                 return (
-                  <>
-                    <td>
+                  <React.Fragment key={term + subject}>
+                    <td style={{ border: "1px solid #eee" }}>
                       <input
                         type="number"
-                        min="0"
-                        max="100"
+                        min={0}
+                        max={100}
                         value={my}
-                        onChange={(e) => handleChange(year, subject, term, "my", e.target.value)}
+                        onChange={(e) =>
+                          handleChange(
+                            year,
+                            subject,
+                            term,
+                            "my",
+                            e.target.value
+                          )
+                        }
                         style={{
                           width: 45,
                           height: 26,
@@ -250,27 +302,48 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
                         }}
                       />
                     </td>
-                    <td>
+
+                    <td style={{ border: "1px solid #eee" }}>
                       <input
                         type={year === "브랜치" ? "text" : "number"}
                         value={avg}
-                        onChange={(e) => handleChange(year, subject, term, "avg", e.target.value)}
+                        onChange={(e) =>
+                          handleChange(
+                            year,
+                            subject,
+                            term,
+                            "avg",
+                            e.target.value
+                          )
+                        }
                         style={{
                           width: 65,
                           height: 26,
                           border: "1px solid #ddd",
                           borderRadius: 5,
                           textAlign: "center",
-                          background: year === "브랜치" ? "#fffdf5" : "#f9f9f9",
+                          background:
+                            year === "브랜치" ? "#fffdf5" : "#f9f9f9",
                         }}
                       />
                     </td>
+
                     {year !== "브랜치" && (
-                      <td style={{ background: gradeColors[level - 1], color: "#fff", fontWeight: 700 }}>
-  {["A", "B", "C", "D", "E"][level - 1] || "-"}
-</td>
+                      <td
+                        style={{
+                          border: "1px solid #eee",
+                          background:
+                            level > 0 && level <= 5
+                              ? gradeColors[level - 1]
+                              : "#e5e7eb",
+                          color: "#fff",
+                          fontWeight: 700,
+                        }}
+                      >
+                        {["A", "B", "C", "D", "E"][level - 1] || "-"}
+                      </td>
                     )}
-                  </>
+                  </React.Fragment>
                 );
               })}
             </tr>
@@ -279,7 +352,6 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
       </table>
     );
   };
-
   if (loading) return <div style={{ padding: 20 }}>⏳ 불러오는 중...</div>;
 
   return (
@@ -317,7 +389,15 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
             paddingBottom: 8,
           }}
         >
-          <div style={{ fontSize: 22, fontWeight: 600, color: "#8b6b3c" }}>Optimum Educore</div>
+          <div
+            style={{
+              fontSize: 22,
+              fontWeight: 600,
+              color: "#8b6b3c",
+            }}
+          >
+            Optimum Educore
+          </div>
           <div style={{ fontSize: 12, textAlign: "right" }}>
             <div>학생: {studentId}</div>
             <div>학년: {gradeLevel}</div>
@@ -335,7 +415,8 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
                 padding: "8px 0",
                 borderRadius: 6,
                 border: "1px solid #ccc",
-                background: activeTab === tab ? pastelThemes[tab] : "#f9f9f9",
+                background:
+                  activeTab === tab ? pastelThemes[tab] : "#f9f9f9",
                 color: "#222",
                 fontWeight: 600,
               }}
@@ -360,7 +441,10 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
         >
           <div style={{ fontWeight: 700, marginBottom: 8 }}>📘 COMMENT</div>
           <textarea
-            value={teacherComment || generateFeedback(grades[activeTab])}
+            value={
+              teacherComment ||
+              generateFeedback((grades as any)[activeTab] || {})
+            }
             onChange={(e) => setTeacherComment(e.target.value)}
             placeholder="AI가 생성한 피드백을 수정하거나 직접 입력할 수 있습니다."
             style={{
@@ -377,11 +461,31 @@ export default function GradeModal({ studentId, gradeLevel, onClose }: GradeModa
         </div>
 
         {/* 버튼 */}
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
-          <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 8, background: "#f3f4f6" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: 20,
+          }}
+        >
+          <button
+            onClick={onClose}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 8,
+              background: "#f3f4f6",
+            }}
+          >
             닫기
           </button>
-          <button onClick={handleSave} style={{ padding: "8px 18px", borderRadius: 8, background: "#e6f0ff" }}>
+          <button
+            onClick={handleSave}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 8,
+              background: "#e6f0ff",
+            }}
+          >
             저장
           </button>
         </div>

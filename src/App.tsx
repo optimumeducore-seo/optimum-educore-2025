@@ -500,10 +500,6 @@ function loadStore(): StoreShape {
       return s;
     }
 
-    const [monthly, setMonthly] = useState<{
-  open: boolean;
-  student: Student | null;
-}>({ open: false, student: null });
 
     const g0: Group = { id: "default", name: "우리반", students: [] };
     const init: StoreShape = {
@@ -535,8 +531,9 @@ function saveStore(s: StoreShape) {
 export default function App() {
 
   const [academySchedule, setAcademySchedule] = useState<Record<string, { start: string; end: string }[]>>({});
-
+  
   const [attendanceList, setAttendanceList] = useState<any[]>([]);
+  const [inputTimes, setInputTimes] = useState<Record<string, string>>({});
 
   async function fetchLogs(studentId: string) {
     const ref = doc(db, "records", studentId);
@@ -549,17 +546,14 @@ export default function App() {
   }
 
   // === 선생님용 등원 ===
- async function handleCheckin(studentId: string) {
+ async function handleCheckin(studentId: string, inputTime: string) {
   const today = new Date().toISOString().slice(0, 10);
-  const nowHM = new Date().toISOString().slice(11, 16);
 
   const ref = doc(db, "records", studentId);
   const snap = await getDoc(ref);
-
   const data = snap.exists() ? snap.data() : {};
-  const prev = data[today] || null;   // ← 오늘 날짜로 저장해야 함
+  const prev = data[today] || null;
 
-  // 이미 등원했는지 검사
   if (prev?.time) {
     alert("이미 등원 처리되었습니다.");
     return;
@@ -568,48 +562,49 @@ export default function App() {
   const newCell = {
     ...(prev || {}),
     status: "P",
-    time: nowHM,
+    time: inputTime,   // ← 여기!!
     outTime: "",
     date: today,
     sid: studentId,
   };
 
-  await setDoc(ref, { [today]: newCell }, { merge: true });  // ← 날짜 key로 저장
-
+  await setDoc(ref, { [today]: newCell }, { merge: true });
   alert("등원 처리 완료!");
 }
 
-
   // === 선생님용 하원 ===
-async function handleCheckout(studentId: string) {
+async function handleCheckout(studentId: string, inputTime: string) {
   const today = new Date().toISOString().slice(0, 10);
-  const nowHM = new Date().toISOString().slice(11, 16);
 
   const ref = doc(db, "records", studentId);
   const snap = await getDoc(ref);
-
   const data = snap.exists() ? snap.data() : {};
-  const prev = data[today] || null;     // ← 오늘 key에서 읽기
+  const prev = data[today] || null;
 
-  if (!prev || !prev.time) {
-    alert("하원 처리할 등원 기록이 없습니다.");
+  if (!prev?.time) {
+    alert("등원 기록이 없습니다.");
     return;
   }
 
   if (prev.outTime) {
-    alert("이미 하원 처리가 완료되었습니다.");
+    alert("이미 하원 처리되었습니다.");
     return;
   }
 
-  const newCell = {
-    ...prev,
-    outTime: nowHM,
-  };
-
-  await setDoc(ref, { [today]: newCell }, { merge: true }); // ← 날짜 key로 저장
+  await setDoc(
+    ref,
+    {
+      [today]: {
+        ...prev,
+        outTime: inputTime, // ← 선생님 입력 시간
+      },
+    },
+    { merge: true }
+  );
 
   alert("하원 처리 완료!");
 }
+
   async function saveStudentToFS(groupId: string, s: any) {
     try {
       // undefined 값 제거 (Firestore는 undefined 허용 안 함)
@@ -2528,76 +2523,121 @@ const updateDayCell = (
                           <td style={{ padding: 10, textAlign: "center" }}>{s.school || "-"}</td>
 
                           {/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
-                          <td style={{ padding: 10 }}>
-                            {/* 등원 줄 */}
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                      <input
-  type="time"
-  value={cell.time ?? ""}
-  onChange={(e) => {
-    const v = e.target.value;
-    updateDayCell(date, s.id, (base) => {
-      return {
-        ...base,
-        time: v || undefined
-      };
-    });
-  }}
-  style={timeInp}
-/>
+<td style={{ padding: 10 }}>
+  {/* 🔹 등원 줄 */}
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "1fr auto auto",
+      gap: 6,
+      alignItems: "center",
+      marginBottom: 6,
+    }}
+  >
+    {/* 선생님이 직접 입력하는 등원 시간 */}
+    <input
+      type="time"
+      value={inputTimes[s.id] ?? cell.time ?? ""}
+      onChange={(e) =>
+        setInputTimes((prev) => ({
+          ...prev,
+          [s.id]: e.target.value,
+        }))
+      }
+      placeholder="선생님 입력 HH:MM"
+      style={{
+        ...timeInp,
+        border: "1px solid #888",
+        background: "#fff9e6",
+        fontSize: 11,
+      }}
+    />
 
-<button
-  style={btn}
-  onClick={() => {
-    // 직접 setTimeNow 제거 → 바로 updateDayCell로 처리
-    const now = nowHM();
-    updateDayCell(date, s.id, (base) => {
-      return {
-        ...base,
-        time: now
-      };
-    });
-    handleCheckin(s.id); // 기존 기능 유지
-  }}
->
-  등원
-</button>
+    {/* 등원 버튼 */}
+    <button
+      style={btn}
+      onClick={() => {
+        // 선생님이 입력한 값이 있으면 그거, 없으면 지금 시간 사용
+        const baseTime =
+          inputTimes[s.id] && inputTimes[s.id].length >= 4
+            ? inputTimes[s.id]
+            : nowHM();
 
-<button
-  style={btnXS}
-  title="등원 시간 지우기"
-  onClick={() => {
-    if (!confirm("이 학생의 등원 시간을 지울까요?")) return;
-    updateDayCell(date, s.id, (base) => {
-      return {
-        ...base,
-        time: undefined
-      };
-    });
-  }}
->
-  ×
-</button>
-                            </div>
-                            {/* 하원 줄 */}
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 6, alignItems: "center" }}>
-                              <input type="time" value={cell.outTime ?? ""} onChange={(e) => setOutTime(s.id, e.target.value)} style={timeInp} />
-                              <button
-                                style={btn}
-                                onClick={() => {
-                                  setOutTimeNow(s.id);      // 기존 기능 유지
-                                  handleCheckout(s.id); // ✅ id 기반으로 변경  // Firestore에 하원 데이터 저장
-                                }}
-                              >
-                                하원
-                              </button>
-                              <button
-                                style={btnXS}
-                                title="하원 시간 지우기"
-                                onClick={() => { if (confirm("이 학생의 하원 시간을 지울까요?")) setOutTime(s.id, ""); }}
-                              >×</button>
-                            </div>
-                          </td>
+        // 화면용 todayDayCell 업데이트
+        updateDayCell(date, s.id, (base) => ({
+          ...base,
+          time: baseTime,
+        }));
+
+        // Firestore records/{sid} -> 오늘 날짜에 등원 기록 저장
+        handleCheckin(s.id, baseTime);
+      }}
+    >
+      등원
+    </button>
+
+    {/* 등원 시간 지우기 */}
+    <button
+      style={btnXS}
+      title="등원 시간 지우기"
+      onClick={() => {
+        if (!confirm("이 학생의 등원 시간을 지울까요?")) return;
+        updateDayCell(date, s.id, (base) => ({
+          ...base,
+          time: undefined,
+        }));
+        setInputTimes((prev) => ({ ...prev, [s.id]: "" }));
+      }}
+    >
+      ×
+    </button>
+  </div>
+
+  {/* 🔹 하원 줄 */}
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "1fr auto auto",
+      gap: 6,
+      alignItems: "center",
+    }}
+  >
+    <input
+      type="time"
+      value={cell.outTime ?? ""}
+      onChange={(e) => setOutTime(s.id, e.target.value)}
+      style={timeInp}
+    />
+
+    <button
+      style={btn}
+      onClick={() => {
+        // 기존 기능: 지금 시간으로 하원 찍기
+        setOutTimeNow(s.id);
+
+        // Firestore에도 저장 (입력값 있으면 그걸 우선)
+        const baseOut =
+          (cell.outTime && cell.outTime.length >= 4
+            ? cell.outTime
+            : undefined) ?? undefined;
+        handleCheckout(s.id, baseOut ?? "");
+      }}
+    >
+      하원
+    </button>
+
+    <button
+      style={btnXS}
+      title="하원 시간 지우기"
+      onClick={() => {
+        if (!confirm("이 학생의 하원 시간을 지울까요?")) return;
+        setOutTime(s.id, "");
+      }}
+    >
+      ×
+    </button>
+  </div>
+</td>
 
                           {/* 상태 팝업 */}
                           <td style={{ padding: 10, position: "relative" }}>

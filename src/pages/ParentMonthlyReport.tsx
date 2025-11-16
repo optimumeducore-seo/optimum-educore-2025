@@ -8,9 +8,10 @@ import React, {
 } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { loadGrade } from "../services/firestore";
 
 /* ===============================
    타입 정의
@@ -134,6 +135,8 @@ async function downloadSchedulePDF(
   pdf.save(`시간표_${studentName || "학생"}.pdf`);
 }
 
+
+
 /* ===============================
    메인 컴포넌트
 ================================ */
@@ -144,6 +147,58 @@ export default function ParentMonthlyReport() {
   const [student, setStudent] = useState<Student | null>(null);
   const [records, setRecords] = useState<Records>({});
   const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+  // 🔥 성적 데이터
+const [gradeData, setGradeData] = useState<any>(null);
+const [comment, setComment] = useState("");
+async function handleSaveComment() {
+  if (!id) return;
+  try {
+    await setDoc(
+      doc(db, "grades", id),
+      { teacherComment: comment },
+      { merge: true }
+    );
+    alert("✨ 코멘트 저장 완료!");
+  } catch (err) {
+    console.error(err);
+    alert("⚠ 저장 중 오류 발생");
+  }
+}
+
+async function handleDeleteComment() {
+  if (!id) return;
+  try {
+    await setDoc(
+      doc(db, "grades", id),
+      { teacherComment: "" },
+      { merge: true }
+    );
+    setComment("");
+    alert("🗑 코멘트 삭제 완료!");
+  } catch (err) {
+    console.error(err);
+    alert("⚠ 삭제 중 오류 발생");
+  }
+}
+useEffect(() => {
+  if (!id) return;
+  (async () => {
+    const saved = await loadGrade(id);
+    if (saved) {
+      setGradeData(saved.scores);
+      setComment(saved.teacherComment || "");
+    }
+  })();
+}, [id]);
+
+useEffect(() => {
+  if (!id) return;
+
+  (async () => {
+    const saved = await loadGrade(id);
+    if (saved) setGradeData(saved.scores);
+  })();
+}, [id]);  // ⬅ id 의존성 추가
 
   /* ===============================
         데이터 로드
@@ -214,25 +269,118 @@ export default function ParentMonthlyReport() {
     );
   }
 
+
+
+
   /* ===============================
         UI + 프린트 스타일
   ================================= */
   return (
-    <div
-      style={{
-        background: "#F3EFE6",
-        minHeight: "100vh",
-        padding: "24px 10px",
-        display: "flex",
-        justifyContent: "center",
-        fontFamily: "'Pretendard','Noto Sans KR',sans-serif",
-      }}
-    >
-     
+  <div
+    style={{
+      background: "#F3EFE6",
+      minHeight: "100vh",
+      padding: "24px 10px",
+      display: "flex",
+      justifyContent: "center",
+      fontFamily: "'Pretendard','Noto Sans KR',sans-serif",
+    }}
+  >
 
-      {/* ===== 워터마크 (인쇄에서만 보임) ===== */}
-      <div className="watermark">OPTIMUM EDUCORE</div>
-      <div className="watermark-sub">YOU MAKE YOUR STUDY</div>
+    <style>{`
+      .watermark,
+      .watermark-sub {
+        display: none;
+      }
+
+      @media print {
+        .watermark,
+        .watermark-sub {
+          display: block;
+          position: fixed;
+          left: 50%;
+          transform: translateX(-50%) rotate(-35deg);
+          pointer-events: none;
+          opacity: 0.06;
+          z-index: -1;
+          user-select: none;
+          white-space: nowrap;
+        }
+
+        .watermark {
+          top: 40%;
+          font-size: 80px;
+          font-weight: 900;
+          color: #b71c1c;
+        }
+
+        .watermark-sub {
+          top: 55%;
+          font-size: 28px;
+          font-weight: 800;
+          color: #1e3a8a;
+        }
+      }
+    `}</style>
+
+    <style>{`
+  /* 모바일 기본 설정 */
+  @media (max-width: 600px) {
+    .print-card {
+      padding: 20px 18px !important;
+      border-radius: 14px !important;
+    }
+
+    h1 {
+      font-size: 20px !important;
+      margin-bottom: 6px !important;
+    }
+
+    h2 {
+      font-size: 16px !important;
+      margin-bottom: 10px !important;
+    }
+
+    .timeline-item {
+      font-size: 12px !important;
+      padding: 3px 0 !important;
+    }
+
+    /* 도넛 크기 축소 */
+    .doughnut-wrap {
+      width: 140px !important;
+      height: 140px !important;
+    }
+
+    /* 타임라인 카드 */
+    .timeline-card {
+      padding: 10px 12px !important;
+      margin-bottom: 10px !important;
+      border-radius: 10px !important;
+    }
+
+    /* 전체 페이지 패딩 */
+    .page-wrap {
+      padding: 20px 12px !important;
+    }
+
+    /* 시간표 영역 */
+    .timetable-wrapper {
+      padding: 8px !important;
+    }
+
+    .timetable-wrapper table {
+      font-size: 10px !important;
+    }
+
+    .timetable-wrapper td {
+      height: 24px !important;
+      line-height: 24px !important;
+    }
+  }
+`}</style>
+
+     
 
       {/* 🔶 인쇄될 본문 전체 */}
       <div style={{ width: "100%", maxWidth: 820 }}>
@@ -311,7 +459,13 @@ export default function ParentMonthlyReport() {
           <DoughnutSection summary={summary} />
           <TimelineSection monthDates={monthDates} records={records} />
           <ScheduleSection student={student} />
-          <GradeSection />
+          <GradeSection
+  gradeData={gradeData}
+  comment={comment}
+  setComment={setComment}
+  onSave={handleSaveComment}
+  onDelete={handleDeleteComment}
+/>
 
           {/* 하단 카피 */}
           <div
@@ -352,11 +506,14 @@ function DoughnutSection({ summary }: { summary: Summary }) {
         월 학습 총합
       </h2>
 
-      <DoughnutChart
-        study={summary.study}
-        rest={summary.rest}
-        short={summary.short}
-      />
+      {/* 요기에 감싸는 div 추가 */}
+      <div className="doughnut-wrap">
+        <DoughnutChart
+          study={summary.study}
+          rest={summary.rest}
+          short={summary.short}
+        />
+      </div>
 
       <div style={{ marginTop: 10, fontSize: 13 }}>
         출석일 <b>{summary.days}</b>일
@@ -364,7 +521,6 @@ function DoughnutSection({ summary }: { summary: Summary }) {
     </div>
   );
 }
-
 /* =================================================================== */
 /* 타임라인 섹션 */
 /* =================================================================== */
@@ -487,7 +643,7 @@ function ScheduleSection({ student }: { student: Student }) {
           textTransform: "uppercase",
         }}
       >
-        SCHE BY EDUCORE {open ? "▲" : "▼"}
+        SCHED By Educore {open ? "▲" : "▼"}
       </button>
 
       {/* ▼▼▼ 펼쳐지는 내용 ▼▼▼ */}
@@ -584,6 +740,10 @@ function TimeTable({ student }: { student: Student }) {
   const sched = student.personalSchedule;
   if (!sched) return null;
 
+  const isMobile = window.innerWidth < 600;
+  if (isMobile) {
+  return <MobileTimeTable student={student} />;
+}
   // current + next 통합
   const merged = {
     ...(sched.current || {}),
@@ -739,42 +899,386 @@ function TimeTable({ student }: { student: Student }) {
   );
 }
 
-/* =================================================================== */
-/* 성적 섹션 */
-/* =================================================================== */
 
-function GradeSection() {
+function MobileTimeTable({ student }: { student: Student }) {
+  const sched = student.personalSchedule;
+  if (!sched) return null;
+
+  const merged = {
+    ...(sched.current || {}),
+    ...(sched.next?.data || {})
+  };
+
+  const days = ["월", "화", "수", "목", "금", "토", "일"];
+
   return (
-    <div style={{ marginTop: 32 }}>
-      <h2
-        style={{
-          fontSize: 18,
-          fontWeight: 800,
-          marginBottom: 14,
-          borderLeft: "4px solid #A21CAF",
-          paddingLeft: 10,
-        }}
-      >
-        성적 기록
-      </h2>
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+      padding: 4
+    }}>
+      {days.map((day, idx) => {
+        const realDayIndex = (idx + 1) % 7;
 
-      <div
-        style={{
-          background: "#ffffff",
-          padding: "14px 18px",
-          borderRadius: 12,
-          border: "1px solid #e5e7eb",
-          boxShadow: "0 3px 8px rgba(0,0,0,0.04)",
-          fontSize: 12,
-          color: "#4b5563",
-        }}
-      >
-        성적 그래프는 StudentPage와 연동됩니다.
-      </div>
+        // 그 요일의 모든 수업 가져오기
+        const subjects = Object.entries(merged).flatMap(([subject, data]) => {
+          if (!data?.slots) return [];
+          return data.slots
+            .filter((s: any) => s.day === realDayIndex)
+            .map((slot: any) => ({
+              subject,
+              from: slot.from,
+              to: slot.to
+            }));
+        });
+
+        return (
+          <div
+            key={day}
+            style={{
+              background: "#fff",
+              borderRadius: 10,
+              padding: "10px 12px",
+              boxShadow: "0 3px 6px rgba(0,0,0,0.05)",
+              border: "1px solid #eee"
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>{day}</div>
+
+            {subjects.length === 0 && (
+              <div style={{ fontSize: 12, color: "#aaa" }}>
+                수업 없음
+              </div>
+            )}
+
+            {subjects.map((s, i) => (
+              <div
+                key={i}
+                style={{
+                  background: "#f1f5f9",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  marginBottom: 6,
+                  fontSize: 12,
+                  display: "flex",
+                  justifyContent: "space-between"
+                }}
+              >
+                <span>{s.subject}</span>
+                <span>{s.from} ~ {s.to}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
+/* =================================================================== */
+/* 🔥 Optimum Educore — 성적표 통합 컴포넌트 */
+/* =================================================================== */
+/* =================================================================== */
+/* 🔥 Optimum Educore — 성적표 통합 컴포넌트 */
+/* =================================================================== */
+
+export function GradeSection({
+  gradeData,
+  comment,
+  setComment,
+  onSave,
+  onDelete,
+}: {
+  gradeData: any;
+  comment: string;
+  setComment: (v: string) => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<
+    "중1" | "중2" | "중3" | "브랜치"
+  >("중1");
+
+  if (!gradeData) {
+    return (
+      <div
+        style={{
+          marginTop: 32,
+          padding: "20px 22px",
+          background: "#fff",
+          borderRadius: 14,
+          border: "1px solid #E5DED4",
+          color: "#777",
+          fontSize: 13,
+        }}
+      >
+        성적 데이터가 없습니다.
+      </div>
+    );
+  }
+
+  const termOptions = {
+    중1: ["2학기 중간", "2학기 기말"],
+    중2: ["1학기 중간", "1학기 기말", "2학기 중간", "2학기 기말"],
+    중3: ["1학기 중간", "1학기 기말", "2학기 중간", "2학기 기말"],
+    브랜치: Array.from({ length: 8 }, (_, i) => `모의고사 ${i + 1}회`),
+  };
+
+  const subjects = [
+    "국어",
+    "영어",
+    "수학",
+    "과학",
+    "역사",
+    "도덕",
+    "기술가정",
+    "한문",
+    "일본어",
+  ];
+
+  const branchSubjects = ["국어", "수학", "영어", "통합과학", "통합사회", "역사"];
+
+  const getLevel = (my: number, avg: number) => {
+    if (!avg) return 0;
+    const diff = my - avg;
+    if (diff >= 10) return 1;
+    if (diff >= 5) return 2;
+    if (diff >= -5) return 3;
+    if (diff >= -10) return 4;
+    return 5;
+  };
+
+  const terms = termOptions[activeTab];
+  const subjList = activeTab === "브랜치" ? branchSubjects : subjects;
+
+  return (
+    <div
+      style={{
+        marginTop: 32,
+        background: "#ffffff",
+        padding: "24px 28px",
+        borderRadius: 18,
+        border: "1px solid #E7DCC9",
+        boxShadow: "0 6px 14px rgba(0,0,0,0.06)",
+      }}
+    >
+      {/* 타이틀 */}
+      <h2
+        style={{
+          fontSize: 18,
+          fontWeight: 900,
+          marginBottom: 18,
+          borderLeft: "4px solid #A21CAF",
+          paddingLeft: 10,
+          color: "#1F2937",
+        }}
+      >
+        성적 요약 & 성취 상태
+      </h2>
+
+      {/* 탭 */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {["중1", "중2", "중3", "브랜치"].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab as any)}
+            style={{
+              flex: 1,
+              padding: "8px 0",
+              borderRadius: 8,
+              border: "1px solid #D7CCBF",
+              background: activeTab === tab ? "#F5EFE6" : "#FBFAF7",
+              fontWeight: 700,
+              color: "#4A3F35",
+            }}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* ==========================
+           성적 표
+      ============================ */}
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: 12,
+          textAlign: "center",
+          borderRadius: 12,
+          overflow: "hidden",
+        }}
+      >
+        <thead>
+          <tr style={{ background: "#F5EFE6" }}>
+            <th style={{ padding: 10, border: "1px solid #E5DED4" }}>과목</th>
+
+            {terms.map((t) => (
+              <th
+                key={t}
+                colSpan={activeTab === "브랜치" ? 2 : 3}
+                style={{ border: "1px solid #E5DED4" }}
+              >
+                {t}
+              </th>
+            ))}
+          </tr>
+
+          <tr style={{ background: "#FBFAF7" }}>
+            <th></th>
+
+            {terms.map((t) =>
+              activeTab === "브랜치" ? (
+                <>
+                  <th>점수</th>
+                  <th>등급</th>
+                </>
+              ) : (
+                <>
+                  <th>내 점수</th>
+                  <th>평균</th>
+                  <th>등급</th>
+                </>
+              )
+            )}
+          </tr>
+        </thead>
+
+        <tbody>
+          {subjList.map((subject) => (
+            <tr key={subject}>
+              <td
+                style={{
+                  fontWeight: 700,
+                  color: "#3F3A37",
+                  background: "#FBFAF7",
+                  border: "1px solid #EEE",
+                  padding: "6px 0",
+                }}
+              >
+                {subject}
+              </td>
+
+              {terms.map((term) => {
+                const curr =
+                  gradeData?.[activeTab]?.[subject]?.[term] || {
+                    my: 0,
+                    avg: "",
+                  };
+
+                if (activeTab === "브랜치") {
+                  return (
+                    <React.Fragment key={term}>
+                      <td style={{ border: "1px solid #EEE" }}>{curr.my}</td>
+                      <td style={{ border: "1px solid #EEE" }}>
+                        {curr.avg || "-"}
+                      </td>
+                    </React.Fragment>
+                  );
+                }
+
+                const level = getLevel(curr.my, curr.avg);
+                const colors = ["#4CAF50", "#8BC34A", "#FFC107", "#FB923C", "#F87171"];
+
+                return (
+                  <React.Fragment key={term}>
+                    <td style={{ border: "1px solid #EEE" }}>{curr.my}</td>
+                    <td style={{ border: "1px solid #EEE" }}>{curr.avg}</td>
+                    <td
+                      style={{
+                        border: "1px solid #EEE",
+                        background: colors[level - 1] || "#DDD",
+                        color: "white",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {["A", "B", "C", "D", "E"][level - 1] || "-"}
+                    </td>
+                  </React.Fragment>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* ============================
+          COMMENT 입력 영역
+      ============================ */}
+      <div
+        style={{
+          marginTop: 24,
+          padding: "14px 16px",
+          background: "#FFFDF8",
+          border: "1px solid #E7DCC9",
+          borderRadius: 12,
+          boxShadow: "0 4px 10px rgba(0,0,0,0.04)",
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 800,
+            marginBottom: 10,
+            color: "#A21CAF",
+            fontSize: 14,
+          }}
+        >
+          📝 COMMENT
+        </div>
+
+        <textarea
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          placeholder="성취도나 지도 방향에 대한 코멘트를 입력해주세요."
+          style={{
+            width: "100%",
+            minHeight: 90,
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid #D6CFC0",
+            fontSize: 13,
+            lineHeight: 1.5,
+            resize: "vertical",
+            background: "#FFFFFF",
+          }}
+        />
+
+        {/* 저장 / 삭제 버튼 */}
+        <div style={{ display: "flex", marginTop: 12, gap: 10 }}>
+          <button
+            onClick={onSave}
+            style={{
+              flex: 1,
+              padding: "8px 0",
+              background: "#E6F0FF",
+              border: "1px solid #BFD1F4",
+              borderRadius: 8,
+              fontWeight: 700,
+            }}
+          >
+            저장
+          </button>
+
+          <button
+            onClick={onDelete}
+            style={{
+              width: 90,
+              padding: "8px 0",
+              background: "#FCE7E7",
+              border: "1px solid #F5C2C2",
+              borderRadius: 8,
+              fontWeight: 700,
+            }}
+          >
+            삭제
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 /* =================================================================== */
 /* 공통 컴포넌트 */
 /* =================================================================== */
