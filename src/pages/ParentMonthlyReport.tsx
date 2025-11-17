@@ -30,8 +30,9 @@ type DayCell = {
   time?: string;
   outTime?: string;
   studyMin?: number;
-  restroomMin?: number;
-  shortBreakMin?: number;
+  commuteMin?: number;     // ⭐ 이동시간 추가
+  restroomMin?: number;    // 화장실
+  mealMin?: number;        // ⭐ 식사시간 추가
   memo?: string;
   academyBySubject?: Record<string, SubjectEntry>;
 };
@@ -150,6 +151,8 @@ export default function ParentMonthlyReport() {
   // 🔥 성적 데이터
 const [gradeData, setGradeData] = useState<any>(null);
 const [comment, setComment] = useState("");
+const [openTimeline, setOpenTimeline] = useState(false);
+
 async function handleSaveComment() {
   if (!id) return;
   try {
@@ -244,9 +247,17 @@ useEffect(() => {
       if (!cell) return;
 
       days++;
-      study += cell.studyMin ?? 0;
-      rest += cell.restroomMin ?? 0;
-      short += cell.shortBreakMin ?? 0;
+   // 순공 계산: 등원~하원 시간 - (이동+화장실+식사)
+const start = cell.time ? hmToMin(cell.time) : 0;
+const end = cell.outTime ? hmToMin(cell.outTime) : start;
+const gross = Math.max(0, end - start);
+
+// 이동+화장실+식사
+const outing = (cell.commuteMin ?? 0) + (cell.restroomMin ?? 0) + (cell.mealMin ?? 0);
+
+// 월 요약 반영
+study += Math.max(0, gross - outing);
+short += outing;
     });
 
     return { days, study, rest, short };
@@ -457,7 +468,12 @@ useEffect(() => {
 
           {/* 섹션들 */}
           <DoughnutSection summary={summary} />
-          <TimelineSection monthDates={monthDates} records={records} />
+          <TimelineSection
+  monthDates={monthDates}
+  records={records}
+  open={openTimeline}
+  setOpen={setOpenTimeline}
+/>
           <ScheduleSection student={student} />
           <GradeSection
   gradeData={gradeData}
@@ -506,7 +522,6 @@ function DoughnutSection({ summary }: { summary: Summary }) {
         월 학습 총합
       </h2>
 
-      {/* 요기에 감싸는 div 추가 */}
       <div className="doughnut-wrap">
         <DoughnutChart
           study={summary.study}
@@ -514,6 +529,20 @@ function DoughnutSection({ summary }: { summary: Summary }) {
           short={summary.short}
         />
       </div>
+
+      {/* ★★★ 여기 추가 ★★★ */}
+      <div
+        style={{
+          marginTop: 12,
+          fontSize: 13,
+          textAlign: "center",
+          color: "#444",
+        }}
+      >
+        <div><b>{summary.study}분</b> 순공</div>
+        <div><b>{summary.short}분</b> 생활시간(이동·식사·화장실)</div>
+      </div>
+      {/* ★★★ 여기까지 ★★★ */}
 
       <div style={{ marginTop: 10, fontSize: 13 }}>
         출석일 <b>{summary.days}</b>일
@@ -525,77 +554,110 @@ function DoughnutSection({ summary }: { summary: Summary }) {
 /* 타임라인 섹션 */
 /* =================================================================== */
 
+function hmToMin(hm?: string) {
+  if (!hm) return 0;
+  const [h, m] = hm.split(":").map(Number);
+  return h * 60 + m;
+}
+
 function TimelineSection({
   monthDates,
   records,
+  open,
+  setOpen,
 }: {
   monthDates: string[];
   records: Records;
+  open: boolean;
+  setOpen: (v: boolean) => void;
 }) {
   return (
-    <div style={{ marginTop: 26 }}>
-      <h2
+    <div style={{ marginTop: 32 }}>
+      {/* 타이틀 + 버튼 */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="no-print"
         style={{
-          fontSize: 18,
+          width: "100%",
+          padding: "10px 16px",
+          borderRadius: 12,
+          cursor: "pointer",
+          background: "linear-gradient(135deg, #E8EDF5 0%, #F5F7FA 100%)",
+          border: "1px solid #C8D3E5",
+          boxShadow: "0 4px 10px rgba(0,0,0,0.06)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          color: "#1E3A8A",
+          fontSize: 14,
           fontWeight: 800,
-          marginBottom: 14,
-          borderLeft: "4px solid #1E3A8A",
-          paddingLeft: 10,
         }}
       >
-        날짜별 학습 타임라인
-      </h2>
+        DAILY TIMELINE {open ? "▲" : "▼"}
+      </button>
 
-      {monthDates.length === 0 && (
-        <div style={{ fontSize: 12, color: "#9ca3af" }}>
-          아직 이 달의 학습 기록이 없습니다.
-        </div>
-      )}
-
-      {monthDates.map((date) => {
-        const cell: DayCell | undefined = records[date];
-        if (!cell) return null;
-
-        return (
-          <div
-            key={date}
-            style={{
-              background: "#ffffff",
-              padding: "14px 18px",
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              marginBottom: 12,
-              boxShadow: "0 3px 8px rgba(0,0,0,0.04)",
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-              {date}
-            </div>
-
-            <TimelineItem label="등원" time={cell.time} />
-            <TimelineItem label="하원" time={cell.outTime} />
-            <TimelineItem
-              label="순공"
-              time={
-                typeof cell.studyMin === "number"
-                  ? `${cell.studyMin}분`
-                  : undefined
-              }
-            />
-            {typeof cell.restroomMin === "number" && (
-              <TimelineItem label="화장실" time={`${cell.restroomMin}분`} />
-            )}
-            {typeof cell.shortBreakMin === "number" && (
-              <TimelineItem label="짧은 휴식" time={`${cell.shortBreakMin}분`} />
-            )}
-            {cell.memo && <TimelineItem label="메모" time={cell.memo} />}
+      {/* 펼쳐지는 영역 */}
+      <div
+        style={{
+          maxHeight: open ? "3000px" : "0px",
+          overflow: "hidden",
+          transition: "max-height 0.45s cubic-bezier(.4,0,.2,1)",
+          marginTop: open ? 18 : 0,
+        }}
+      >
+        {monthDates.length === 0 && (
+          <div style={{ fontSize: 12, color: "#9ca3af", padding: 10 }}>
+            아직 이 달의 학습 기록이 없습니다.
           </div>
-        );
-      })}
+        )}
+
+        {monthDates.map((date) => {
+          const cell = records[date];
+          if (!cell) return null;
+
+          return (
+            <div
+              key={date}
+              style={{
+                background: "#ffffff",
+                padding: "14px 18px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                marginBottom: 12,
+                boxShadow: "0 3px 8px rgba(0,0,0,0.04)",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+                {date}
+              </div>
+
+              <TimelineItem label="등원" time={cell.time} />
+              <TimelineItem label="하원" time={cell.outTime} />
+              <TimelineItem
+                label="순공"
+                time={
+                  typeof cell.studyMin === "number"
+                    ? `${cell.studyMin}분`
+                    : undefined
+                }
+              />
+              {typeof cell.restroomMin === "number" && (
+                <TimelineItem label="화장실" time={`${cell.restroomMin}분`} />
+              )}
+              {typeof cell.commuteMin === "number" && (
+                <TimelineItem label="이동" time={`${cell.commuteMin}분`} />
+              )}
+              {typeof cell.mealMin === "number" && (
+                <TimelineItem label="식사" time={`${cell.mealMin}분`} />
+              )}
+              {cell.memo && <TimelineItem label="메모" time={cell.memo} />}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
-
 /* =================================================================== */
 /* 🟨 EDUCORE PREMIUM — TIME SCHEDULE (BUTTON + TABLE + PDF) */
 /* =================================================================== */
@@ -976,9 +1038,7 @@ function MobileTimeTable({ student }: { student: Student }) {
   );
 }
 
-/* =================================================================== */
-/* 🔥 Optimum Educore — 성적표 통합 컴포넌트 */
-/* =================================================================== */
+
 /* =================================================================== */
 /* 🔥 Optimum Educore — 성적표 통합 컴포넌트 */
 /* =================================================================== */
