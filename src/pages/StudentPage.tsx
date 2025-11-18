@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { collection, doc, getDocs, getDoc, setDoc } from "firebase/firestore";
-import { calcNetStudyMin as netStudyMin } from "../App";
+
 import {
   ResponsiveContainer,
   AreaChart,
@@ -13,6 +13,7 @@ import {
   CartesianGrid,
   ReferenceLine,
 } from "recharts";
+import { arrayUnion } from "firebase/firestore";
 
 export default function StudentPage() {
   const [students, setStudents] = useState<any[]>([]);
@@ -41,7 +42,7 @@ export default function StudentPage() {
     logs.forEach((r) => {
       if (!r.date) return;
       const month = r.date.slice(0, 7);
-      const study = netStudyMin(r);
+      const study = calcNetStudyMin_SP(r);
       if (!map[month]) map[month] = { days: 0, total: 0 };
       map[month].days += 1;
       map[month].total += study;
@@ -89,10 +90,7 @@ export default function StudentPage() {
   const data = snap.data() as any;
 
   // 🔥 DayCell 기반으로 변환
-  const logs: any[] = Object.entries(data).map(([date, cell]: any) => ({
-    date,
-    ...cell,
-  }));
+ const logs = Array.isArray(data.logs) ? data.logs : [];
 
   setRecords(logs);
   calculateMonthlyStats(logs);
@@ -101,6 +99,38 @@ export default function StudentPage() {
     const el = document.getElementById("pw-input");
     el?.focus();
   }, 10);
+};
+
+// 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용)
+const calcNetStudyMin_SP = (rec: any) => {
+  const t1 = rec.inTime;
+  const t2 = rec.outTime;
+
+  if (!t1 || !t2) return 0;
+
+  // ISO 형태 처리 (학생 등원 버튼은 ISO 저장되는 문제 있었음)
+  const toHM = (v: string) => {
+    if (v.includes("T")) {
+      const d = new Date(v);
+      const hh = d.getHours();
+      const mm = d.getMinutes();
+      return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    }
+    return v; // HH:MM
+  };
+
+  const inHM = toHM(t1);
+  const outHM = toHM(t2);
+
+  const [ih, im] = inHM.split(":").map(Number);
+  const [oh, om] = outHM.split(":").map(Number);
+
+  const inDate = new Date(2025, 0, 1, ih, im);
+  const outDate = new Date(2025, 0, 1, oh, om);
+
+  const diff = (outDate.getTime() - inDate.getTime()) / 60000;
+
+  return Math.max(0, diff);
 };
 
   // 🔹 비밀번호 인증
@@ -169,20 +199,24 @@ const summary = (() => {
   });
 
   let total = 0;
-  filtered.forEach((r) => (total += netStudyMin(r)));
+  filtered.forEach((r) => (total += calcNetStudyMin_SP(r)));
 
   return { total, days: filtered.length };
 })();
 
   const getStatus = (rec: any) => {
-  if (!rec.time) return "A"; // 결석
+  // inTime 없으면 출석 안한 것 → 결석
+  if (!rec.inTime) return "A";
 
-  const [h, m] = rec.time.split(":").map(Number);
+  // inTime: "07:26" 형태
+  const [h, m] = rec.inTime.split(":").map(Number);
   const inHM = h * 60 + m;
 
+  // 16:30 = 지각 기준
   const cutoff = 16 * 60 + 30;
-  if (inHM > cutoff) return "L";
-  return "P";
+
+  if (inHM > cutoff) return "L"; // 지각
+  return "P"; // 정상 출석
 };
 
 
@@ -191,39 +225,8 @@ const [viewMonth, setViewMonth] = useState(new Date().getMonth());
 
   // 🔹 학생용 등원 처리 (logs 기반)
 // 🔥 학생용 checkIn: App 구조로 저장
+
 const checkIn = async () => {
-  if (!selected) return;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const now = new Date();
-  const hhmm = now.toTimeString().slice(0, 5); // HH:MM
-
-  const ref = doc(db, "records", selected.id);
-  const snap = await getDoc(ref);
-  const data = snap.exists() ? snap.data() : {};
-
-  const prev = data[today] || {};
-
-  if (prev.time) {
-    alert("이미 등원 처리되었습니다.");
-    return;
-  }
-
-  const next = {
-    ...prev,
-    time: hhmm,
-    status: "P",
-    outTime: undefined,
-  };
-
-  await setDoc(ref, { [today]: next }, { merge: true });
-
-  setTodayInTime(now.toISOString());
-  alert("✅ 등원 처리 완료");
-};
-
-  // 🔹 학생용 하원 처리 (logs 기반)
-  const checkOut = async () => {
   if (!selected) return;
 
   const today = new Date().toISOString().slice(0, 10);
@@ -233,29 +236,69 @@ const checkIn = async () => {
   const ref = doc(db, "records", selected.id);
   const snap = await getDoc(ref);
   const data = snap.exists() ? snap.data() : {};
+  const logs = Array.isArray(data.logs) ? data.logs : [];
 
-  const prev = data[today];
+  // 🟦 이미 체크인 여부 확인
+  if (logs.some((l) => l.date === today && l.inTime)) {
+    alert("이미 등원 처리되었습니다.");
+    return;
+  }
 
-  if (!prev?.time) {
+  // 🟦 logs에 새 기록 추가
+  const newLog = {
+    date: today,
+    inTime: hhmm,
+    outTime: null,
+  };
+
+  await setDoc(
+    ref,
+    {
+      logs: [...logs, newLog], // arrayUnion 대신 직접 push 형태로 저장
+    },
+    { merge: true }
+  );
+
+  setTodayInTime(now.toISOString());
+  alert("✅ 등원 처리 완료");
+};
+
+
+  // 🔹 학생용 하원 처리 (logs 기반)
+const checkOut = async () => {
+  if (!selected) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0, 5);
+
+  const ref = doc(db, "records", selected.id);
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : {};
+  const logs = Array.isArray(data.logs) ? data.logs : [];
+
+  const idx = logs.findIndex((l) => l.date === today);
+
+  if (idx === -1) {
     alert("등원 기록이 없습니다.");
     return;
   }
 
-  if (prev.outTime) {
+  if (logs[idx].outTime) {
     alert("이미 하원 처리되었습니다.");
     return;
   }
 
-  const next = {
-    ...prev,
-    outTime: hhmm,
-  };
+  logs[idx].outTime = hhmm;
 
-  await setDoc(ref, { [today]: next }, { merge: true });
+  await setDoc(
+    ref,
+    { logs },
+    { merge: true }
+  );
 
   alert("👋 하원 처리 완료");
 };
-
   
 
   // 🔹 그래프 데이터
@@ -264,7 +307,7 @@ const checkIn = async () => {
     .reverse()
     .map((r) => ({
       date: r.date,
-      study: Math.round(netStudyMin(r)),
+      study: Math.round(calcNetStudyMin_SP(r))
     }));
 
   const avgStudy =
@@ -281,7 +324,7 @@ const realAbsences = (() => {
   const monthStr = `${y}-${String(m).padStart(2, "0")}`;  
   
   const presentDays = new Set(  
-    records.filter(r => r.date.startsWith(monthStr) && r.time)
+    records.filter(r => r.date.startsWith(monthStr) && r.inTime)
       .map(r => r.date)  
   );  
   
@@ -458,11 +501,29 @@ const renderCalendar = () => {
             else bg = "#fee2e2";
           }
 
-          const inTimeLabel =
-            log?.time && log.time.toLocaleTimeString("ko-KR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            });
+  // 날짜 박스 안 inTime 표시
+// 날짜 박스 안 inTime 표시
+let inTimeLabel = null;
+
+if (log) {
+  const raw = log.inTime ?? log.time;
+
+  if (typeof raw === "string") {
+    if (raw.includes("T")) {
+      // ISO → HH:MM
+      const d = new Date(raw);
+      if (!isNaN(d.getTime())) {
+        inTimeLabel = d.toLocaleTimeString("ko-KR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+    } else if (raw.includes(":")) {
+      // HH:MM 그대로
+      inTimeLabel = raw;
+    }
+  }
+}
 
           return (
             <div
@@ -484,18 +545,21 @@ const renderCalendar = () => {
               }}
             >
               <div>{day}</div>
-              {inTimeLabel && (
-                <div
-                  style={{
-                    marginTop: 2,
-                    fontSize: 10,
-                    color: "#1d4ed8",
-                    fontWeight: 700,
-                  }}
-                >
-                  {inTimeLabel}
-                </div>
-              )}
+             {inTimeLabel && (
+  <div
+    style={{
+      marginTop: 2,
+      fontSize: 10,
+      color: "#1d4ed8",
+      fontWeight: 700,
+      width: "100%",          // 💥 전체 폭 사용
+      textAlign: "center",     // 💥 가운데 정렬 강제
+      lineHeight: "1.1",
+    }}
+  >
+    {inTimeLabel}
+  </div>
+)}
             </div>
           );
         })}
@@ -831,20 +895,20 @@ const renderCalendar = () => {
               )}
 
               {todayInTime && (
-                <p
-                  style={{
-                    marginTop: 8,
-                    fontSize: 13,
-                    color: "#1d4ed8",
-                  }}
-                >
-                  오늘 등원시간:{" "}
-                  {new Date(todayInTime).toLocaleTimeString("ko-KR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-              )}
+  <p
+    style={{
+      marginTop: 8,
+      fontSize: 13,
+      color: "#1d4ed8",
+    }}
+  >
+    오늘 등원시간:{" "}
+    {new Date(todayInTime).toLocaleTimeString("ko-KR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })}
+  </p>
+)}
 
               <p
                 style={{
@@ -1096,7 +1160,7 @@ const renderCalendar = () => {
     filteredRecordsThisMonth
       .map((r) => ({
         date: r.date,
-        study: Math.round(netStudyMin(r)),
+        study: Math.round(calcNetStudyMin_SP(r))
       }))
       .sort((a, b) => b.study - a.study)
       .slice(0, 3)

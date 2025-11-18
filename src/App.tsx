@@ -189,7 +189,8 @@ export type StoreShape = {
   groups: Group[];
   currentGroupId: string | null;
   records: Records;
-  students?: Student[]; // ✅ 이 줄을 추가하세요!
+  students?: Student[];
+  selectedDate?: string | null;   // ← null 허용
 };
 
 
@@ -503,19 +504,21 @@ function loadStore(): StoreShape {
 
     const g0: Group = { id: "default", name: "우리반", students: [] };
     const init: StoreShape = {
-      groups: [g0],
-      currentGroupId: "default",
-      records: {},
-    };
+  groups: [g0],
+  currentGroupId: "default",
+  records: {},
+  selectedDate: null,   // ⭐ 추가
+};
     localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
     return init;
   } catch {
     const g0: Group = { id: "default", name: "우리반", students: [] };
     const init: StoreShape = {
-      groups: [g0],
-      currentGroupId: "default",
-      records: {},
-    };
+  groups: [g0],
+  currentGroupId: "default",
+  records: {},
+  selectedDate: null,   // ⭐ 추가
+};
     localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
     return init;
   }
@@ -544,15 +547,22 @@ export default function App() {
     const data = snap.data();
     return Array.isArray(data.logs) ? data.logs : [];
   }
+ function getToday() {
+  return new Date().toLocaleDateString("ko-KR")
+    .replace(/\./g, "-")
+    .replace(/-\s*/g, "-")
+    .slice(0, 10);
+}
 
   // === 선생님용 등원 ===
- async function handleCheckin(studentId: string, inputTime: string) {
-  const today = new Date().toISOString().slice(0, 10);
+ async function handleCheckin(studentId: string, inputTime: string, dateStr: string) {
+  const date = dateStr;   // 👈 화면에서 선택한 date 그대로 사용
 
   const ref = doc(db, "records", studentId);
   const snap = await getDoc(ref);
   const data = snap.exists() ? snap.data() : {};
-  const prev = data[today] || null;
+
+  const prev = data[date] || null;
 
   if (prev?.time) {
     alert("이미 등원 처리되었습니다.");
@@ -561,25 +571,28 @@ export default function App() {
 
   const newCell = {
     ...(prev || {}),
-    status: "P",
-    time: inputTime,   // ← 여기!!
+    status: "P",       // 🔼 소문자 "p" 말고 기존 StatusKey 맞춰서 "P"
+    time: inputTime,
+    inTime: inputTime,
     outTime: "",
-    date: today,
+    date,
     sid: studentId,
   };
 
-  await setDoc(ref, { [today]: newCell }, { merge: true });
-  alert("등원 처리 완료!");
+  await setDoc(ref, { [date]: newCell }, { merge: true });
+  console.log("✅ 등원 저장:", date, studentId, inputTime);
 }
 
   // === 선생님용 하원 ===
-async function handleCheckout(studentId: string, inputTime: string) {
-  const today = new Date().toISOString().slice(0, 10);
+// ✅ 하원도 동일하게 날짜를 인자로 받게 수정
+async function handleCheckout(studentId: string, inputTime: string, dateStr: string) {
+  const date = dateStr;   // 👈 화면에서 선택한 date 그대로
 
   const ref = doc(db, "records", studentId);
   const snap = await getDoc(ref);
   const data = snap.exists() ? snap.data() : {};
-  const prev = data[today] || null;
+
+  const prev = data[date] || null;
 
   if (!prev?.time) {
     alert("등원 기록이 없습니다.");
@@ -594,17 +607,16 @@ async function handleCheckout(studentId: string, inputTime: string) {
   await setDoc(
     ref,
     {
-      [today]: {
+      [date]: {
         ...prev,
-        outTime: inputTime, // ← 선생님 입력 시간
+        outTime: inputTime,
       },
     },
     { merge: true }
   );
 
-  alert("하원 처리 완료!");
+  console.log("✅ 하원 저장:", date, studentId, inputTime);
 }
-
   async function saveStudentToFS(groupId: string, s: any) {
     try {
       // undefined 값 제거 (Firestore는 undefined 허용 안 함)
@@ -720,19 +732,19 @@ const defaultDayCell: DayCell = {
 
 
   const [store, setStore] = useState<StoreShape>(() => loadStore());
-
+  
   // ✅ 스토어 기본 그룹 아이디 보장 (모든 기기 통일)
   useEffect(() => {
-    if (!store.currentGroupId || store.currentGroupId !== "default") {
-      setStore((prev) => ({
-        ...prev,
-        currentGroupId: "default",
-        groups: [
-          { id: "default", name: "우리반", students: [] },
-        ],
-      }));
-    }
-  }, []);
+  if (!store.currentGroupId || store.currentGroupId !== "default") {
+    setStore((prev) => ({
+      ...prev,
+      currentGroupId: "default",
+      groups: [
+        { id: "default", name: "우리반", students: [] }
+      ],
+    }));
+  }
+}, []);
 
   console.log("📦 현재 그룹 ID:", store.currentGroupId);
 
@@ -1097,14 +1109,6 @@ const defaultDayCell: DayCell = {
     return Array.from(schools).sort();
   }, [currentGroup]);
 
-  // PWA(로컬용)
-  useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(() => { });
-      });
-    }
-  }, []);
 
   // 신규 학생 입력
   const [newStu, setNewStu] = useState<Partial<Student>>({
@@ -1120,7 +1124,7 @@ const defaultDayCell: DayCell = {
   );
   const ensureCell = (sid: string): DayCell => day[sid] ?? { status: "P" };
 
-  /** ===== 출결/시간 ===== */
+
   /** ===== 출결/시간 ===== */
 const setStatus = (sid: string, st: StatusKey) => {
   updateDayCell(date, sid, (cell0) => {
@@ -2523,6 +2527,8 @@ const updateDayCell = (
                           <td style={{ padding: 10, textAlign: "center" }}>{s.school || "-"}</td>
 
                           {/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
+{/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
+{/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
 <td style={{ padding: 10 }}>
   {/* 🔹 등원 줄 */}
   <div
@@ -2553,24 +2559,30 @@ const updateDayCell = (
       }}
     />
 
-    {/* 등원 버튼 */}
+    {/* ✅ 등원 버튼 */}
     <button
       style={btn}
       onClick={() => {
-        // 선생님이 입력한 값이 있으면 그거, 없으면 지금 시간 사용
-        const baseTime =
+        // 1) 최종 등원 시간 결정 (입력값 있으면 그거, 없으면 지금 시간)
+        const finalIn =
           inputTimes[s.id] && inputTimes[s.id].length >= 4
             ? inputTimes[s.id]
             : nowHM();
 
-        // 화면용 todayDayCell 업데이트
-        updateDayCell(date, s.id, (base) => ({
+        const ds = date; // ✅ 화면에서 선택한 날짜 그대로
+
+        // 2) 로컬 store.records[ds][sid] 업데이트
+        updateDayCell(ds, s.id, (base) => ({
           ...base,
-          time: baseTime,
+          status: base.status ?? "P",
+          time: finalIn,
+          // inTime 필드도 같이 맞춰줌 (FS에서 쓰고 싶으면)
+          // @ts-ignore
+          inTime: finalIn,
         }));
 
-        // Firestore records/{sid} -> 오늘 날짜에 등원 기록 저장
-        handleCheckin(s.id, baseTime);
+        // 3) Firestore에도 같은 값 저장
+        handleCheckin(s.id, finalIn, ds);
       }}
     >
       등원
@@ -2585,6 +2597,8 @@ const updateDayCell = (
         updateDayCell(date, s.id, (base) => ({
           ...base,
           time: undefined,
+          // @ts-ignore
+          inTime: undefined,
         }));
         setInputTimes((prev) => ({ ...prev, [s.id]: "" }));
       }}
@@ -2602,6 +2616,7 @@ const updateDayCell = (
       alignItems: "center",
     }}
   >
+    {/* 하원 시간 직접 수정 input */}
     <input
       type="time"
       value={cell.outTime ?? ""}
@@ -2609,23 +2624,29 @@ const updateDayCell = (
       style={timeInp}
     />
 
+    {/* ✅ 하원 버튼 */}
     <button
       style={btn}
       onClick={() => {
-        // 기존 기능: 지금 시간으로 하원 찍기
-        setOutTimeNow(s.id);
-
-        // Firestore에도 저장 (입력값 있으면 그걸 우선)
-        const baseOut =
-          (cell.outTime && cell.outTime.length >= 4
+        // 1) 최종 하원 시간: 이미 입력한 값이 있으면 그거, 없으면 지금
+        const finalOut =
+          cell.outTime && cell.outTime.length >= 4
             ? cell.outTime
-            : undefined) ?? undefined;
-        handleCheckout(s.id, baseOut ?? "");
+            : nowHM();
+
+        const ds = date; // ✅ 이 날짜 기준으로 저장
+
+        // 2) 로컬 state 업데이트
+        setOutTime(s.id, finalOut); // 내부에서 updateDayCell(date, ...) 사용
+
+        // 3) Firestore에 같은 시간/같은 날짜로 저장
+        handleCheckout(s.id, finalOut, ds);
       }}
     >
       하원
     </button>
 
+    {/* 하원 시간 지우기 */}
     <button
       style={btnXS}
       title="하원 시간 지우기"

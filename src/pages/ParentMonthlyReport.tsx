@@ -28,11 +28,13 @@ type SubjectEntry = {
 
 type DayCell = {
   time?: string;
+  inTime?: string;   // ⭐ 여기에 이 줄 추가
+
   outTime?: string;
   studyMin?: number;
-  commuteMin?: number;     // ⭐ 이동시간 추가
-  restroomMin?: number;    // 화장실
-  mealMin?: number;        // ⭐ 식사시간 추가
+  commuteMin?: number;
+  restroomMin?: number;
+  mealMin?: number;
   memo?: string;
   academyBySubject?: Record<string, SubjectEntry>;
 };
@@ -58,7 +60,155 @@ type Summary = {
   study: number;
   rest: number;
   short: number;
+  academy: number;
 };
+
+function hmToMin(hm?: string) {
+  if (!hm) return 0;
+  const [h, m] = hm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/* ===========================================
+   ⭐ 학원시간 계산 util 함수 (여기 붙여!)
+=========================================== */
+function getAcademySummary(records: Records, monthDates: string[]) {
+  const result: Record<string, number> = {};
+
+  monthDates.forEach(date => {
+    const cell = records[date];
+    if (!cell?.academyBySubject) return;
+
+    Object.entries(cell.academyBySubject).forEach(([subject, data]) => {
+      const total = data.slots?.reduce((sum, slot) => {
+        if (!slot.from || !slot.to) return sum;
+        const [fh, fm] = slot.from.split(":").map(Number);
+        const [th, tm] = slot.to.split(":").map(Number);
+        return sum + (th * 60 + tm - (fh * 60 + fm));
+      }, 0) || 0;
+
+      if (total > 0) {
+        result[subject] = (result[subject] || 0) + total;
+      }
+    });
+  });
+
+  return result;
+}
+
+function getOutingWarning(summary: Summary) {
+  if (summary.days === 0) return null;
+
+  const avg = summary.short / summary.days; // 하루 평균 생활시간(분)
+
+  if (avg >= 180) {
+    return {
+      level: 3,
+      message: "⚠ 생활시간이 하루 3시간 이상으로 매우 많은 편입니다. 학습 흐름이 자주 끊겼을 가능성이 높습니다.",
+      color: "#B91C1C",
+      bg: "#FEE2E2"
+    };
+  }
+
+  if (avg >= 150) {
+    return {
+      level: 2,
+      message: "⚠ 생활시간이 하루 2시간 30분 이상입니다. 이동·식사 루틴 조정이 필요합니다.",
+      color: "#C2410C",
+      bg: "#FFEDD5"
+    };
+  }
+
+  if (avg >= 120) {
+    return {
+      level: 1,
+      message: "⚠ 생활시간이 하루 2시간 이상입니다. 집중 흐름을 해치지 않도록 주의가 필요합니다.",
+      color: "#92400E",
+      bg: "#FEF3C7"
+    };
+  }
+
+  if (avg >= 90) {
+    return {
+      level: 0,
+      message: "생활시간이 하루 1.5시간 이하로 안정적으로 유지되었습니다.",
+      color: "#166534",
+      bg: "#DCFCE7"
+    };
+  }
+
+  return {
+    level: 0,
+    message: "생활시간이 매우 안정적으로 관리되었습니다.",
+    color: "#166534",
+    bg: "#DCFCE7"
+  };
+}
+
+function getLifestyleMessage(summary: Summary) {
+  const { study, short } = summary;
+
+  if (short > study * 0.6) {
+    return "생활시간이 학습시간 대비 높았던 날이 많습니다. 이동·식사·휴식 시간을 줄일 수 있는 루틴 점검이 필요합니다.";
+  }
+
+  if (short > 180) {
+    return "이동/식사/화장실 시간이 길었던 날이 있었어요. 동선이나 루틴을 최적화하면 학습 흐름이 더 좋아질 수 있습니다.";
+  }
+
+  return "생활시간과 학습시간의 균형이 안정적으로 유지되었습니다.";
+}
+
+function getAcademyRatioMessage(summary: Summary) {
+  const { study, academy } = summary;
+  const total = study + academy;
+
+  if (total === 0) return "";
+
+  const ratio = Math.round((academy / total) * 100);
+
+  if (ratio >= 60) {
+    return `학원 학습시간이 전체의 ${ratio}%로 높은 편이에요. 학원 중심 루틴이 안정적으로 유지되고 있습니다.`;
+  }
+
+  if (ratio >= 30) {
+    return `학원 학습 비중은 ${ratio}%로 균형적인 편입니다.`;
+  }
+
+  return `학원 학습 비중이 ${ratio}%로 낮습니다. 자율 학습 비중이 높았던 달입니다.`;
+}
+
+function getGrowthMessage(prev: Summary | null, curr: Summary) {
+  if (!prev) {
+    return "이번 달이 첫 기록입니다.";
+  }
+
+  const diffStudy = curr.study - prev.study;
+  const diffAcademy = curr.academy - prev.academy;
+
+  let msg = "";
+
+  if (diffStudy > 0) {
+    msg += `순공시간이 지난달보다 ${diffStudy}분 증가했습니다. `;
+  } else if (diffStudy < 0) {
+    msg += `순공시간이 지난달보다 ${Math.abs(diffStudy)}분 감소했습니다. `;
+  }
+
+  if (diffAcademy > 0) {
+    msg += `학원 학습시간은 ${diffAcademy}분 늘었습니다.`;
+  } else if (diffAcademy < 0) {
+    msg += `학원 학습시간은 ${Math.abs(diffAcademy)}분 줄었습니다.`;
+  }
+
+  if (!msg) {
+    msg = "지난달과 큰 변화 없이 안정적으로 유지되었습니다.";
+  }
+
+  return msg;
+}
+
+
+
 
 const sortDates = (list: string[]) =>
   list.sort((a, b) => (a < b ? -1 : 1));
@@ -147,7 +297,24 @@ export default function ParentMonthlyReport() {
 
   const [student, setStudent] = useState<Student | null>(null);
   const [records, setRecords] = useState<Records>({});
-  const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const [month, setMonth] = useState(() =>
+  new Date().toISOString().slice(0, 7)
+);
+function changeMonth(offset: number) {
+  const current = new Date(month + "-01");
+  current.setMonth(current.getMonth() + offset);
+  setMonth(current.toISOString().slice(0, 7));
+}
+const btnStyle: React.CSSProperties = {
+  padding: "6px 12px",
+  background: "#EEE8DF",
+  borderRadius: 8,
+  border: "1px solid #D6CEC5",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 600,
+};
+
   // 🔥 성적 데이터
 const [gradeData, setGradeData] = useState<any>(null);
 const [comment, setComment] = useState("");
@@ -222,6 +389,17 @@ useEffect(() => {
     })();
   }, [id]);
 
+  const MONTH_NAMES = [
+  "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
+  "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"
+];
+
+function getEnglishMonth(ym: string) {
+  const [year, m] = ym.split("-");
+  const monthName = MONTH_NAMES[Number(m) - 1];
+  return `${monthName} ${year}`;
+}
+
   /* ===============================
         월 날짜 목록
   ================================= */
@@ -237,33 +415,111 @@ useEffect(() => {
         월 요약
   ================================= */
   const summary: Summary = useMemo(() => {
+  let study = 0;
+  let rest = 0;
+  let short = 0;
+  let days = 0;
+  let academy = 0;  // ⭐ 추가
+
+  monthDates.forEach((date) => {
+    const cell = records[date];
+    if (!cell) return;
+
+    days++;
+
+    // 순공 계산: 등원~하원
+    const start = cell.time ? hmToMin(cell.time) : 0;
+    const end = cell.outTime ? hmToMin(cell.outTime) : start;
+    const gross = Math.max(0, end - start);
+
+    // 이동/화장실/식사
+    const outing =
+      (cell.commuteMin ?? 0) +
+      (cell.restroomMin ?? 0) +
+      (cell.mealMin ?? 0);
+
+    // 순공 + 생활시간
+    study += Math.max(0, gross - outing);
+    short += outing;
+
+    // ⭐⭐⭐ 학원시간 누적
+    if (cell.academyBySubject) {
+      Object.values(cell.academyBySubject).forEach((data: any) => {
+        const academyTotal =
+          data.slots?.reduce((sum: number, slot: any) => {
+            if (!slot.from || !slot.to) return sum;
+            const [fh, fm] = slot.from.split(":").map(Number);
+            const [th, tm] = slot.to.split(":").map(Number);
+            return sum + ((th * 60 + tm) - (fh * 60 + fm));
+          }, 0) || 0;
+
+        academy += academyTotal;
+      });
+    }
+  });
+
+  // ⭐ return에 academy 반드시 포함!!
+  return { days, study, rest, short, academy };
+}, [monthDates, records]);
+
+ 
+
+
+  const prevSummary = useMemo(() => {
+    const prevMonth = new Date();
+    prevMonth.setMonth(prevMonth.getMonth() - 1);
+    const prevMonthKey = prevMonth.toISOString().slice(0, 7);
+
+    const prevMonthDates = sortDates(
+      Object.keys(records).filter((d) => d.startsWith(prevMonthKey))
+    );
+
+    if (prevMonthDates.length === 0) return null;
+
     let study = 0;
     let rest = 0;
     let short = 0;
     let days = 0;
+    let academy = 0;
 
-    monthDates.forEach((date) => {
+    prevMonthDates.forEach((date) => {
       const cell = records[date];
       if (!cell) return;
 
       days++;
-   // 순공 계산: 등원~하원 시간 - (이동+화장실+식사)
-const start = cell.time ? hmToMin(cell.time) : 0;
-const end = cell.outTime ? hmToMin(cell.outTime) : start;
-const gross = Math.max(0, end - start);
 
-// 이동+화장실+식사
-const outing = (cell.commuteMin ?? 0) + (cell.restroomMin ?? 0) + (cell.mealMin ?? 0);
+      const start = cell.time ? hmToMin(cell.time) : 0;
+      const end = cell.outTime ? hmToMin(cell.outTime) : start;
+      const gross = Math.max(0, end - start);
 
-// 월 요약 반영
-study += Math.max(0, gross - outing);
-short += outing;
+      const outing =
+        (cell.commuteMin ?? 0) +
+        (cell.restroomMin ?? 0) +
+        (cell.mealMin ?? 0);
+
+      study += Math.max(0, gross - outing);
+      short += outing;
+
+      if (cell.academyBySubject) {
+        Object.values(cell.academyBySubject).forEach((data: any) => {
+          const academyTotal =
+            data.slots?.reduce((sum: number, slot: any) => {
+              if (!slot.from || !slot.to) return sum;
+              const [fh, fm] = slot.from.split(":").map(Number);
+              const [th, tm] = slot.to.split(":").map(Number);
+              return sum + ((th * 60 + tm) - (fh * 60 + fm));
+            }, 0) || 0;
+
+          academy += academyTotal;
+        });
+      }
     });
 
-    return { days, study, rest, short };
-  }, [monthDates, records]);
+    return { days, study, rest, short, academy };
+  }, [records]);
 
-  /* ===============================
+  const attendanceDays = monthDates.filter(date => !!records[date]?.time).length;
+   /* ===============================
         로딩 처리
   ================================= */
   if (!student) {
@@ -280,8 +536,7 @@ short += outing;
     );
   }
 
-
-
+  const outingWarning = getOutingWarning(summary);
 
   /* ===============================
         UI + 프린트 스타일
@@ -406,49 +661,91 @@ short += outing;
             boxShadow: "0 10px 22px rgba(0,0,0,0.08)",
           }}
         >
-  
 
-          {/* 상단 버튼 영역 (뒤로가기 + 인쇄) - 출력 시 숨김 */}
-          <div
-            className="no-print"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 8,
-              marginBottom: 18,
-              flexWrap: "wrap",
-            }}
-          >
-            <button
-              onClick={() => nav(-1)}
-              style={{
-                background: "#EEE8DF",
-                padding: "6px 14px",
-                borderRadius: 8,
-                border: "1px solid #D6CEC5",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              ← Back
-            </button>
 
-            <button
-              onClick={() => window.print()}
-              style={{
-                background: "#111827",
-                color: "#F9FAFB",
-                padding: "6px 16px",
-                borderRadius: 8,
-                border: "none",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              🖨 월간 리포트 인쇄
-            </button>
-          </div>
+
+
+          {/* 🔥 달 변경 + 인쇄 버튼 — 에듀코어 스타일 */}
+{/* 🔥 Month Selector + Print — English Premium Style */}
+<div
+  className="no-print"
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    background: "#F8F5EF",
+    border: "1px solid #E4DED4",
+    borderRadius: 14,
+    padding: "14px 20px",
+    marginBottom: 28,
+    fontFamily: "'Pretendard','Noto Sans KR',sans-serif",
+  }}
+>
+  {/* ◀ prev month */}
+  <button
+    onClick={() => changeMonth(-1)}
+    style={{
+      padding: "6px 12px",
+      background: "#EDE9DF",
+      borderRadius: 8,
+      border: "1px solid #D6CEC2",
+      cursor: "pointer",
+      fontSize: 13,
+      fontWeight: 700,
+      color: "#5A4A3A",
+    }}
+  >
+    ◀
+  </button>
+
+  {/* English Month */}
+  <div
+    style={{
+      fontSize: 22,
+      fontWeight: 800,
+      color: "#3A342E",
+      letterSpacing: "0.5px",
+    }}
+  >
+    {getEnglishMonth(month)}
+  </div>
+
+  {/* ▶ next month */}
+  <button
+    onClick={() => changeMonth(1)}
+    style={{
+      padding: "6px 12px",
+      background: "#EDE9DF",
+      borderRadius: 8,
+      border: "1px solid #D6CEC2",
+      cursor: "pointer",
+      fontSize: 13,
+      fontWeight: 700,
+      color: "#5A4A3A",
+    }}
+  >
+    ▶
+  </button>
+
+  {/* Print */}
+  <button
+    onClick={() => window.print()}
+    style={{
+      marginLeft: 12,
+      padding: "6px 18px",
+      background: "#C8A76A",
+      color: "#4A3A25",
+      fontWeight: 700,
+      fontSize: 12,
+      borderRadius: 8,
+      border: "1px solid #B89A5A",
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    }}
+  >
+    🖨 PRINT
+  </button>
+</div>
 
           {/* 제목 영역 */}
           <h1
@@ -468,6 +765,13 @@ short += outing;
 
           {/* 섹션들 */}
           <DoughnutSection summary={summary} />
+   <MessageSection
+  lifestyle={getLifestyleMessage(summary)}
+  academy={getAcademyRatioMessage(summary)}
+  growth={getGrowthMessage(prevSummary, summary)}
+  outingWarning={outingWarning}
+/>
+        
           <TimelineSection
   monthDates={monthDates}
   records={records}
@@ -507,7 +811,13 @@ short += outing;
 /* 도넛 섹션 */
 /* =================================================================== */
 
-function DoughnutSection({ summary }: { summary: Summary }) {
+function DoughnutSection({ summary }: { summary: any }) {
+  const items = [
+    { label: "순공", value: summary.study, color: "#1E3A8A" },
+    { label: "생활시간(이동·식사·화장실)", value: summary.short, color: "#b4d149ff" },
+    { label: "학원학습", value: summary.academy, color: "#C8A76A" },
+  ];
+
   return (
     <div style={{ marginBottom: 28 }}>
       <h2
@@ -522,43 +832,152 @@ function DoughnutSection({ summary }: { summary: Summary }) {
         월 학습 총합
       </h2>
 
-      <div className="doughnut-wrap">
+      <div
+        style={{
+          display: "flex",
+          gap: 24,
+          alignItems: "center",
+          justifyContent: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        {/* 도넛 */}
         <DoughnutChart
           study={summary.study}
           rest={summary.rest}
           short={summary.short}
+          academy={summary.academy}
         />
+
+        {/* 범례 */}
+        <div style={{ fontSize: 14, color: "#333", minWidth: 180 }}>
+          {items.map(
+            (item) =>
+              item.value > 0 && (
+                <div
+                  key={item.label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: "50%",
+                      background: item.color,
+                      marginRight: 10,
+                    }}
+                  />
+                  <span style={{ fontWeight: 700 }}>{item.label}</span>
+                  <span style={{ marginLeft: "auto" }}>
+                    {item.value}분
+                  </span>
+                </div>
+              )
+          )}
+        </div>
       </div>
 
-      {/* ★★★ 여기 추가 ★★★ */}
       <div
-        style={{
-          marginTop: 12,
-          fontSize: 13,
-          textAlign: "center",
-          color: "#444",
-        }}
-      >
-        <div><b>{summary.study}분</b> 순공</div>
-        <div><b>{summary.short}분</b> 생활시간(이동·식사·화장실)</div>
-      </div>
-      {/* ★★★ 여기까지 ★★★ */}
-
-      <div style={{ marginTop: 10, fontSize: 13 }}>
-        출석일 <b>{summary.days}</b>일
-      </div>
+  style={{
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: 700,
+  }}
+>
+  출석일: {summary.days}일
+</div>
     </div>
   );
 }
+
+function MessageSection({
+  lifestyle,
+  academy,
+  growth,
+  outingWarning,
+}: {
+  lifestyle: string;
+  academy: string;
+  growth: string;
+  outingWarning: any;
+}) {
+  return (
+    <div
+      style={{
+        marginTop: 30,
+        padding: "20px 22px",
+        background: "#FFFDF8",
+        borderRadius: 16,
+        border: "1px solid #E7DCC9",
+        boxShadow: "0 6px 12px rgba(0,0,0,0.05)",
+        fontSize: 14,
+        lineHeight: 1.6,
+        color: "#333",
+      }}
+    >
+      <h2
+        style={{
+          fontSize: 18,
+          fontWeight: 900,
+          marginBottom: 14,
+          borderLeft: "4px solid #D4A65A",
+          paddingLeft: 10,
+        }}
+      >
+        월간 분석 리포트
+      </h2>
+
+      {/* 🟦 생활 패턴 분석 */}
+      <div style={{ marginBottom: 10 }}>
+        <b>🟦 생활 패턴 분석</b>
+        <br />
+        {lifestyle}
+      </div>
+
+      {/* 🟨 학원 학습 비율 */}
+      <div style={{ marginBottom: 10 }}>
+        <b>🟨 학원 학습 비율</b>
+        <br />
+        {academy}
+      </div>
+
+      {/* 🟩 성장 변화 */}
+      <div style={{ marginBottom: 14 }}>
+        <b>🟩 성장 변화(전월 대비)</b>
+        <br />
+        {growth}
+      </div>
+
+      {/* 🔥 생활시간 경고 박스 */}
+      {outingWarning && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: "12px 14px",
+            borderRadius: 12,
+            background: outingWarning.bg,
+            color: outingWarning.color,
+            fontWeight: 700,
+            fontSize: 13,
+            lineHeight: 1.55,
+          }}
+        >
+          {outingWarning.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* =================================================================== */
 /* 타임라인 섹션 */
 /* =================================================================== */
 
-function hmToMin(hm?: string) {
-  if (!hm) return 0;
-  const [h, m] = hm.split(":").map(Number);
-  return h * 60 + m;
-}
+
 
 function TimelineSection({
   monthDates,
@@ -612,52 +1031,164 @@ function TimelineSection({
         )}
 
         {monthDates.map((date) => {
-          const cell = records[date];
-          if (!cell) return null;
+  const cell = records[date];
+  if (!cell) return null;
 
-          return (
-            <div
-              key={date}
-              style={{
-                background: "#ffffff",
-                padding: "14px 18px",
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-                marginBottom: 12,
-                boxShadow: "0 3px 8px rgba(0,0,0,0.04)",
-              }}
-            >
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
-                {date}
-              </div>
+  const outing =
+    (cell.commuteMin ?? 0) +
+    (cell.mealMin ?? 0) +
+    (cell.restroomMin ?? 0);
 
-              <TimelineItem label="등원" time={cell.time} />
-              <TimelineItem label="하원" time={cell.outTime} />
+  return (
+    <div
+      key={date}
+      style={{
+        background: "#ffffff",
+        padding: "14px 18px",
+        borderRadius: 12,
+        border: "1px solid #e5e7eb",
+        marginBottom: 12,
+        boxShadow: "0 3px 8px rgba(0,0,0,0.04)",
+      }}
+    >
+      {/* 날짜 */}
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
+        {date}
+      </div>
+
+      {/* 등원, 하원 */}
+<TimelineItem label="등원" time={cell.time || cell.inTime} />
+<TimelineItem label="하원" time={cell.outTime} />
+
+      {/* ⭐ 생활시간 총합 강조 박스 */}
+      <div
+        style={{
+          marginTop: 8,
+          padding: "6px 10px",
+          background: "#FFE5E5",       // 연핑크 배경
+          borderRadius: 8,
+          fontSize: 13,
+          fontWeight: 700,
+          color: "#B91C1C",            // 진한 레드 텍스트
+        }}
+      >
+        생활시간 총합: {outing}분
+      </div>
+
+      {/* 순공 */}
+      <TimelineItem
+        label="순공"
+        time={
+          typeof cell.studyMin === "number"
+            ? `${cell.studyMin}분`
+            : undefined
+        }
+      />
+
+      {/* 세부 생활시간 */}
+      {typeof cell.restroomMin === "number" && (
+        <TimelineItem label="화장실" time={`${cell.restroomMin}분`} />
+      )}
+
+      {typeof cell.commuteMin === "number" && (
+        <TimelineItem label="이동" time={`${cell.commuteMin}분`} />
+      )}
+
+      {typeof cell.mealMin === "number" && (
+        <TimelineItem label="식사" time={`${cell.mealMin}분`} />
+      )}
+
+      {/* 학원 */}
+      {cell.academyBySubject && (
+        <>
+          <div
+            style={{ marginTop: 8, fontWeight: 700, fontSize: 13 }}
+          >
+            학원
+          </div>
+
+          {Object.entries(cell.academyBySubject).map(([sub, data]) => {
+            const total =
+              data.slots?.reduce((sum, slot) => {
+                if (!slot.from || !slot.to) return sum;
+                const [fh, fm] = slot.from.split(":").map(Number);
+                const [th, tm] = slot.to.split(":").map(Number);
+                return sum + (th * 60 + tm - (fh * 60 + fm));
+              }, 0) || 0;
+
+            return (
               <TimelineItem
-                label="순공"
-                time={
-                  typeof cell.studyMin === "number"
-                    ? `${cell.studyMin}분`
-                    : undefined
-                }
+                key={sub}
+                label={` - ${sub}`}
+                time={`${total}분`}
               />
-              {typeof cell.restroomMin === "number" && (
-                <TimelineItem label="화장실" time={`${cell.restroomMin}분`} />
-              )}
-              {typeof cell.commuteMin === "number" && (
-                <TimelineItem label="이동" time={`${cell.commuteMin}분`} />
-              )}
-              {typeof cell.mealMin === "number" && (
-                <TimelineItem label="식사" time={`${cell.mealMin}분`} />
-              )}
-              {cell.memo && <TimelineItem label="메모" time={cell.memo} />}
-            </div>
-          );
-        })}
+            );
+          })}
+        </>
+      )}
+
+      {/* 메모 */}
+      {cell.memo && (
+        <TimelineItem label="메모" time={cell.memo} />
+      )}
+    </div>
+  );
+})}
       </div>
     </div>
   );
 }
+
+function AcademySection({ academy }: { academy: Record<string, number> }) {
+  const total = Object.values(academy).reduce((a, b) => a + b, 0);
+
+  if (total === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <h2
+        style={{
+          fontSize: 18,
+          fontWeight: 800,
+          margin: "20px 0 10px",
+          borderLeft: "4px solid #8B5CF6",
+          paddingLeft: 10,
+        }}
+      >
+        학원 학습 요약
+      </h2>
+
+      <div style={{ fontSize: 14, marginBottom: 8 }}>
+        총 학원 학습시간: <b>{total}분</b>
+      </div>
+
+      <div
+        style={{
+          background: "#faf7ff",
+          border: "1px solid #e5d8ff",
+          padding: "12px 16px",
+          borderRadius: 12,
+        }}
+      >
+        {Object.entries(academy).map(([sub, min]) => (
+          <div
+            key={sub}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "4px 0",
+              fontSize: 13,
+            }}
+          >
+            <span>{sub}</span>
+            <span>{min}분</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* =================================================================== */
 /* 🟨 EDUCORE PREMIUM — TIME SCHEDULE (BUTTON + TABLE + PDF) */
 /* =================================================================== */
@@ -1369,12 +1900,17 @@ function DoughnutChart({
   study,
   rest,
   short,
+  academy,
 }: {
   study: number;
   rest: number;
   short: number;
+  academy: number;
 }) {
-  const total = study + rest + short;
+  const total = study + academy + short;
+  const totalLearning = study + academy;   // ⭐ 중앙 숫자용
+  const OFFSET = 25;
+
   if (total === 0) {
     return (
       <div style={{ marginTop: 8, fontSize: 12, color: "#9ca3af" }}>
@@ -1386,47 +1922,67 @@ function DoughnutChart({
   const pct = (v: number) => (v / total) * 100;
 
   return (
-    <div style={{ margin: "0 auto", width: 180, height: 180 }}>
-      <svg viewBox="0 0 36 36">
+    <div style={{ position: "relative", width: "180px", height: "180px" }}>
+      <svg viewBox="0 0 36 36" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="18" cy="18" r="16" stroke="#E5E7EB" strokeWidth="4" fill="none" />
+
+        {/* 순공 */}
         <circle
           cx="18"
           cy="18"
           r="16"
-          stroke="#e5e7eb"
-          strokeWidth="4"
-          fill="none"
-        />
-        <circle
-          cx="18"
-          cy="18"
-          r="16"
-          stroke="#2563EB"
+          stroke="#1E3A8A"
           strokeWidth="4"
           strokeDasharray={`${pct(study)} ${100 - pct(study)}`}
-          strokeDashoffset={25}
+          strokeDashoffset={OFFSET}
           fill="none"
         />
+
+        {/* 학원학습 */}
         <circle
           cx="18"
           cy="18"
           r="16"
-          stroke="#DC2626"
+          stroke="#C8A76A"
           strokeWidth="4"
-          strokeDasharray={`${pct(rest)} ${100 - pct(rest)}`}
-          strokeDashoffset={25 - pct(study)}
+          strokeDasharray={`${pct(academy)} ${100 - pct(academy)}`}
+          strokeDashoffset={OFFSET - pct(study)}
           fill="none"
         />
+
+        {/* 생활시간 */}
         <circle
           cx="18"
           cy="18"
           r="16"
-          stroke="#0EA5E9"
+          stroke="#b4d149ff"
           strokeWidth="4"
           strokeDasharray={`${pct(short)} ${100 - pct(short)}`}
-          strokeDashoffset={25 - pct(study) - pct(rest)}
+          strokeDashoffset={OFFSET - pct(study) - pct(academy)}
           fill="none"
         />
       </svg>
+
+      {/* 중앙 숫자 */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 800,
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 18, color: "#1E293B" }}>
+          {totalLearning}분
+        </div>
+        <div style={{ fontSize: 10, color: "#6B7280" }}>총 학습</div>
+      </div>
+      
     </div>
+    
   );
 }
