@@ -11,13 +11,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <BrowserRouter>
   <Routes>
-    {/* 학생별 페이지 */}
     <Route path="/student" element={<StudentPage />} />
-
-    {/* 부모 월간 보고서 */}
     <Route path="/parent-report/:id" element={<ParentMonthlyReport />} />
-
-    {/* 관리자용 기본 화면 */}
     <Route path="/" element={<App />} />
   </Routes>
 </BrowserRouter>

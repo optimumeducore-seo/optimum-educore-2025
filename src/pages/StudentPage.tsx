@@ -15,6 +15,58 @@ import {
 } from "recharts";
 import { arrayUnion } from "firebase/firestore";
 
+// 🔥 날짜 기반으로 StudentPage에서도 기록 불러오기
+// 🔥 학생 기록을 두 구조(records + students/logs)에서 모두 읽어서 합치기
+async function loadStudentRecords(studentId: string) {
+  const results: any[] = [];
+
+  // -----------------------------
+  // ① 날짜 기반 records/<date> 구조 읽기
+  // -----------------------------
+  for (let i = 0; i < 60; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+
+    const ref = doc(db, "records", dateStr);
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) continue;
+
+    const data = snap.data() as any;
+    if (!data[studentId]) continue;
+
+    results.push({
+      date: dateStr,
+      ...data[studentId],
+    });
+  }
+
+  // -----------------------------
+  // ② 기존 students/<id>/logs 배열도 읽기
+  // -----------------------------
+  const studentRef = doc(db, "students", studentId);
+  const studentSnap = await getDoc(studentRef);
+
+  if (studentSnap.exists()) {
+    const data = studentSnap.data() as any;
+    if (Array.isArray(data.logs)) {
+      data.logs.forEach((log: any) => {
+        if (!results.some((r) => r.date === log.date)) {
+          results.push(log);
+        }
+      });
+    }
+  }
+
+  // -----------------------------
+  // ③ 날짜 기준으로 정렬
+  // -----------------------------
+  results.sort((a, b) => (a.date > b.date ? -1 : 1));
+
+  return results;
+}
+
 export default function StudentPage() {
   const [students, setStudents] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -66,39 +118,24 @@ export default function StudentPage() {
 };
 
 
-
-  // 🔹 학생 선택 시 Firestore에서 출결 로그 로드
-  const handleSelectStudent = async (student: any) => {
+  // 🔥 학생 선택 시 Firestore에서 출결 로그 로드 (날짜 기반)
+const handleSelectStudent = async (student: any) => {
   setSelected(student);
   setVerified(false);
   setPasswordInput("");
   setTodayInTime(null);
+
+  // 🔥 날짜별 문서에서 학생 기록 읽기
+  const logs = await loadStudentRecords(student.id);
+
+  setRecords(logs);
+  calculateMonthlyStats(logs);
 
   // 자동 포커스
   setTimeout(() => {
     const el = document.getElementById("pw-input");
     el?.focus();
   }, 50);
-
-  const snap = await getDoc(doc(db, "records", student.id));
-  if (!snap.exists()) {
-    setRecords([]);
-    setMonthStats({});
-    return;
-  }
-
-  const data = snap.data() as any;
-
-  // 🔥 DayCell 기반으로 변환
- const logs = Array.isArray(data.logs) ? data.logs : [];
-
-  setRecords(logs);
-  calculateMonthlyStats(logs);
-
-  setTimeout(() => {
-    const el = document.getElementById("pw-input");
-    el?.focus();
-  }, 10);
 };
 
 // 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용)
@@ -185,13 +222,13 @@ const summary = (() => {
   const y = new Date().getFullYear();
   const m = new Date().getMonth() + 1; // 1~12
 
-  // 이번 달(특히 11월)만 15일 이후로 제한
+  // 이번 달(특히 11월)만 20일 이후로 제한
   const filtered = records.filter((r) => {
     const [yy, mm, dd] = r.date.split("-").map(Number);
 
-    // 이번 달 + 날짜 14일 이상만 포함
+    // 이번 달 + 날짜 20일 이상만 포함
     if (yy === y && mm === m) {
-      return dd >= 14;
+      return dd >= 20;
     }
 
     // 다른 달은 전체 포함
@@ -223,83 +260,109 @@ const summary = (() => {
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
 const [viewMonth, setViewMonth] = useState(new Date().getMonth()); 
 
-  // 🔹 학생용 등원 처리 (logs 기반)
+ 
 // 🔥 학생용 checkIn: App 구조로 저장
 
 const checkIn = async () => {
   if (!selected) return;
 
-  const today = new Date().toISOString().slice(0, 10);
   const now = new Date();
   const hhmm = now.toTimeString().slice(0, 5);
+  const today = new Date().toISOString().slice(0, 10);
 
-  const ref = doc(db, "records", selected.id);
-  const snap = await getDoc(ref);
-  const data = snap.exists() ? snap.data() : {};
-  const logs = Array.isArray(data.logs) ? data.logs : [];
+  // 🔥 Firestore(App 스타일) 저장
+  await saveAppStyleCheckIn(selected.id, hhmm);
 
-  // 🟦 이미 체크인 여부 확인
-  if (logs.some((l) => l.date === today && l.inTime)) {
-    alert("이미 등원 처리되었습니다.");
-    return;
-  }
-
-  // 🟦 logs에 새 기록 추가
-  const newLog = {
-    date: today,
-    inTime: hhmm,
-    outTime: null,
-  };
-
-  await setDoc(
-    ref,
+  // 🔥 StudentPage 화면 즉시 업데이트
+  setRecords((prev) => [
+    ...prev.filter((r) => r.date !== today),
     {
-      logs: [...logs, newLog], // arrayUnion 대신 직접 push 형태로 저장
+      date: today,
+      inTime: hhmm,
+      outTime: null,
     },
-    { merge: true }
-  );
+  ]);
 
   setTodayInTime(now.toISOString());
   alert("✅ 등원 처리 완료");
 };
-
-
-  // 🔹 학생용 하원 처리 (logs 기반)
-const checkOut = async () => {
-  if (!selected) return;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const now = new Date();
-  const hhmm = now.toTimeString().slice(0, 5);
-
-  const ref = doc(db, "records", selected.id);
+// 🔥 App 스타일 등원 저장
+async function saveAppStyleCheckIn(studentId: string, time: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);
   const snap = await getDoc(ref);
   const data = snap.exists() ? snap.data() : {};
-  const logs = Array.isArray(data.logs) ? data.logs : [];
 
-  const idx = logs.findIndex((l) => l.date === today);
-
-  if (idx === -1) {
-    alert("등원 기록이 없습니다.");
-    return;
-  }
-
-  if (logs[idx].outTime) {
-    alert("이미 하원 처리되었습니다.");
-    return;
-  }
-
-  logs[idx].outTime = hhmm;
+  const prev = data[studentId] || {};
 
   await setDoc(
     ref,
-    { logs },
+    {
+      [studentId]: {
+        ...prev,
+        inTime: time,
+        time: time,
+      },
+    },
     { merge: true }
   );
+}
 
-  alert("👋 하원 처리 완료");
+
+  // 🔹 학생용 하원 처리 (logs 기반)
+// 🔹 학생용 하원 처리 
+const checkOut = async () => {
+  if (!selected) return;
+
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0, 5);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const todayLog = records.find((r) => r.date === today);
+
+  if (!todayLog || !todayLog.inTime) {
+    alert("등원 기록이 없습니다.");
+    return;
+  }
+  if (todayLog.outTime) {
+    alert("이미 하원한 학생입니다.");
+    return;
+  }
+
+  // 🔥 1) Firestore(App 구조) 저장
+  await saveAppStyleCheckOut(selected.id, hhmm);
+
+  // 🔥 2) 화면 업데이트
+  setRecords(prev =>
+    prev.map(r =>
+      r.date === today ? { ...r, outTime: hhmm } : r
+    )
+  );
+
+  alert("👋 하원 처리 완료!");
 };
-  
+// 🔥 App 스타일 하원 저장
+async function saveAppStyleCheckOut(studentId: string, time: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+
+  const data = snap.data();
+  const prev = data[studentId];
+  if (!prev) return;
+
+  await setDoc(
+    ref,
+    {
+      [studentId]: {
+        ...prev,
+        outTime: time,
+      },
+    },
+    { merge: true }
+  );
+}
 
   // 🔹 그래프 데이터
   const chartData = records
@@ -316,7 +379,7 @@ const checkOut = async () => {
       : 0;
 
       // ⚡ 이번 달 실제 결석일 계산 (일요일 제외)  
-// ⚡ 이번 달 실제 결석일 계산 (일요일 제외 + 14일부터)
+// ⚡ 이번 달 실제 결석일 계산 (일요일 제외 + 20일부터)
 const realAbsences = (() => {  
   const y = viewYear;  
   const m = viewMonth + 1;  
@@ -331,8 +394,8 @@ const realAbsences = (() => {
   const today = new Date().getDate();  
   let count = 0;  
   
-  // 🔥 이번 달은 14일부터 결석 카운팅
-  for (let day = 14; day <= today; day++) {  
+  // 🔥 이번 달은 20일부터 결석 카운팅
+  for (let day = 20; day <= today; day++) {  
     const dateStr = `${monthStr}-${String(day).padStart(2, "0")}`;  
     const dow = new Date(dateStr).getDay();  
 
@@ -524,6 +587,29 @@ if (log) {
     }
   }
 }
+// 날짜 박스 안 outTime 표시
+let outTimeLabel = null;
+
+if (log) {
+  const rawOut = log.outTime;
+
+  if (typeof rawOut === "string") {
+    if (rawOut.includes("T")) {
+      // ISO → HH:MM
+      const d = new Date(rawOut);
+      if (!isNaN(d.getTime())) {
+        outTimeLabel = d.toLocaleTimeString("ko-KR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+    } else if (rawOut.includes(":")) {
+      // HH:MM 그대로
+      outTimeLabel = rawOut;
+    }
+  }
+}
+
 
           return (
             <div
@@ -558,6 +644,22 @@ if (log) {
     }}
   >
     {inTimeLabel}
+  </div>
+)}
+
+{outTimeLabel && (
+  <div
+    style={{
+      marginTop: 1,
+      fontSize: 10,
+      color: "#b91c1c",  // 🔥 빨강: 하원
+      fontWeight: 700,
+      width: "100%",
+      textAlign: "center",
+      lineHeight: "1.1",
+    }}
+  >
+    {outTimeLabel}
   </div>
 )}
             </div>

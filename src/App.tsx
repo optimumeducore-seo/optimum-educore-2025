@@ -554,60 +554,71 @@ export default function App() {
     .slice(0, 10);
 }
 
-  // === 선생님용 등원 ===
- async function handleCheckin(studentId: string, inputTime: string, dateStr: string) {
-  const date = dateStr;   // 👈 화면에서 선택한 date 그대로 사용
+// ✅ 학생용 등원 처리 (오늘 날짜 기준, records/날짜/학생ID 구조)
+// =============================
 
-  const ref = doc(db, "records", studentId);
+async function handleCheckIn(studentId: string, inputTime: string) {
+
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);   // ⭐ 문서: 날짜 하나만
+
   const snap = await getDoc(ref);
-  const data = snap.exists() ? snap.data() : {};
+  const data = snap.exists() ? (snap.data() as any) : {};
 
-  const prev = data[date] || null;
+  const prev = data[studentId] || {};
 
-  if (prev?.time) {
-    alert("이미 등원 처리되었습니다.");
-    return;
-  }
-
-  const newCell = {
-    ...(prev || {}),
-    status: "P",       // 🔼 소문자 "p" 말고 기존 StatusKey 맞춰서 "P"
-    time: inputTime,
-    inTime: inputTime,
-    outTime: "",
-    date,
-    sid: studentId,
-  };
-
-  await setDoc(ref, { [date]: newCell }, { merge: true });
-  console.log("✅ 등원 저장:", date, studentId, inputTime);
-}
-
-  // === 선생님용 하원 ===
-// ✅ 하원도 동일하게 날짜를 인자로 받게 수정
-async function handleCheckout(studentId: string, inputTime: string, dateStr: string) {
-  const date = dateStr;   // 👈 화면에서 선택한 date 그대로
-
-  const ref = doc(db, "records", studentId);
-  const snap = await getDoc(ref);
-  const data = snap.exists() ? snap.data() : {};
-
-  const prev = data[date] || null;
-
-  if (!prev?.time) {
-    alert("등원 기록이 없습니다.");
-    return;
-  }
-
-  if (prev.outTime) {
-    alert("이미 하원 처리되었습니다.");
+  if (prev.inTime || prev.time) {
+    alert("이미 등원 처리된 학생입니다.");
     return;
   }
 
   await setDoc(
     ref,
     {
-      [date]: {
+      [studentId]: {
+        ...prev,
+        time: inputTime,
+        inTime: inputTime,
+      },
+    },
+    { merge: true }
+  );
+
+  console.log("등원 저장 완료", date, studentId);
+}
+
+// =============================
+// ✅ 학생 하원
+// =============================
+async function handleCheckOut(studentId: string, inputTime: string) {
+
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);  // ⭐ 여기도 동일
+
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    alert("등원 기록이 없습니다.");
+    return;
+  }
+
+  const data = snap.data() as any;
+  const prev = data[studentId];
+
+  if (!prev || (!prev.inTime && !prev.time)) {
+    alert("등원 기록이 없습니다.");
+    return;
+  }
+
+  if (prev.outTime) {
+    alert("이미 하원 처리된 학생입니다.");
+    return;
+  }
+
+  await setDoc(
+    ref,
+    {
+      [studentId]: {
         ...prev,
         outTime: inputTime,
       },
@@ -615,8 +626,9 @@ async function handleCheckout(studentId: string, inputTime: string, dateStr: str
     { merge: true }
   );
 
-  console.log("✅ 하원 저장:", date, studentId, inputTime);
+  console.log("하원 저장 완료", date, studentId);
 }
+
   async function saveStudentToFS(groupId: string, s: any) {
     try {
       // undefined 값 제거 (Firestore는 undefined 허용 안 함)
@@ -1053,34 +1065,47 @@ const defaultDayCell: DayCell = {
   // =====================================
   // 🔥 Firestore → 오늘 등/하원 시간 불러오기
   // =====================================
-  useEffect(() => {
-    const loadRecords = async () => {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      let inMap: any = {};
-      let outMap: any = {};
+  // 🔥 Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조)
+useEffect(() => {
+  if (!students.length) return;
 
-      for (const st of students) {
-        const ref = doc(db, "records", st.id);
-        const snap = await getDoc(ref);
+  const loadRecords = async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const ref = doc(db, "records", today);
+    const snap = await getDoc(ref);
 
-        if (!snap.exists()) continue;
-        const data = snap.data();
+    if (!snap.exists()) {
+      // 오늘 등원한 학생이 아무도 없으면 전체를 빈 값으로 세팅
+      const emptyInMap: Record<string, string | null> = {};
+      const emptyOutMap: Record<string, string | null> = {};
 
-        const logs = Array.isArray(data.logs) ? data.logs : [];
-        const todayLog = logs.find(l => l.date === todayStr && l.inTime);
+      students.forEach((st) => {
+        emptyInMap[st.id] = null;
+        emptyOutMap[st.id] = null;
+      });
 
-        if (todayLog) {
-          inMap[st.id] = todayLog.inTime || null;
-          outMap[st.id] = todayLog.outTime || null;
-        }
-      }
+      setTodayIn(emptyInMap);
+      setTodayOut(emptyOutMap);
+      return;
+    }
 
-      setTodayIn(inMap);
-      setTodayOut(outMap);
-    };
+    const data = snap.data() as any;
 
-    if (students.length) loadRecords();
-  }, [students]);
+    const inMap: Record<string, string | null> = {};
+    const outMap: Record<string, string | null> = {};
+
+    students.forEach((st) => {
+      const rec = data[st.id];
+      inMap[st.id] = rec?.inTime || null;
+      outMap[st.id] = rec?.outTime || null;
+    });
+
+    setTodayIn(inMap);
+    setTodayOut(outMap);
+  };
+
+  loadRecords();
+}, [students]);
 
 
 
@@ -1507,7 +1532,6 @@ const resetMeal = (sid: string) => {
 
   return total;
 };
-
 const commuteTotalMin = (c?: DayCell) => {
   if (!c) return 0;
 
@@ -1633,26 +1657,42 @@ const commuteTotalMin = (c?: DayCell) => {
 // ==========================
 const saveRecordToFS = async (date: string, sid: string, cell: DayCell) => {
   try {
-    const ref = doc(db, "records", sid);  // 문서ID = 학생ID (그대로 OK)
+    // 🔥 문서 경로: records/<date>
+    const ref = doc(db, "records", date);
 
+    // 🔥 undefined 제거
     const safeCell: any = { ...cell };
-
     Object.keys(safeCell).forEach((k) => {
       if (safeCell[k] === undefined) {
-        safeCell[k] = deleteField(); // undefined 대신 deleteField()
+        safeCell[k] = deleteField();
       }
     });
 
+    // 🔥 Firestore에 저장
     await setDoc(
       ref,
       {
-        // ✅ 필드 이름은 날짜!
-        [date]: safeCell,
+        [sid]: safeCell, // 날짜 문서 안에 학생 ID 필드
       },
       { merge: true }
     );
 
     console.log("🔥 Firestore 저장 완료:", date, sid);
+
+    // =====================================
+    // 🔥🔥🔥 제일 중요한 부분: 메인 화면 즉시 업데이트!
+    // =====================================
+    setTodayIn((prev) => ({
+      ...prev,
+      [sid]: safeCell.inTime || safeCell.time || null,
+    }));
+
+    setTodayOut((prev) => ({
+      ...prev,
+      [sid]: safeCell.outTime || null,
+    }));
+    // =====================================
+
   } catch (err) {
     console.error("❌ Firestore 저장 실패:", err);
   }
@@ -2582,7 +2622,7 @@ const updateDayCell = (
         }));
 
         // 3) Firestore에도 같은 값 저장
-        handleCheckin(s.id, finalIn, ds);
+        handleCheckIn(s.id, finalIn);
       }}
     >
       등원
@@ -2640,7 +2680,7 @@ const updateDayCell = (
         setOutTime(s.id, finalOut); // 내부에서 updateDayCell(date, ...) 사용
 
         // 3) Firestore에 같은 시간/같은 날짜로 저장
-        handleCheckout(s.id, finalOut, ds);
+        handleCheckOut(s.id, finalOut);
       }}
     >
       하원
@@ -3125,6 +3165,8 @@ const updateDayCell = (
                                     </div>
                                   </div>
                                 </div>
+
+
 
 
 
@@ -4404,7 +4446,7 @@ const c: DayCell | undefined = raw
                                 );
                               }
 
-                              // 📌 미래 날짜
+                               // 📌 미래 날짜
                               if (isFuture) {
                                 return (
                                   <>

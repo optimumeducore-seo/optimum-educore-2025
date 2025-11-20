@@ -242,6 +242,7 @@ useEffect(() => {
 }, [student.id, timeBlocks]);
 
 
+
 /** ✅ 학원 시간 저장 함수 (예약 반영 포함) */
 const handleAcademySave = async (
   sub: AcademyType,
@@ -486,6 +487,9 @@ async function printScheduleToPDF() {
             placeholder="부모님 연락처"
           />
         </div>
+
+
+
 
         {/* 개인 시간표 */}
         <div style={{ marginTop: 10 }}>

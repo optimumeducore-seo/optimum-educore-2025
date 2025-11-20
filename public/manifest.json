@@ -1,0 +1,9 @@
+{
+  "name": "Optimum Educore",
+  "short_name": "Educore",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": []
+}

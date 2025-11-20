@@ -26,14 +26,14 @@ const termOptions = {
   중1: ["2학기 중간", "2학기 기말"],
   중2: ["1학기 중간", "1학기 기말", "2학기 중간", "2학기 기말"],
   중3: ["1학기 중간", "1학기 기말", "2학기 중간", "2학기 기말"],
-  브랜치: Array.from({ length: 8 }, (_, i) => `모의고사 ${i + 1}회`),
+  브릿지: Array.from({ length: 8 }, (_, i) => `모의고사 ${i + 1}회`),
 };
 
 const pastelThemes: Record<string, string> = {
   중1: "#e6f0ff",
   중2: "#e8f7ef",
   중3: "#fff2e6",
-  브랜치: "#f5e6f7",
+  브릿지: "#f5e6f7",
 };
 
 const gradeColors = ["#4caf50", "#8bc34a", "#cddc39", "#ffc107", "#f44336"];
@@ -96,7 +96,7 @@ export default function GradeModal({
   onClose,
 }: GradeModalProps) {
   const [activeTab, setActiveTab] =
-    useState<"중1" | "중2" | "중3" | "브랜치">("중1");
+    useState<"중1" | "중2" | "중3" | "브릿지">("중1");
   const [teacherComment, setTeacherComment] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -106,7 +106,7 @@ export default function GradeModal({
       중1: subjects,
       중2: subjects,
       중3: subjects,
-      브랜치: ["국어", "수학", "영어", "통합과학", "통합사회", "역사"],
+      브릿지: ["국어", "수학", "영어", "통합과학", "통합사회", "역사"],
     } as const;
 
     return Object.fromEntries(
@@ -207,7 +207,7 @@ export default function GradeModal({
   const renderTable = (year: string) => {
     const terms = termOptions[year as keyof typeof termOptions];
     const subjList =
-      year === "브랜치"
+      year === "브릿지"
         ? ["국어", "수학", "영어", "통합과학", "통합사회", "역사"]
         : subjects;
 
@@ -226,7 +226,7 @@ export default function GradeModal({
             {terms.map((term) => (
               <th
                 key={term}
-                colSpan={year === "브랜치" ? 2 : 3}
+                colSpan={year === "브릿지" ? 2 : 3}
                 style={{ border: "1px solid #ddd" }}
               >
                 {term}
@@ -236,7 +236,7 @@ export default function GradeModal({
           <tr style={{ background: "#fafafa" }}>
             <th></th>
             {terms.map((term) =>
-              year === "브랜치" ? (
+              year === "브릿지" ? (
                 <React.Fragment key={term}>
                   <th>내 점수</th>
                   <th>등급</th>
@@ -273,7 +273,7 @@ export default function GradeModal({
                   };
                 const { my, avg } = current;
                 const level =
-                  year === "브랜치" ? Number(avg) : getLevel(my, avg);
+                  year === "브릿지" ? Number(avg) : getLevel(my, avg);
 
                 return (
                   <React.Fragment key={term + subject}>
@@ -305,7 +305,7 @@ export default function GradeModal({
 
                     <td style={{ border: "1px solid #eee" }}>
                       <input
-                        type={year === "브랜치" ? "text" : "number"}
+                        type={year === "브릿지" ? "text" : "number"}
                         value={avg}
                         onChange={(e) =>
                           handleChange(
@@ -323,12 +323,12 @@ export default function GradeModal({
                           borderRadius: 5,
                           textAlign: "center",
                           background:
-                            year === "브랜치" ? "#fffdf5" : "#f9f9f9",
+                            year === "브릿지" ? "#fffdf5" : "#f9f9f9",
                         }}
                       />
                     </td>
 
-                    {year !== "브랜치" && (
+                    {year !== "브릿지" && (
                       <td
                         style={{
                           border: "1px solid #eee",
@@ -406,7 +406,7 @@ export default function GradeModal({
 
         {/* 탭 */}
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {["중1", "중2", "중3", "브랜치"].map((tab) => (
+          {["중1", "중2", "중3", "브릿지"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
