@@ -237,15 +237,7 @@ const getSubjectSumMin = (cell: DayCell | undefined, sub: AcademyType) => {
 };
 
 
-if (!localStorage.getItem("access")) {
-  const pass = prompt("🔒 비밀번호를 입력하세요:");
-  if (pass !== "77777") {
-    alert("비밀번호가 틀렸습니다.");
-    window.location.href = "https://google.com";
-  } else {
-    localStorage.setItem("access", "ok");
-  }
-}
+
 
 
 

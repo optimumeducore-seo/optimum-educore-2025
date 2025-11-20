@@ -840,6 +840,7 @@ if (log) {
         </div>
       )}
 
+
       {/* ===== 비밀번호 인증 단계 ===== */}
       {selected && !verified && (
         <div
@@ -852,6 +853,7 @@ if (log) {
               "linear-gradient(135deg, rgba(239,246,255,0.9), rgba(248,250,252,0.95))",
           }}
         >
+  
           <h3
             style={{
               margin: "0 0 6px 0",
@@ -941,6 +943,25 @@ if (log) {
             >
               비밀번호 초기화
             </button>
+                    
+      <button
+  onClick={() => {
+    window.open(`/parent-report/${selected.id}`, "_blank");
+  }}
+  style={{
+    
+    padding: "10px 0",
+    borderRadius: 10,
+    border: "1px solid #2563eb",
+    background: "#eff6ff",
+    color: "#1e3a8a",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+  }}
+>
+  📄P
+</button>
           </div>
         </div>
       )}
@@ -995,7 +1016,7 @@ if (log) {
                   학교: {selected.school}
                 </p>
               )}
-
+             
               {todayInTime && (
   <p
     style={{
