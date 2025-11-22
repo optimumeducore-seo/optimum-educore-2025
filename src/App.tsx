@@ -564,17 +564,12 @@ async function handleCheckIn(studentId: string, inputTime: string) {
     return;
   }
 
-  await setDoc(
-    ref,
-    {
-      [studentId]: {
-        ...prev,
-        time: inputTime,
-        inTime: inputTime,
-      },
-    },
-    { merge: true }
-  );
+  await setDoc(ref, {
+  [studentId]: {
+    inTime: inputTime,
+    outTime: null
+  }
+});
 
   console.log("등원 저장 완료", date, studentId);
 }
@@ -607,16 +602,12 @@ async function handleCheckOut(studentId: string, inputTime: string) {
     return;
   }
 
-  await setDoc(
-    ref,
-    {
-      [studentId]: {
-        ...prev,
-        outTime: inputTime,
-      },
-    },
-    { merge: true }
-  );
+ await setDoc(ref, {
+  [studentId]: {
+    inTime: prev.inTime ?? null,
+    outTime: inputTime,
+  }
+});
 
   console.log("하원 저장 완료", date, studentId);
 }
@@ -1054,8 +1045,6 @@ const defaultDayCell: DayCell = {
     });
   }, [currentGroup]);
 
-  // =====================================
-  // 🔥 Firestore → 오늘 등/하원 시간 불러오기
   // =====================================
   // 🔥 Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조)
 useEffect(() => {

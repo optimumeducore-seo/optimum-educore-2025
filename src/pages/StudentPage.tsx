@@ -108,10 +108,7 @@ export default function StudentPage() {
 
   let P = 0, L = 0, A = 0;
   list.forEach(r => {
-    const st = getStatus(r);
-    if (st === "P") P++;
-    else if (st === "L") L++;
-    else A++;
+    
   });
 
   return { P, L, A, total: list.length };
@@ -143,7 +140,8 @@ const calcNetStudyMin_SP = (rec: any) => {
   const t1 = rec.inTime;
   const t2 = rec.outTime;
 
-  if (!t1 || !t2) return 0;
+  if (!t1) return 0; // 등원 없으면 0
+if (!t1 || !t2) return 0;
 
   // ISO 형태 처리 (학생 등원 버튼은 ISO 저장되는 문제 있었음)
   const toHM = (v: string) => {
@@ -169,6 +167,7 @@ const calcNetStudyMin_SP = (rec: any) => {
 
   return Math.max(0, diff);
 };
+
 
   // 🔹 비밀번호 인증
 const verifyPassword = () => {
@@ -241,20 +240,7 @@ const summary = (() => {
   return { total, days: filtered.length };
 })();
 
-  const getStatus = (rec: any) => {
-  // inTime 없으면 출석 안한 것 → 결석
-  if (!rec.inTime) return "A";
 
-  // inTime: "07:26" 형태
-  const [h, m] = rec.inTime.split(":").map(Number);
-  const inHM = h * 60 + m;
-
-  // 16:30 = 지각 기준
-  const cutoff = 16 * 60 + 30;
-
-  if (inHM > cutoff) return "L"; // 지각
-  return "P"; // 정상 출석
-};
 
 
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
@@ -290,26 +276,17 @@ const checkIn = async () => {
 async function saveAppStyleCheckIn(studentId: string, time: string) {
   const date = new Date().toISOString().slice(0, 10);
   const ref = doc(db, "records", date);
-  const snap = await getDoc(ref);
-  const data = snap.exists() ? snap.data() : {};
 
-  const prev = data[studentId] || {};
-
-  await setDoc(
-    ref,
-    {
-      [studentId]: {
-        ...prev,
-        inTime: time,
-        time: time,
-      },
-    },
-    { merge: true }
-  );
+  await setDoc(ref, {
+  [studentId]: {
+    time: time,       // 메인 App 계산용
+    inTime: time,     // StudentPage/calendar용
+    outTime: null,
+  },
+}, { merge: true }); 
 }
 
 
-  // 🔹 학생용 하원 처리 (logs 기반)
 // 🔹 학생용 하원 처리 
 const checkOut = async () => {
   if (!selected) return;
@@ -329,7 +306,6 @@ const checkOut = async () => {
     return;
   }
 
-  // 🔥 1) Firestore(App 구조) 저장
   await saveAppStyleCheckOut(selected.id, hhmm);
 
   // 🔥 2) 화면 업데이트
@@ -341,27 +317,23 @@ const checkOut = async () => {
 
   alert("👋 하원 처리 완료!");
 };
-// 🔥 App 스타일 하원 저장
+
 async function saveAppStyleCheckOut(studentId: string, time: string) {
   const date = new Date().toISOString().slice(0, 10);
   const ref = doc(db, "records", date);
+
   const snap = await getDoc(ref);
-  if (!snap.exists()) return;
+  const data = snap.exists() ? snap.data() : {};
 
-  const data = snap.data();
-  const prev = data[studentId];
-  if (!prev) return;
+  const prev = data[studentId] || {};
 
-  await setDoc(
-    ref,
-    {
-      [studentId]: {
-        ...prev,
-        outTime: time,
-      },
-    },
-    { merge: true }
-  );
+  await setDoc(ref, {
+  [studentId]: {
+    time: prev.time ?? prev.inTime ?? null,
+    inTime: prev.inTime ?? null,
+    outTime: time,
+  },
+}, { merge: true });
 }
 
   // 🔹 그래프 데이터

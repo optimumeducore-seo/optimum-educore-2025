@@ -8,10 +8,12 @@ import React, {
 } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db } from "../firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { loadGrade } from "../services/firestore";
+import { loadMockExams } from "../services/firestore";
+import BridgeMockExamSection from "../components/BridgeMockExamSection";
 
 /* ===============================
    타입 정의
@@ -67,6 +69,29 @@ function hmToMin(hm?: string) {
   if (!hm) return 0;
   const [h, m] = hm.split(":").map(Number);
   return h * 60 + m;
+}
+// ✅ records 컬렉션에서 날짜별 문서를 돌면서
+//    각 날짜 문서 안의 [studentId] 필드만 모아서
+//    { "YYYY-MM-DD": DayCell } 형태로 리턴
+async function loadRecordsForStudent(studentId: string): Promise<Records> {
+  const result: Records = {};
+
+  // records 컬렉션의 모든 날짜 문서(예: 2025-11-20, 2025-11-21 ...)
+  const snap = await getDocs(collection(db, "records"));
+
+  snap.forEach((docSnap) => {
+    const date = docSnap.id;          // "2025-11-20"
+    const data = docSnap.data() as any;
+
+    // 날짜 문서 안에서 이 학생의 필드만 꺼냄
+    const cell = data[studentId];
+
+    if (cell) {
+      result[date] = cell as DayCell;
+    }
+  });
+
+  return result;
 }
 
 /* ===========================================
@@ -268,30 +293,75 @@ function getGrowthMessage(prev: Summary | null, curr: Summary) {
 function getLatestMockSummary(gradeData: any) {
   if (!gradeData) return [];
 
-  const subjects = Object.keys(gradeData);
   const result: Array<{ subject: string; grade: any; latest: string }> = [];
 
-  subjects.forEach(sub => {
-    const mock = gradeData[sub];
+  // 🔥 브릿지 여부 확인 (브랜치 키 존재하면 브릿지)
+  const isBridge = !!gradeData["브릿지"];
+
+  // 🔥 과목 목록 가져오기
+  const subjects = isBridge
+    ? Object.keys(gradeData["브릿지"])
+    : Object.keys(gradeData["중3"] || gradeData["중2"] || gradeData["중1"] || {});
+
+  subjects.forEach((sub) => {
+    // 🔥 과목별 시험 데이터
+    const mock = isBridge
+      ? gradeData["브릿지"]?.[sub]              // 예: 브랜치 → 국어 → 모의고사 1회
+      : gradeData["중3"]?.[sub] ||              // 중3 국어 → 1학기/2학기 시험들
+        gradeData["중2"]?.[sub] ||
+        gradeData["중1"]?.[sub];
+
     if (!mock) return;
 
-    // 회차 정렬
+    // 🔥 시험 회차 정렬
     const keys = Object.keys(mock).sort();
-
-    // 가장 최근 회차
     const latestKey = keys[keys.length - 1];
     const latest = mock[latestKey];
 
     if (!latest) return;
 
+    // 🔥 브릿지는 avg = 등급
+    const grade =
+      isBridge ? latest.avg : latest.grade ?? latest.avg ?? "-";
+
     result.push({
-      subject: sub, 
-      grade: latest.grade,                         // ✔ 수동 입력한 등급
-      latest: `${latest.year}년 ${latest.month}월`, // ✔ 최근 모고 정보
+      subject: sub,
+      grade,
+      latest: latestKey, // 예: 모의고사 3회 / 2학기 기말
     });
   });
 
   return result;
+}
+
+async function mergeBridgeMock(list: any, id: string) {
+  const snap = await getDocs(
+    collection(db, `mockExams/${id}/bridgeMock`)
+  );
+
+  snap.forEach((doc) => {
+    const data = doc.data();
+    const term = data.round
+      ? `모의고사 ${data.round}회`
+      : "모의고사 1회";
+
+    const subjects = data.subjects || {};
+
+    Object.keys(subjects).forEach((sub) => {
+      const s = subjects[sub];
+
+      const score = s.totalScore ?? 0;
+      const grade = s.grade ?? 0;
+
+      if (!list["브릿지"]) list["브릿지"] = {};
+      if (!list["브릿지"][sub]) list["브릿지"][sub] = {};
+
+      list["브릿지"][sub][term] = {
+        my: score,
+        avg: grade, // 브릿지는 avg = 등급
+      };
+    });
+  });
 }
 
 
@@ -426,8 +496,9 @@ async function handleSaveComment() {
 async function handleDeleteComment() {
   if (!id) return;
   try {
+    // teacherComment만 비움 (나중에 UI 추가 예정)
     await setDoc(
-      doc(db, "grades", id),
+      doc(db, "mockExamsComments", id),
       { teacherComment: "" },
       { merge: true }
     );
@@ -438,48 +509,71 @@ async function handleDeleteComment() {
     alert("⚠ 삭제 중 오류 발생");
   }
 }
+
+/* ---------------------------------
+    성적 + 모의고사 성적 + 코멘트 로드
+----------------------------------*/
+
 useEffect(() => {
   if (!id) return;
+
   (async () => {
-    const saved = await loadGrade(id);
-    if (saved) {
-      setGradeData(saved.scores);
-      setComment(saved.teacherComment || "");
-    }
-    if (saved?.scores) {
-  const a = analyzeScores(saved.scores);
-  setAnalysis(a);
+    // 1) 중1/중2/중3/브릿지 수동입력 gradeData
+    const list = (await loadGrade(id)) || { scores: {} };
+console.log("🔥 로딩된 gradeData:", JSON.stringify(list, null, 2));
+// 🔥 '브랜치' → '브릿지' 자동 변환
+if (list.scores && list.scores["브랜치"]) {
+  list.scores["브릿지"] = list.scores["브랜치"];
+  delete list.scores["브랜치"];
+  console.log("✅ 브랜치 → 브릿지 변환 완료:", list.scores);
 }
+
+    // 2) 🔥 브릿지 mock 자동 병합
+    await mergeBridgeMock(list, id);
+    await setDoc(doc(db, "grades", id), list, { merge: true });
+
+    // 3) 병합된걸 저장
+    setGradeData(list);
+
+    // 4) 분석 생성
+    const a = analyzeScores(list);
+    setAnalysis(a);
+
+    // 5) 코멘트
+    const cSnap = await getDoc(doc(db, "mockExamsComments", id));
+    if (cSnap.exists()) {
+      setComment(cSnap.data().teacherComment || "");
+    }
   })();
 }, [id]);
 
+/* ---------------------------------
+    gradeData 변화 시 분석 업데이트 (중복 방지)
+----------------------------------*/
 useEffect(() => {
-  if (!id) return;
-
-  (async () => {
-    const saved = await loadGrade(id);
-    if (saved) setGradeData(saved.scores);
-  })();
-}, [id]);  // ⬅ id 의존성 추가
+  if (!gradeData) return;
+  const a = analyzeScores(gradeData);
+  setAnalysis(a);
+}, [gradeData]);
 
   /* ===============================
         데이터 로드
   ================================= */
   useEffect(() => {
-    if (!id) return;
+  if (!id) return;
 
-    (async () => {
-      const stSnap = await getDoc(doc(db, "students", id));
-      const recSnap = await getDoc(doc(db, "records", id));
+  (async () => {
+    // 학생 정보
+    const stSnap = await getDoc(doc(db, "students", id));
+    if (stSnap.exists()) {
+      setStudent({ id, ...(stSnap.data() as Omit<Student, "id">) });
+    }
 
-      if (stSnap.exists()) {
-        setStudent({ id, ...(stSnap.data() as Omit<Student, "id">) });
-      }
-      if (recSnap.exists()) {
-        setRecords(recSnap.data() as Records);
-      }
-    })();
-  }, [id]);
+    // 🔥 날짜 기준 records에서 이 학생 기록만 모아오기
+    const rec = await loadRecordsForStudent(id);
+    setRecords(rec);
+  })();
+}, [id]);
 
   const MONTH_NAMES = [
   "JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE",
@@ -877,15 +971,27 @@ function getEnglishMonth(ym: string) {
 
 <ScheduleSection student={student} />
 
+<MockSummarySection data={getLatestMockSummary(gradeData)} />
+
+{/* =============================== */}
+{/*    성적 요약 (GradeSection)      */}
+{/* =============================== */}
+
 <GradeSection
-  gradeData={gradeData}
+  id={id}
+  gradeData={gradeData?.scores || {}}
   comment={comment}
   setComment={setComment}
   onSave={handleSaveComment}
   onDelete={handleDeleteComment}
 />
 
-{/* 하단 카피 */}
+
+
+{/* =============================== */}
+{/*        하단 카피라이터         */}
+{/* =============================== */}
+
 <div
   style={{
     marginTop: 40,
@@ -897,7 +1003,7 @@ function getEnglishMonth(ym: string) {
 >
   Crafted with care by OPTIMUM EDUCORE
   <br />
-  Empowering Students — Inspiring Families.
+  Empowering Students – Inspiring Families.
 </div>
         </div>
       </div>
@@ -1759,30 +1865,46 @@ function getMockLevel(score: number, subject: string) {
 /* =================================================================== */
 
 export function GradeSection({
+  id,
   gradeData,
   comment,
   setComment,
   onSave,
   onDelete,
 }: {
+  id: string;
   gradeData: any;
   comment: string;
   setComment: (v: string) => void;
   onSave: () => void;
   onDelete: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<
-    "중1" | "중2" | "중3" | "브릿지"
-  >("중1");
+  type TabType = "중1" | "중2" | "중3" | "브릿지";
+  const [activeTab, setActiveTab] = useState<TabType>("중1");
 
-  // 🔥 헤더(예: 모의고사 1회) 클릭 시 뜨는 모달용 상태
+  /* ---------------------------------------------------
+     🔥 tabKey는 여기에서 "한 번만" 선언 (정답)
+  --------------------------------------------------- */
+  const tabKey = activeTab === "브릿지" ? "브릿지" : activeTab;
+
+  /* ---------------------------------------------------
+     🔥 getScore는 tabKey만 사용
+  --------------------------------------------------- */
+  const getScore = (subject: string, term: string) => {
+    if (!gradeData) return { my: 0, avg: "" };
+
+    return gradeData?.[tabKey]?.[subject]?.[term] || {
+      my: 0,
+      avg: "",
+    };
+  };
+
+  // 🔥 모달 상태
   const [examModal, setExamModal] = useState<{
-    tab: "중1" | "중2" | "중3" | "브릿지";
+    tab: TabType;
     term: string;
+    exam: any;
   } | null>(null);
-
-  // 브릿지는 Firestore에서 "브랜치" 키를 사용하니까 매핑
-  const tabKey = activeTab === "브릿지" ? "브랜치" : activeTab;
 
   if (!gradeData) {
     return (
@@ -1802,7 +1924,7 @@ export function GradeSection({
     );
   }
 
-  // 🔹 기본 구조들 (기존 그대로)
+  // 🔹 기본 구조
   const termOptions = {
     중1: ["2학기 중간", "2학기 기말"],
     중2: ["1학기 중간", "1학기 기말", "2학기 중간", "2학기 기말"],
@@ -1822,14 +1944,7 @@ export function GradeSection({
     "일본어",
   ];
 
-  const branchSubjects = [
-    "국어",
-    "수학",
-    "영어",
-    "통합과학",
-    "통합사회",
-    "역사",
-  ];
+  const branchSubjects = ["국어", "수학", "영어", "통합과학", "통합사회", "역사"];
 
   const getLevel = (my: number, avg: number) => {
     if (!avg) return 0;
@@ -1844,279 +1959,386 @@ export function GradeSection({
   const terms = termOptions[activeTab];
   const subjList = activeTab === "브릿지" ? branchSubjects : subjects;
 
-  /* ============================
-      🔍 모의고사 회차 상세 모달
-  ============================ */
+  /* ---------------------------------------------------
+     🔍 ExamDetailModal (여긴 tabKey 따로 있어도 OK. 충돌 없음)
+  --------------------------------------------------- */
   const ExamDetailModal = ({
     tab,
     term,
+    exam,
     onClose,
   }: {
     tab: "중1" | "중2" | "중3" | "브릿지";
     term: string;
+    exam: any;
     onClose: () => void;
   }) => {
-    const realKey = tab === "브릿지" ? "브랜치" : tab;
     const list = tab === "브릿지" ? branchSubjects : subjects;
 
-    // 과목별 등급 정리
     const rows = list.map((subject) => {
-  const curr =
-    gradeData?.[realKey]?.[subject]?.[term] || { my: 0, avg: 0 };
+      const tabKeyLocal = tab === "브릿지" ? "브릿지" : tab;
 
-  const level =
-    tab === "브릿지"
-      ? Number(curr.avg || 0) // 🔥 avg가 등급이므로 그대로 사용
-      : getLevel(curr.my || 0, curr.avg || 0);
+      const curr =
+        gradeData?.[tabKeyLocal]?.[subject]?.[term] || { my: 0, avg: 0 };
 
-  return {
-    subject,
-    score: curr.my,
-    avg: curr.avg,
-    level,
+      const level =
+        tab === "브릿지"
+          ? Number(curr.avg || 0)
+          : getLevel(curr.my || 0, curr.avg || 0);
+
+      return {
+        subject,
+        score: curr.my,
+        avg: curr.avg,
+        level,
+      };
+    });
+
+  const valid = rows.filter(
+    (r) => typeof r.level === "number" && r.level > 0 && r.level <= 9
+  );
+
+  // 과목 가중치
+  const weightMap: Record<string, number> = {
+    국어: 100,
+    영어: 100,
+    수학: 100,
+    통합과학: 50,
+    통합사회: 50,
+    역사: 50,
   };
-});
 
-    const valid = rows.filter(
-      (r) => typeof r.level === "number" && r.level > 0 && r.level <= 9
-    );
+  const weightedSum = valid.reduce(
+    (sum, r) => sum + r.level * (weightMap[r.subject] || 50),
+    0
+  );
+  const weightTotal = valid.reduce(
+    (sum, r) => sum + (weightMap[r.subject] || 50),
+    0
+  );
+  const avgLevel = weightTotal > 0 ? weightedSum / weightTotal : 0;
 
-    // 과목 가중치
-const weightMap: Record<string, number> = {
-  국어: 100,
-  영어: 100,
-  수학: 100,
-  통합과학: 50,
-  통합사회: 50,
-  역사: 50,
-};
+  const strong = valid.filter((r) => r.level <= 3).map((r) => r.subject);
+  const weak = valid.filter((r) => r.level >= 6).map((r) => r.subject);
 
-// 가중평균 등급 계산
-const weightedSum = valid.reduce(
-  (sum, r) => sum + r.level * (weightMap[r.subject] || 50),
-  0
-);
-
-const weightTotal = valid.reduce(
-  (sum, r) => sum + (weightMap[r.subject] || 50),
-  0
-);
-
-const avgLevel = weightTotal > 0 ? weightedSum / weightTotal : 0;
-    const strong = valid.filter((r) => r.level <= 3).map((r) => r.subject);
-    const weak = valid.filter((r) => r.level >= 6).map((r) => r.subject);
-
-    return (
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.35)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 2000,
+      }}
+      onClick={onClose}
+    >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.35)",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          zIndex: 2000,
+          width: "88%",
+          maxWidth: 480,
+          background: "#FFFDF8",
+          borderRadius: 16,
+          padding: 18,
+          maxHeight: "80vh",
+          overflowY: "auto",
+          boxShadow: "0 10px 26px rgba(0,0,0,0.25)",
+          fontSize: 12,
+          lineHeight: 1.55,
+          border: "1px solid #E7DCC9",
         }}
-        onClick={onClose}
       >
+        {/* 헤더 */}
+       <div
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    paddingBottom: 6,
+    borderBottom: "1px solid #E5DED4",
+  }}
+>
+  <div>
+    <div
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        color: "#9CA3AF",
+        letterSpacing: 1.1,
+      }}
+    >
+      OPTIMUM EDUCORE · MOCK ANALYSIS
+    </div>
+    <div
+      style={{
+        marginTop: 3,
+        fontWeight: 900,
+        fontSize: 14,
+        color: "#111827",
+      }}
+    >
+      {tab === "브릿지" ? "브릿지 모의고사" : tab} · {term}
+    </div>
+  </div>
+
+  <button
+    onClick={onClose}
+    style={{
+      border: "none",
+      background: "#F3F4F6",
+      borderRadius: 999,
+      width: 26,
+      height: 26,
+      fontSize: 14,
+      cursor: "pointer",
+      fontWeight: 700,
+      color: "#4B5563",
+    }}
+  >
+    ✕
+  </button>
+</div>
+
+        {/* 요약 배지 */}
         <div
-          onClick={(e) => e.stopPropagation()}
           style={{
-            width: "95%",
-            maxWidth: 640,
-            background: "#ffffff",
-            borderRadius: 16,
-            padding: 20,
-            boxShadow: "0 10px 24px rgba(0,0,0,0.18)",
-            fontSize: 13,
+            display: "flex",
+            gap: 8,
+            marginBottom: 10,
+            fontSize: 11,
           }}
         >
-          {/* 헤더 */}
-          <div
+          <span
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              marginBottom: 12,
-              borderBottom: "1px solid #E5DED4",
-              paddingBottom: 8,
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: "#EEF2FF",
+              color: "#4F46E5",
+              fontWeight: 700,
             }}
           >
-            <div style={{ fontWeight: 800, fontSize: 16 }}>
-              {tab === "브릿지" ? "브릿지 모의고사" : tab} · {term} 상세 분석
-            </div>
-            <button
-              onClick={onClose}
+            평균 등급 {valid.length ? avgLevel.toFixed(1) : "-"}
+          </span>
+          {strong.length > 0 && (
+            <span
               style={{
-                border: "none",
-                background: "transparent",
-                cursor: "pointer",
-                fontSize: 16,
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "#ECFDF3",
+                color: "#15803D",
+                fontWeight: 700,
               }}
             >
-              ✕
-            </button>
-          </div>
+              강점: {strong.join(", ")}
+            </span>
+          )}
+          {weak.length > 0 && (
+            <span
+              style={{
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "#FEF2F2",
+                color: "#B91C1C",
+                fontWeight: 700,
+              }}
+            >
+              보완: {weak.join(", ")}
+            </span>
+          )}
+        </div>
 
-          {/* 과목별 표 */}
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              marginBottom: 14,
-            }}
-          >
-            <thead>
-              <tr style={{ background: "#F5EFE6" }}>
-                <th
-                  style={{
-                    padding: 6,
-                    border: "1px solid #E5DED4",
-                    textAlign: "center",
-                  }}
-                >
-                  과목
-                </th>
-                {tab === "브릿지" ? (
-                  <>
-                    <th
-                      style={{
-                        padding: 6,
-                        border: "1px solid #E5DED4",
-                        textAlign: "center",
-                      }}
-                    >
-                      점수
-                    </th>
-                    <th
-                      style={{
-                        padding: 6,
-                        border: "1px solid #E5DED4",
-                        textAlign: "center",
-                      }}
-                    >
-                      등급
-                    </th>
-                  </>
-                ) : (
-                  <>
-                    <th
-                      style={{
-                        padding: 6,
-                        border: "1px solid #E5DED4",
-                        textAlign: "center",
-                      }}
-                    >
-                      내 점수
-                    </th>
-                    <th
-                      style={{
-                        padding: 6,
-                        border: "1px solid #E5DED4",
-                        textAlign: "center",
-                      }}
-                    >
-                      평균
-                    </th>
-                    <th
-                      style={{
-                        padding: 6,
-                        border: "1px solid #E5DED4",
-                        textAlign: "center",
-                      }}
-                    >
-                      상대 등급
-                    </th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.subject}>
-                  <td
+        {/* 과목별 표 */}
+        <table
+  style={{
+    width: "100%",
+    borderCollapse: "collapse",
+    marginBottom: 14,
+    fontSize: 12,
+    textAlign: "center",   // ★ 중앙정렬
+  }}
+>
+          <thead>
+            <tr style={{ background: "#F5EFE6" }}>
+              <th
+                style={{
+                  padding: 6,
+                  border: "1px solid #E5DED4",
+                  textAlign: "center",
+                }}
+              >
+                과목
+              </th>
+              {tab === "브릿지" ? (
+                <>
+                  <th
                     style={{
-                      border: "1px solid #EEE",
-                      padding: 4,
-                      background: "#FBFAF7",
-                      fontWeight: 700,
+                      padding: 6,
+                      border: "1px solid #E5DED4",
+                      textAlign: "center",
                     }}
                   >
-                    {r.subject}
-                  </td>
+                    점수
+                  </th>
+                  <th
+                    style={{
+                      padding: 6,
+                      border: "1px solid #E5DED4",
+                      textAlign: "center",
+                    }}
+                  >
+                    등급
+                  </th>
+                </>
+              ) : (
+                <>
+                  <th
+                    style={{
+                      padding: 6,
+                      border: "1px solid #E5DED4",
+                      textAlign: "center",
+                    }}
+                  >
+                    내 점수
+                  </th>
+                  <th
+                    style={{
+                      padding: 6,
+                      border: "1px solid #E5DED4",
+                      textAlign: "center",
+                    }}
+                  >
+                    평균
+                  </th>
+                  <th
+                    style={{
+                      padding: 6,
+                      border: "1px solid #E5DED4",
+                      textAlign: "center",
+                    }}
+                  >
+                    상대 등급
+                  </th>
+                </>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.subject}>
+                <td
+                  style={{
+                    border: "1px solid #EEE",
+                    padding: 4,
+                    background: "#FBFAF7",
+                    fontWeight: 700,
+                  }}
+                >
+                  {r.subject}
+                </td>
+                <td style={{ border: "1px solid #EEE", padding: 4 }}>
+                  {r.score || "-"}
+                </td>
+                <td style={{ border: "1px solid #EEE", padding: 4 }}>
+                  {tab === "브릿지" ? r.level || "-" : r.avg || "-"}
+                </td>
+                {tab !== "브릿지" && (
                   <td style={{ border: "1px solid #EEE", padding: 4 }}>
-                    {r.score || "-"}
+                    {r.level > 0 ? `${r.level}등급` : "-"}
                   </td>
-                  <td style={{ border: "1px solid #EEE", padding: 4 }}>
-                    {tab === "브릿지" ? r.level || "-" : r.avg || "-"}
-                  </td>
-                  {tab !== "브릿지" && (
-                    <td style={{ border: "1px solid #EEE", padding: 4 }}>
-                      {r.level > 0 ? `${r.level}등급` : "-"}
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-          {/* 분석 텍스트 */}
+        {/* 🔥 브릿지 전용 – 세부 분석 섹션 */}
+        {tab === "브릿지" && id && (
           <div
             style={{
+              marginTop: 6,
               padding: "10px 12px",
-              borderRadius: 10,
-              background: "#FFFDF8",
-              border: "1px solid #E7DCC9",
-              lineHeight: 1.6,
+              borderRadius: 12,
+              background: "#F9FAFB",
+              border: "1px solid #E5E7EB",
             }}
           >
-            {valid.length === 0 ? (
-              <>이 회차는 아직 입력된 성적이 없습니다.</>
-            ) : (
-              <>
-                <div style={{ marginBottom: 6 }}>
-                  · 이 모의고사의 <b>평균 등급</b>은{" "}
-                  <b>{avgLevel.toFixed(1)}등급</b>입니다.
-                </div>
-                {strong.length > 0 && (
-                  <div style={{ marginBottom: 4 }}>
-                    · <b>강점 과목</b> (1~3등급): {strong.join(", ")}
-                  </div>
-                )}
-                {weak.length > 0 && (
-                  <div>
-                    · <b>보완 필요 과목</b> (6등급 이상): {weak.join(", ")}
-                  </div>
-                )}
-                {strong.length === 0 && weak.length === 0 && (
-                  <div>
-                    · 전반적으로 4~5등급대의 안정적인 분포를 보이고 있습니다.
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* 닫기 버튼 */}
-          <div style={{ textAlign: "right", marginTop: 12 }}>
-            <button
-              onClick={onClose}
+            <div
               style={{
-                padding: "6px 14px",
-                borderRadius: 8,
-                border: "1px solid #D6CEC0",
-                background: "#F3F4F6",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
+                fontSize: 13,
+                fontWeight: 800,
+                marginBottom: 8,
+                color: "#111827",
               }}
             >
-              닫기
-            </button>
+              브릿지 모의고사 상세 분석
+            </div>
+            <BridgeMockExamSection studentId={id} />
           </div>
+        )}
+
+        {/* 분석 텍스트 */}
+        <div
+          style={{
+            marginTop: 10,
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "#FFFDF8",
+            border: "1px solid #E7DCC9",
+            lineHeight: 1.6,
+            fontSize: 12,
+          }}
+        >
+          {valid.length === 0 ? (
+            <>이 회차는 아직 입력된 성적이 없습니다.</>
+          ) : (
+            <>
+              <div style={{ marginBottom: 4 }}>
+                · 이 모의고사의 <b>전체 평균 등급</b>은{" "}
+                <b>{avgLevel.toFixed(1)}등급</b>입니다.
+              </div>
+              {strong.length > 0 && (
+                <div style={{ marginBottom: 2 }}>
+                  · <b>강점 과목</b> (1~3등급): {strong.join(", ")}
+                </div>
+              )}
+              {weak.length > 0 && (
+                <div>
+                  · <b>보완 필요 과목</b> (6등급 이상): {weak.join(", ")}
+                </div>
+              )}
+              {strong.length === 0 && weak.length === 0 && (
+                <div>
+                  · 전반적으로 4~5등급대의 안정적인 분포를 보이고 있습니다.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* 닫기 버튼 */}
+        <div style={{ textAlign: "right", marginTop: 10 }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "6px 16px",
+              borderRadius: 999,
+              border: "1px solid #D6CEC0",
+              background: "#F3F4F6",
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "#374151",
+            }}
+          >
+            닫기
+          </button>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   /* ============================
         메인 렌더링
@@ -2196,12 +2418,14 @@ const avgLevel = weightTotal > 0 ? weightedSum / weightTotal : 0;
                     cursor: "pointer",
                     padding: 8,
                   }}
-                  onClick={() =>
-                    setExamModal({
-                      tab: activeTab,
-                      term: t,
-                    })
-                  }
+                 
+  onClick={() =>
+  setExamModal({
+    tab: activeTab,
+    term: t,
+    exam: gradeData[activeTab]?.[t],   // 👈 실제 점수 & 문항 데이터
+  })
+}
                   title="클릭하면 이 회차 모의고사 분석이 표시됩니다."
                 >
                   {t}
@@ -2245,11 +2469,7 @@ const avgLevel = weightTotal > 0 ? weightedSum / weightTotal : 0;
                 </td>
 
                 {terms.map((term) => {
-                  const curr =
-                    gradeData?.[tabKey]?.[subject]?.[term] || {
-                      my: 0,
-                      avg: "",
-                    };
+                  const curr = getScore(subject, term);
 
                   if (activeTab === "브릿지") {
                     return (
@@ -2373,14 +2593,17 @@ const avgLevel = weightTotal > 0 ? weightedSum / weightTotal : 0;
         </div>
       </div>
 
-      {/* 🔥 회차 모달 실제 렌더링 */}
-      {examModal && (
-        <ExamDetailModal
-          tab={examModal.tab}
-          term={examModal.term}
-          onClose={() => setExamModal(null)}
-        />
-      )}
+      {/* 🔥 학기/중간/기말 성적 모달 */}
+{examModal && (
+  <ExamDetailModal
+  tab={examModal.tab}
+  term={examModal.term}
+  exam={examModal.exam}
+  onClose={() => setExamModal(null)}   // ← 이렇게 변경!!
+/>
+)}
+
+
     </>
   );
 }

@@ -6,6 +6,7 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
+import { useNavigate } from "react-router-dom";
 
 type PersonalSchedule = {
   current: Partial<Record<AcademyType, WeeklyTime>>;
@@ -127,7 +128,7 @@ function EditStudentModal({
 }) {
   const [showGradeModal, setShowGradeModal] = React.useState(false);
   const [showGradeChart, setShowGradeChart] = React.useState(false);
-
+  const navigate = useNavigate();
   const [form, setForm] = React.useState({
     name: student.name || "",
     grade: student.grade || "",
@@ -1119,6 +1120,12 @@ async function printScheduleToPDF() {
     <button style={btn} onClick={() => setShowGradeModal(true)}>
       📘 성적 입력
     </button>
+    <button
+  style={btn}
+  onClick={() => navigate(`/exam/${student.id}`)}
+>
+  모의고사 성적 입력
+</button>
     <button style={btn} onClick={() => setShowGradeChart(true)}>
       📈 그래프 보기
     </button>
