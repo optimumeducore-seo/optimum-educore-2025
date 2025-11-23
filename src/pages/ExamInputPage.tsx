@@ -13,7 +13,32 @@ import {
 
 const SUBJECTS = ["국어", "수학", "영어", "통합과학", "통합사회", "역사"];
 
-// ✅ 모의고사 등급 계산 (GradeSection에서 쓰던 로직 그대로 옮김)
+// ⚙️ 과목별 기본 문항 수 안내 (기준만 알려주는 용도)
+const SUBJECT_CONFIG: Record<
+  string,
+  { choiceCount: number; writtenCount: number; note: string }
+> = {
+  국어: { choiceCount: 45, writtenCount: 0, note: "국어: 객관식 45문항" },
+  영어: { choiceCount: 45, writtenCount: 0, note: "영어: 객관식 45문항" },
+  수학: {
+    choiceCount: 21,
+    writtenCount: 9,
+    note: "수학(참수학 기준): 객관식 21문항 + 주관식 9문항(22~30번)",
+  },
+  통합과학: {
+    choiceCount: 20,
+    writtenCount: 0,
+    note: "통합과학: 객관식 20문항",
+  },
+  통합사회: {
+    choiceCount: 20,
+    writtenCount: 0,
+    note: "통합사회: 객관식 20문항",
+  },
+  역사: { choiceCount: 20, writtenCount: 0, note: "역사: 객관식 20문항" },
+};
+
+// ✅ 모의고사 등급 계산
 function getMockLevel(score: number, subject: string) {
   if (!score && score !== 0) return 9;
 
@@ -38,31 +63,27 @@ function getMockLevel(score: number, subject: string) {
 }
 
 export default function ExamInputPage() {
-  const { id } = useParams(); // 학생 ID
+  const { id } = useParams();
   const navigate = useNavigate();
 
   const [attempt, setAttempt] = useState(1);
-
   const [subject, setSubject] = useState("국어");
   const [examYear, setExamYear] = useState(2025);
   const [examMonth, setExamMonth] = useState(3);
 
   // ====== 입력 상태 ======
-  const [choiceKey, setChoiceKey] = useState("");       // 객관식 정답 (예: 341252...)
-  const [choiceMine, setChoiceMine] = useState("");     // 학생 객관식 답
-  const [choicePoints, setChoicePoints] = useState(""); // 객관식 배점 (예: 2,2,3,3,...)
+  const [choiceKey, setChoiceKey] = useState("");
+  const [choiceMine, setChoiceMine] = useState("");
+  const [choicePoints, setChoicePoints] = useState("");
 
-  const [writtenKey, setWrittenKey] = useState("");         // (수학) 주관식 정답들 "3,5,2..."
-  const [writtenMine, setWrittenMine] = useState("");       // (수학) 학생 주관식 답 "3,4,1..."
-  const [writtenPoints, setWrittenPoints] = useState("");   // (수학) 주관식 배점 "3,4,4..."
+  const [writtenKey, setWrittenKey] = useState("");
+  const [writtenMine, setWrittenMine] = useState("");
+  const [writtenPoints, setWrittenPoints] = useState("");
 
-  // ================================
-  //  공용 정답 키 ID (연도-월-과목-회차)
-  //   → 선생님이 한 번 입력하면 모든 학생이 공유
-  // ================================
   const examKeyId = `${examYear}-${examMonth}-${subject}-${attempt}`;
+  const config = SUBJECT_CONFIG[subject];
 
-  // 🔹 해당 시험의 정답/배점 자동 로딩
+  // 🔹 정답 자동 로딩
   useEffect(() => {
     const loadAnswerKey = async () => {
       try {
@@ -71,14 +92,12 @@ export default function ExamInputPage() {
 
         if (!snap.exists()) {
           console.log("🟡 정답 키 없음:", examKeyId);
-          // 새 시험이면, 기존 입력값 유지 (초기에는 빈 값)
           return;
         }
 
         const data = snap.data() as any;
-        console.log("✅ 정답 키 로딩:", examKeyId, data);
+        console.log("정답키 로딩", data);
 
-        // 객관식 정답/배점
         if (typeof data.choiceKey === "string") {
           setChoiceKey(data.choiceKey);
         }
@@ -86,7 +105,6 @@ export default function ExamInputPage() {
           setChoicePoints(data.choicePoints.join(","));
         }
 
-        // 수학 주관식 정답/배점
         if (Array.isArray(data.writtenKey)) {
           setWrittenKey(data.writtenKey.join(","));
         }
@@ -94,7 +112,7 @@ export default function ExamInputPage() {
           setWrittenPoints(data.writtenPoints.join(","));
         }
       } catch (err) {
-        console.error("❌ 정답 키 로딩 오류:", err);
+        console.error(err);
       }
     };
 
@@ -105,8 +123,8 @@ export default function ExamInputPage() {
   //  객관식 채점
   // ================================
   const scoreChoices = () => {
-    const key = choiceKey.trim();        // "341252..."
-    const mine = choiceMine.trim();      // "351242..."
+    const key = choiceKey.trim();
+    const mine = choiceMine.trim();
     const points = choicePoints
       .split(",")
       .map((n) => Number(n.trim()))
@@ -123,12 +141,7 @@ export default function ExamInputPage() {
 
       const sc = k === m ? p : 0;
 
-      detail[i + 1] = {
-        correct: k,
-        mine: m,
-        score: sc,
-      };
-
+      detail[i + 1] = { correct: k, mine: m, score: sc };
       if (sc > 0) correct++;
       total += sc;
     }
@@ -137,17 +150,11 @@ export default function ExamInputPage() {
   };
 
   // ================================
-  //  수학 주관식 채점 (참수학: 객관식 21번, 주관식 22~30번)
+  //  수학 주관식 채점
   // ================================
   const scoreWritten = () => {
-    const keyArr = writtenKey
-      .split(",")
-      .map((v) => v.trim())
-      .filter((v) => v !== "");
-    const mineArr = writtenMine
-      .split(",")
-      .map((v) => v.trim())
-      .filter((v) => v !== "");
+    const keyArr = writtenKey.split(",").map((v) => v.trim()).filter(Boolean);
+    const mineArr = writtenMine.split(",").map((v) => v.trim()).filter(Boolean);
     const ptsArr = writtenPoints
       .split(",")
       .map((v) => Number(v.trim()))
@@ -158,18 +165,12 @@ export default function ExamInputPage() {
     let correct = 0;
 
     for (let i = 0; i < keyArr.length; i++) {
-      const k = keyArr[i];
-      const m = mineArr[i] || "-";
-      const p = ptsArr[i] || 0;
-
-      const sc = k === m ? p : 0;
-
-      // ✅ 참수학 기준: 주관식 22번부터라고 가정
+      const sc = keyArr[i] === mineArr[i] ? ptsArr[i] : 0;
       const qnum = 22 + i;
 
       detail[qnum] = {
-        correct: k,
-        mine: m,
+        correct: keyArr[i],
+        mine: mineArr[i] || "-",
         score: sc,
       };
 
@@ -181,16 +182,81 @@ export default function ExamInputPage() {
   };
 
   // ================================
-  //  저장 (정답 키 + 학생 성적 + 성적표 자동 반영)
+  //  실시간 개수 계산 (화면 표시용)
+  // ================================
+  const choiceKeyLen = choiceKey.trim().length;
+  const choiceMineLen = choiceMine.trim().length;
+  const choicePointsCount = choicePoints
+    .split(",")
+    .map((n) => n.trim())
+    .filter((n) => n !== "" && !Number.isNaN(Number(n))).length;
+
+  const writtenKeyCount = writtenKey.split(",").filter((v) => v.trim()).length;
+  const writtenMineCount = writtenMine.split(",").filter((v) => v.trim()).length;
+  const writtenPointsCount = writtenPoints
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v !== "" && !Number.isNaN(Number(v))).length;
+
+  const hasChoiceLenMismatch =
+    choiceKeyLen > 0 &&
+    (choiceMineLen > 0 || choicePointsCount > 0) &&
+    (choiceKeyLen !== choiceMineLen || choiceKeyLen !== choicePointsCount);
+
+  const hasWrittenLenMismatch =
+    subject === "수학" &&
+    writtenKeyCount > 0 &&
+    (writtenMineCount > 0 || writtenPointsCount > 0) &&
+    (writtenKeyCount !== writtenMineCount ||
+      writtenKeyCount !== writtenPointsCount);
+
+  // ================================
+  //  저장
   // ================================
   const saveExam = async () => {
     if (!id) {
-      alert("학생 ID가 없습니다. 다시 열어주세요.");
+      alert("학생 ID가 없습니다.");
       return;
     }
 
+    // 🔐 객관식 개수 체크
+    if (choiceKeyLen > 0) {
+      if (choiceMineLen > 0 && choiceKeyLen !== choiceMineLen) {
+        alert("객관식 정답/학생답 개수가 다릅니다.");
+        return;
+      }
+      if (choicePointsCount > 0 && choiceKeyLen !== choicePointsCount) {
+        alert("객관식 정답/배점 개수가 다릅니다.");
+        return;
+      }
+      if (config.choiceCount > 0 && choiceKeyLen !== config.choiceCount) {
+        const ok = window.confirm(
+          `⚠ 기준 객관식은 ${config.choiceCount}문항입니다.\n그래도 저장할까요?`
+        );
+        if (!ok) return;
+      }
+    }
+
+    // 🔐 수학 주관식 체크
+    if (subject === "수학" && writtenKeyCount > 0) {
+      if (writtenMineCount > 0 && writtenKeyCount !== writtenMineCount) {
+        alert("주관식 정답/학생답 개수가 다릅니다.");
+        return;
+      }
+      if (writtenPointsCount > 0 && writtenKeyCount !== writtenPointsCount) {
+        alert("주관식 정답/배점 개수가 다릅니다.");
+        return;
+      }
+      if (writtenKeyCount !== config.writtenCount) {
+        const ok = window.confirm(
+          `⚠ 기준 주관식은 ${config.writtenCount}문항입니다.\n그래도 저장할까요?`
+        );
+        if (!ok) return;
+      }
+    }
+
     try {
-      // 1) 공용 정답 키 저장/갱신 (선생님이 한 번만 입력하면 됨)
+      // 1) 정답키 저장
       await setDoc(
         doc(db, "mockExamKeys", examKeyId),
         {
@@ -203,10 +269,7 @@ export default function ExamInputPage() {
             .split(",")
             .map((n) => Number(n.trim()))
             .filter((n) => !Number.isNaN(n)),
-          writtenKey: writtenKey
-            .split(",")
-            .map((v) => v.trim())
-            .filter((v) => v !== ""),
+          writtenKey: writtenKey.split(",").map((v) => v.trim()).filter(Boolean),
           writtenPoints: writtenPoints
             .split(",")
             .map((n) => Number(n.trim()))
@@ -216,7 +279,7 @@ export default function ExamInputPage() {
         { merge: true }
       );
 
-      // 2) 학생 답안 채점
+      // 2) 채점
       const ch = scoreChoices();
       const wr =
         subject === "수학"
@@ -226,23 +289,21 @@ export default function ExamInputPage() {
       const perDetail = { ...ch.detail, ...wr.detail };
       const totalScore = ch.total + wr.total;
 
-      // 3) mockExams 컬렉션에 학생별 기록 저장
+      // 3) mockExams 저장
       await addDoc(collection(db, "mockExams"), {
         studentId: id,
-        examKeyId, // 어떤 시험인지 연결
+        examKeyId,
         examYear,
         examMonth,
         subject,
         attempt,
         createdAt: serverTimestamp(),
-
         // 학생이 실제로 입력한 답
         choiceMine,
         writtenMine: writtenMine
           .split(",")
           .map((v) => v.trim())
-          .filter((v) => v !== ""),
-
+          .filter(Boolean),
         // 채점 결과
         perQuestionScore: perDetail,
         totalScore,
@@ -250,59 +311,64 @@ export default function ExamInputPage() {
         wrongCount: ch.wrong + wr.wrong,
       });
 
-      
+      // 4) grade 저장
+      const bridgeTerm = `모의고사 ${attempt}회`;
+      const level = getMockLevel(totalScore, subject);
 
-      // 4) ✅ grades 컬렉션(브릿지 성적표)에도 자동 반영
-      // 4) grades 컬렉션(브릿지 성적표)에도 자동 반영
-const bridgeTerm = `모의고사 ${attempt}회`;
-
-// ⬇️ 기존 등급 로드 (있으면 수동 입력한 등급 유지)
-const gradeRef = doc(db, "grades", id);
-const gradeSnap = await getDoc(gradeRef);
-
-let existingAvg = null;
-
-if (gradeSnap.exists()) {
-  const data = gradeSnap.data();
-  existingAvg =
-    data?.scores?.브릿지?.[subject]?.[bridgeTerm]?.avg ?? null;
-}
-
-// 자동 계산 등급
-const level = getMockLevel(totalScore, subject);
-
-// ⬇️ existingAvg가 있으면 그 값을 사용 (= 수동 값)
-// ⬇️ 없으면 자동 계산 level 사용
-const finalAvg = existingAvg !== null ? existingAvg : level;
-
-await setDoc(
-  gradeRef,
-  {
-    scores: {
-      브릿지: {
-        [subject]: {
-          [bridgeTerm]: {
-            my: totalScore,
-            avg: finalAvg, // ⬅️ 수정된 부분!
+      await setDoc(
+        doc(db, "grades", id),
+        {
+          scores: {
+            브릿지: {
+              [subject]: {
+                [bridgeTerm]: {
+                  my: totalScore,
+                  avg: level,
+                },
+              },
+            },
           },
+          updatedAt: serverTimestamp(),
         },
-      },
-    },
-    updatedAt: serverTimestamp(),
-  },
-  { merge: true }
-);
+        { merge: true }
+      );
 
-      alert("✅ 저장 완료! (정답키 + 학생점수 + 성적표 반영)");
+      // ================================
+      // ⭐⭐⭐ 과목 자동 이동 로직 (깔끔 버전) ⭐⭐⭐
+      // ================================
+      const currentIndex = SUBJECTS.indexOf(subject);
+
+      if (currentIndex < SUBJECTS.length - 1) {
+        const nextSubject = SUBJECTS[currentIndex + 1];
+
+        alert(`✔ ${subject} 입력 완료 → 다음 과목(${nextSubject})으로 이동합니다.`);
+
+        // 다음 과목으로 이동 + 입력칸 초기화
+        setSubject(nextSubject);
+        setChoiceKey("");
+        setChoiceMine("");
+        setChoicePoints("");
+        setWrittenKey("");
+        setWrittenMine("");
+        setWrittenPoints("");
+
+        // ⛔ 여기서는 페이지 나가지 않고, 이 페이지에 그대로 머무름
+        return;
+      }
+
+      // 마지막 과목일 때만 페이지 나감
+      alert("📘 모든 과목 입력이 완료되었습니다!");
       navigate(-1);
+      // ================================
+
     } catch (err) {
-      console.error("❌ 저장 중 오류:", err);
-      alert("⚠ 저장 중 오류가 발생했습니다. 콘솔을 확인해 주세요.");
+      console.error(err);
+      alert("⚠ 저장 중 오류 발생");
     }
   };
 
   // ================================
-  //  UI
+  // UI
   // ================================
   return (
     <div style={{ padding: 20 }}>
@@ -337,6 +403,12 @@ await setDoc(
         </select>
       </div>
 
+      {config && (
+        <p style={{ marginTop: 6, fontSize: 12, color: "#2563eb" }}>
+          📌 {config.note}
+        </p>
+      )}
+
       <div>
         <label>시험 연도: </label>
         <input
@@ -356,58 +428,91 @@ await setDoc(
       </div>
 
       <p style={{ marginTop: 8, fontSize: 12, color: "#666" }}>
-        ※ 국어/영어: 45문항, 수학: 30문항, 과탐/사탐/역사: 20문항 기준으로
-        정답 문자열과 배점을 입력하면 됩니다.
-        <br />
-        예) 국어 45문제면 정답칸에 45글자, 배점칸에 45개 숫자(쉼표 구분)
+        ※ 국어/영어: 45문항, 수학: 30문항(객관식 21 + 주관식 9), 사탐/과탐/역사: 20문항
       </p>
 
       <br />
       <h3>◎ 객관식</h3>
       <input
-        placeholder="정답: 341252... (문항 수만큼 쭉 입력)"
+        placeholder="정답: 341252..."
         value={choiceKey}
         onChange={(e) => setChoiceKey(e.target.value)}
-        style={{ display: "block", marginBottom: 6, width: 400 }}
+        style={{ display: "block", marginBottom: 4, width: 400 }}
       />
+      <div style={{ fontSize: 12, marginBottom: 6 }}>
+        정답 길이: {choiceKeyLen}문항 / 기준: {config.choiceCount}문항
+      </div>
+
       <input
-        placeholder="학생답: 351242... (문항 수만큼 쭉 입력)"
+        placeholder="학생답: 351242..."
         value={choiceMine}
         onChange={(e) => setChoiceMine(e.target.value)}
-        style={{ display: "block", marginBottom: 6, width: 400 }}
+        style={{ display: "block", marginBottom: 4, width: 400 }}
       />
+      <div style={{ fontSize: 12, marginBottom: 6 }}>
+        학생답 길이: {choiceMineLen}문항
+      </div>
+
       <input
-        placeholder="배점(예: 2,2,3,3,5...)"
+        placeholder="배점(예: 2,2,3,3...)"
         value={choicePoints}
         onChange={(e) => setChoicePoints(e.target.value)}
-        style={{ display: "block", marginBottom: 6, width: 400 }}
+        style={{ display: "block", marginBottom: 4, width: 400 }}
       />
+      <div
+        style={{
+          fontSize: 12,
+          marginBottom: 8,
+          color: hasChoiceLenMismatch ? "red" : "#333",
+        }}
+      >
+        배점 개수: {choicePointsCount}개
+        {hasChoiceLenMismatch && " (정답/학생답/배점 개수가 다릅니다)"}
+      </div>
 
       {subject === "수학" && (
         <>
-          <h3>◎ 수학 주관식 (참수학: 22~30번)</h3>
+          <h3>◎ 수학 주관식</h3>
+
           <input
-            placeholder="정답(쉼표): 3,5,2,4,..."
+            placeholder="정답(쉼표): 3,5,2,4..."
             value={writtenKey}
             onChange={(e) => setWrittenKey(e.target.value)}
-            style={{ display: "block", marginBottom: 6, width: 400 }}
+            style={{ display: "block", marginBottom: 4, width: 400 }}
           />
+          <div style={{ fontSize: 12, marginBottom: 6 }}>
+            주관식 정답: {writtenKeyCount}문항 (기준:{config.writtenCount})
+          </div>
+
           <input
-            placeholder="학생답(쉼표): 3,4,1,..."
+            placeholder="학생답(쉼표): 3,4,1..."
             value={writtenMine}
             onChange={(e) => setWrittenMine(e.target.value)}
-            style={{ display: "block", marginBottom: 6, width: 400 }}
+            style={{ display: "block", marginBottom: 4, width: 400 }}
           />
+          <div style={{ fontSize: 12, marginBottom: 6 }}>
+            학생 주관식: {writtenMineCount}문항
+          </div>
+
           <input
-            placeholder="배점(쉼표): 3,4,4,..."
+            placeholder="배점(쉼표)"
             value={writtenPoints}
             onChange={(e) => setWrittenPoints(e.target.value)}
-            style={{ display: "block", marginBottom: 6, width: 400 }}
+            style={{ display: "block", marginBottom: 4, width: 400 }}
           />
+          <div
+            style={{
+              fontSize: 12,
+              marginBottom: 8,
+              color: hasWrittenLenMismatch ? "red" : "#333",
+            }}
+          >
+            주관식 배점: {writtenPointsCount}개
+            {hasWrittenLenMismatch && " (정답/학생답/배점 개수가 다릅니다)"}
+          </div>
         </>
       )}
 
-      <br />
       <br />
       <button onClick={saveExam}>저장</button>
     </div>
