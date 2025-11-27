@@ -6,7 +6,7 @@ import React, {
   useRef,
 
 } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate,NavLink } from "react-router-dom";
 import { db } from "../firebase";
 import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import html2canvas from "html2canvas";
@@ -462,6 +462,7 @@ const [gradeData, setGradeData] = useState<any>(null);
 const [comment, setComment] = useState("");
 const [analysis, setAnalysis] = useState<any>(null);
 const [openTimeline, setOpenTimeline] = useState(false);
+const [open, setOpen] = useState(false);
 
 function changeMonth(offset: number) {
   const current = new Date(month + "-01");
@@ -962,8 +963,9 @@ function getEnglishMonth(ym: string) {
 <TimelineSection
   monthDates={monthDates}
   records={records}
-  open={openTimeline}
-  setOpen={setOpenTimeline}
+  open={open}
+  setOpen={setOpen}
+  id={id}     // ⬅ 추가!
 />
 
 {/* 📘 모의고사 요약
@@ -1181,51 +1183,95 @@ function MessageSection({
 /* 타임라인 섹션 */
 /* =================================================================== */
 
-
-
 function TimelineSection({
   monthDates,
   records,
   open,
   setOpen,
+  id,
 }: {
   monthDates: string[];
   records: Records;
   open: boolean;
   setOpen: (v: boolean) => void;
+  id?: string;
 }) {
   return (
     <div style={{ marginTop: 32 }}>
-      {/* 타이틀 + 버튼 */}
-      <button
-        onClick={() => setOpen(!open)}
+      {/* 제목 */}
+      <div
+  style={{
+    fontSize: 14,
+    fontWeight: 800,
+    color: "#1E3A8A",     // 제목 네이비
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    marginBottom: 10,
+  }}
+>
+  DAILY TIMELINE
+</div>
+
+      {/* 3/4 + 1/4 레이아웃 */}
+      <div
         className="no-print"
         style={{
-          width: "100%",
-          padding: "10px 16px",
-          borderRadius: 12,
-          cursor: "pointer",
-          background: "linear-gradient(135deg, #E8EDF5 0%, #F5F7FA 100%)",
-          border: "1px solid #C8D3E5",
-          boxShadow: "0 4px 10px rgba(0,0,0,0.06)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          color: "#1E3A8A",
-          fontSize: 14,
-          fontWeight: 800,
+          display: "grid",
+          gridTemplateColumns: "3fr 1fr",
+          gap: 10,
+          marginBottom: open ? 16 : 12,
         }}
       >
-        DAILY TIMELINE {open ? "▲" : "▼"}
-      </button>
+        {/* 펼치기 버튼 */}
+        <button
+  onClick={() => setOpen(!open)}
+  style={{
+    width: "100%",
+    padding: "10px 16px",
+    borderRadius: 12,
+    cursor: "pointer",
+    background: "linear-gradient(135deg, #E8EDF5 0%, #F5F7FA 100%)",
+    border: "1px solid #C8D3E5",
 
-      {/* 펼쳐지는 영역 */}
+    fontSize: 14,            // 통일
+    fontWeight: 800,         // 통일
+    letterSpacing: 1.1,      // 통일
+    textTransform: "uppercase",   // 통일
+
+    color: "#3A2E2A",        // 버튼은 브라운 (유지)
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  }}
+>
+  DAILY TIMELINE
+  <span>{open ? "▲" : "▼"}</span>
+</button>
+
+        {/* 학습 과제 이동 버튼 */}
+        <NavLink
+  to={`/study-plan/${id}?role=parent`}
+  style={{
+    padding: "8px 14px",
+    borderRadius: 10,
+    background: "#3B4C8C",
+    color: "#fff",
+    fontWeight: 700,
+    fontSize: 13,
+    textDecoration: "none",
+    display: "inline-block",
+  }}
+>
+          EDUCORE PLANNER
+        </NavLink>
+      </div>
+
+      {/* 펼쳐지는 타임라인 영역 */}
       <div
         style={{
           maxHeight: open ? "3000px" : "0px",
           overflow: "hidden",
           transition: "max-height 0.45s cubic-bezier(.4,0,.2,1)",
-          marginTop: open ? 18 : 0,
         }}
       >
         {monthDates.length === 0 && (
@@ -1235,33 +1281,33 @@ function TimelineSection({
         )}
 
         {monthDates.map((date) => {
-  const cell = records[date];
-  if (!cell) return null;
+          const cell = records[date];
+          if (!cell) return null;
 
-  const outing =
-    (cell.commuteMin ?? 0) +
-    (cell.mealMin ?? 0) +
-    (cell.restroomMin ?? 0);
+          const outing =
+            (cell.commuteMin ?? 0) +
+            (cell.mealMin ?? 0) +
+            (cell.restroomMin ?? 0);
 
-  return (
-    <div
-      key={date}
-      style={{
-        background: "#ffffff",
-        padding: "14px 18px",
-        borderRadius: 12,
-        border: "1px solid #e5e7eb",
-        marginBottom: 12,
-        boxShadow: "0 3px 8px rgba(0,0,0,0.04)",
-      }}
-    >
+          return (
+            <div
+              key={date}
+              style={{
+                background: "#ffffff",
+                padding: "14px 18px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                marginBottom: 12,
+                boxShadow: "0 3px 8px rgba(0,0,0,0.04)",
+              }}
+            >
       {/* 날짜 */}
       <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
         {date}
       </div>
 
       {/* 등원, 하원 */}
-<TimelineItem label="등원" time={cell.time || cell.inTime} />
+<TimelineItem label="등원" time={cell.time} />
 <TimelineItem label="하원" time={cell.outTime} />
 
       {/* ⭐ 생활시간 총합 강조 박스 */}

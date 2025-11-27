@@ -1,5 +1,5 @@
 // src/pages/StudentPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { db } from "../firebase";
 import { collection, doc, getDocs, getDoc, setDoc } from "firebase/firestore";
 
@@ -15,7 +15,6 @@ import {
 } from "recharts";
 import { arrayUnion } from "firebase/firestore";
 
-// 🔥 날짜 기반으로 StudentPage에서도 기록 불러오기
 // 🔥 학생 기록을 두 구조(records + students/logs)에서 모두 읽어서 합치기
 async function loadStudentRecords(studentId: string) {
   const results: any[] = [];
@@ -66,7 +65,6 @@ async function loadStudentRecords(studentId: string) {
 
   return results;
 }
-
 export default function StudentPage() {
   const [students, setStudents] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -78,6 +76,7 @@ export default function StudentPage() {
     Record<string, { days: number; total: number }>
   >({});
   const [todayInTime, setTodayInTime] = useState<string | null>(null);
+  const isTeacher = false;
 
   // 🔹 학생 전체 목록 로드
   useEffect(() => {
@@ -127,6 +126,12 @@ const handleSelectStudent = async (student: any) => {
 
   setRecords(logs);
   calculateMonthlyStats(logs);
+  
+const testSnap = await getDocs(
+  collection(db, "studyPlans", student.id, "tests")
+);
+setTestList(testSnap.docs.map((d) => d.data()));
+
 
   // 자동 포커스
   setTimeout(() => {
@@ -134,6 +139,7 @@ const handleSelectStudent = async (student: any) => {
     el?.focus();
   }, 50);
 };
+
 
 // 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용)
 const calcNetStudyMin_SP = (rec: any) => {
@@ -245,7 +251,34 @@ const summary = (() => {
 
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
 const [viewMonth, setViewMonth] = useState(new Date().getMonth()); 
+const [showTestModal, setShowTestModal] = useState(false);
+const [testTitle, setTestTitle] = useState("");
+const [testStart, setTestStart] = useState("");
+const [testEnd, setTestEnd] = useState("");
+const [testMemo, setTestMemo] = useState("");
 
+const [testList, setTestList] = useState<any[]>([]);
+
+const saveTestPeriod = async () => {
+  if (!selected) return;
+
+  const ref = doc(collection(db, "studyPlans", selected.id, "tests"));
+  await setDoc(ref, {
+    title: testTitle,
+    start: testStart,
+    end: testEnd,
+    memo: testMemo,
+  });
+
+  alert("시험기간이 저장되었습니다!");
+  setShowTestModal(false);
+
+  // 저장 후 다시 불러오기
+  const testSnap = await getDocs(
+    collection(db, "studyPlans", selected.id, "tests")
+  );
+  setTestList(testSnap.docs.map((d) => d.data()));
+};
  
 // 🔥 학생용 checkIn: App 구조로 저장
 
@@ -393,6 +426,7 @@ const filteredRecordsThisMonth = (() => {
     return dd >= 14; // 🔥 이번 달 14일부터만
   });
 })();
+const calendarRef = useRef<HTMLDivElement | null>(null);
 
 // 📅 프리미엄 달력 컴포넌트 (전체 교체)
 const renderCalendar = () => {
@@ -526,17 +560,20 @@ const renderCalendar = () => {
 
           const dow = new Date(dateStr).getDay();
           const log = records.find((r) => r.date === dateStr);
+          const isTestDay = testList.some(
+  (t) => dateStr >= t.start && dateStr <= t.end
+);
 
           let bg = "#f3f4f6";
           if (dow === 6) bg = "#dbeafe";
           if (dow === 0) bg = "#ffe4e6";
+          if (isTestDay) bg = "#FFE4E6"; // 연한 핑크
 
           if (log) {
             if (log.inTime) bg = "#dcfce7";
             else bg = "#fee2e2";
           }
 
-  // 날짜 박스 안 inTime 표시
 // 날짜 박스 안 inTime 표시
 let inTimeLabel = null;
 
@@ -681,13 +718,13 @@ if (log) {
           <span
             style={{
               marginLeft: 10,
-              color: "#b91c1c",
-              fontSize: 13,
+              color: "#b71c1c",
+              fontSize: 20,
               fontStyle: "italic",
               fontWeight: 600,
             }}
           >
-            - YOU MAKE YOUR STUDY -
+            - Design Your Routine · Own the Result -
           </span>
         </div>
         <div
@@ -750,6 +787,7 @@ if (log) {
           🔍 이름을 입력하면 본인 출결·순공 현황을 확인할 수 있습니다.
         </p>
       )}
+
 
       {/* ===== 검색 결과 리스트 ===== */}
       {!selected && search && (
@@ -941,6 +979,26 @@ if (log) {
       {/* ===== 인증 후 메인 대시보드 ===== */}
       {selected && verified && (
         <>
+        {isTeacher && (
+  <button
+    onClick={() => setShowTestModal(true)}
+    style={{
+      marginBottom: 16,
+      padding: "8px 14px",
+      borderRadius: 10,
+      border: "1px solid #CBD5E1",
+      background: "#EEF2FF",
+      fontSize: 13,
+      fontWeight: 700,
+      color: "#1E3A8A",
+      cursor: "pointer",
+      display: "block",
+      marginLeft: "auto",
+    }}
+  >
+    📘 시험기간 추가
+  </button>
+)}
           {/* 상단: 학생 정보 + 오늘 등원 정보 + 등/하원 버튼 */}
           <div
             style={{
@@ -1025,6 +1083,7 @@ if (log) {
                 {summary.total.toFixed(0)}분
               </p>
             </div>
+
 
             {/* 등원/하원 버튼 & 요약 */}
             <div
@@ -1142,7 +1201,6 @@ if (log) {
             }}
           >
             {/* 월별 순공 요약 카드 */}
-            {/* 월별 순공 요약 카드 */}
 <div
   style={{
     padding: "16px 16px",
@@ -1151,6 +1209,8 @@ if (log) {
     background: "#f9fafb",
   }}
 >
+
+
   <h4
     style={{
       margin: "0 0 10px 0",
@@ -1161,6 +1221,7 @@ if (log) {
   >
     📊 월별 순공 요약
   </h4>
+
 
   {/* ========= A. 상단 배지 2개 ========= */}
   <div
@@ -1234,7 +1295,7 @@ if (log) {
   </div>
 
   {/* ========= C. 최장 순공 Top 3 ========= */}
-  {/* ========= C. 최장 순공 Top 3 ========= */}
+
 <div
   style={{
     background: "#fff",
@@ -1248,6 +1309,8 @@ if (log) {
   <div style={{ fontWeight: 700, marginBottom: 6, color: "#1e3a8a" }}>
     🏆 최장 순공 기록 TOP 3
   </div>
+
+
 
   {filteredRecordsThisMonth.length === 0 ? (
     <div style={{ color: "#9ca3af" }}>데이터 없음</div>
@@ -1266,18 +1329,40 @@ if (log) {
         </div>
       ))
   )}
+
+  <button
+  onClick={() => window.open(`/study-plan/${selected.id}`, "_blank")}
+  style={{
+    marginTop: 12,
+    width: "100%",
+    padding: "10px 0",
+    borderRadius: 10,
+    border: "1px solid #059669",
+    background: "#ecfdf5",
+    color: "#065f46",
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+  }}
+>
+  📘 학습과제·계획 보기
+</button>
+
 </div>
+
 </div>
 
             {/* 이번 달 출결 달력 */}
             <div
-              style={{
-                padding: "16px 16px",
-                borderRadius: 14,
-                border: "1px solid #e5e7eb",
-                background: "#ffffff",
-              }}
-            >
+  ref={calendarRef}
+  style={{
+    padding: "16px 16px",
+    borderRadius: 14,
+    border: "1px solid #e5e7eb",
+    background: "#ffffff",
+  }}
+>
+
               <h4
                 style={{
                   margin: "0 0 10px 0",

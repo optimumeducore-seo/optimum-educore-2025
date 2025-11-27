@@ -527,6 +527,7 @@ export default function App() {
 
   const [academySchedule, setAcademySchedule] = useState<Record<string, { start: string; end: string }[]>>({});
   
+  
   const [attendanceList, setAttendanceList] = useState<any[]>([]);
   const [inputTimes, setInputTimes] = useState<Record<string, string>>({});
 
@@ -559,17 +560,18 @@ async function handleCheckIn(studentId: string, inputTime: string) {
 
   const prev = data[studentId] || {};
 
-  if (prev.inTime || prev.time) {
+  if (prev.time) {
     alert("이미 등원 처리된 학생입니다.");
     return;
   }
 
   await setDoc(ref, {
   [studentId]: {
-    inTime: inputTime,
-    outTime: null
-  }
-});
+    time: inputTime,
+    outTime: null,
+},
+}, { merge: true });
+
 
   console.log("등원 저장 완료", date, studentId);
 }
@@ -577,10 +579,9 @@ async function handleCheckIn(studentId: string, inputTime: string) {
 // =============================
 // ✅ 학생 하원
 // =============================
-async function handleCheckOut(studentId: string, inputTime: string) {
-
+async function handleCheckOut(studentId: string, inputtime: string) {
   const date = new Date().toISOString().slice(0, 10);
-  const ref = doc(db, "records", date);  // ⭐ 여기도 동일
+  const ref = doc(db, "records", date);
 
   const snap = await getDoc(ref);
 
@@ -592,7 +593,7 @@ async function handleCheckOut(studentId: string, inputTime: string) {
   const data = snap.data() as any;
   const prev = data[studentId];
 
-  if (!prev || (!prev.inTime && !prev.time)) {
+  if (!prev || !prev.time) {
     alert("등원 기록이 없습니다.");
     return;
   }
@@ -602,12 +603,12 @@ async function handleCheckOut(studentId: string, inputTime: string) {
     return;
   }
 
- await setDoc(ref, {
-  [studentId]: {
-    inTime: prev.inTime ?? null,
-    outTime: inputTime,
-  }
-});
+  await setDoc(ref, {
+    [studentId]: {
+      time: prev.time,
+      outTime: inputtime,   // 함수 변수 이름 그대로 사용
+    },
+  }, { merge: true });
 
   console.log("하원 저장 완료", date, studentId);
 }
@@ -869,7 +870,10 @@ const defaultDayCell: DayCell = {
       const records = { ...prev.records };
       const d0 = { ...(records[ds] || {}) };
 
-      let cell: DayCell = { ...(d0[sid] ?? { status: "P" }) };
+      let cell: DayCell = {
+  ...(d0[sid] ?? {}),
+  status: d0[sid]?.status ?? "P",
+};
 
       // 현재 그룹에서 학생 찾기
       const groupId = prev.currentGroupId ?? prev.groups[0]?.id;
@@ -1028,7 +1032,31 @@ const defaultDayCell: DayCell = {
   }, [currentGroup?.id, today]);
 
 
+// 🟦 출결(records) 실시간 구독
+useEffect(() => {
+  if (!date) return;
 
+  const ref = doc(db, "records", date);
+
+  const unsub = onSnapshot(ref, (snap) => {
+    const data = snap.data() || {};
+
+    setStore((prev) => ({
+      ...prev,
+      records: {
+        ...prev.records,
+        [date]: data,
+      },
+    }));
+
+    // 🔥🔥🔥 중요: 출결 바뀌면 스케줄 재적용 (순공, 박스 즉시 갱신됨)
+    Object.keys(data).forEach((sid) => {
+      applyPersonalScheduleForDate(sid, date);
+    });
+  });
+
+  return () => unsub();
+}, [date, store.groups]);
 
 
 
@@ -1545,29 +1573,42 @@ const commuteTotalMin = (c?: DayCell) => {
 };
 
   /** 순공(하원 후 기준) 계산: 등원~하원 사이 - 외출시간 */
-  const netStudyMin = (c?: DayCell) => {
-    if (!c?.time) return 0; // 등원 전이면 0
-    const excludeSubjects = ["학교", "기타"];
-    let total = 0;
-    Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
-      if (excludeSubjects.includes(sub)) return; // 🚫 학교·기타 제외
+  /** 순공(하원 후 기준) 계산: 등원 이후 공강 시간만 */
+const netStudyMin = (c?: DayCell) => {
+  if (!c?.time) return 0; // 등원 전이면 0
 
-      (data.slots || []).forEach((s) => {
-        total += spanMin(s.from, s.to);
-      });
+  // 등원~하원
+  const start = hmToMin(c.time);
+  const end = c.outTime ? hmToMin(c.outTime) : hmToMin(nowHM());
+  const gross = Math.max(0, end - start);
+
+  // 🔥 등원 이후 학원 수업 시간
+  let academyAfterIn = 0;
+
+  Object.values(c.academyBySubject || {}).forEach((data: any) => {
+    (data.slots || []).forEach((s: any) => {
+      const slotStart = hmToMin(s.from);
+      const slotEnd = hmToMin(s.to);
+
+      // 등원 전에 끝난 수업은 제외
+      if (slotEnd <= start) return;
+
+      // 등원 이후 겹치는 시간만
+      const overlap = Math.max(
+        0,
+        Math.min(end, slotEnd) - Math.max(start, slotStart)
+      );
+
+      academyAfterIn += overlap;
     });
+  });
 
-    // 등원~하원 구간 전체(분)
-    const start = hmToMin(c.time);
-    const end = c.outTime ? hmToMin(c.outTime) : hmToMin(nowHM());
-    const gross = Math.max(0, end - start);
+  // 외출
+  const outing = commuteTotalMin(c);
 
-    // 외출시간(학원·식사·화장실 등)
-    const outing =commuteTotalMin(c);
-
-    // 순공 = 전체시간 - 외출시간
-    return Math.max(0, gross - outing);
-  };
+  // 순공 = 전체 - (등원이후 수업 + 외출)
+  return Math.max(0, gross - academyAfterIn - outing);
+};
 
   // 🔹 3. 현재 시각 계산
   const nowTotalMinutes = () => {
@@ -1614,24 +1655,36 @@ const commuteTotalMin = (c?: DayCell) => {
   };
 
   /** 진행 중 순공(분) 계산: 하원 전이면 현재시각을 to로 보고 계산 */
-  const netStudyMinLive = (c?: DayCell) => {
-    if (!c?.time) return 0; // 등원 전이면 0
-    let total = 0;
-    const excludeSubjects = ["학교", "기타"];
+  /** 진행중 순공 (하원 전이면 현재시각 기준) */
+const netStudyMinLive = (c?: DayCell) => {
+  if (!c?.time) return 0;
 
-    Object.entries(c.academyBySubject || {}).forEach(([sub, data]) => {
-      if (excludeSubjects.includes(sub)) return; // 🚫 학교·기타 제외
+  const start = hmToMin(c.time);
+  const end = nowTotalMinutes();
+  const gross = Math.max(0, end - start);
 
-      (data.slots || []).forEach((s) => {
-        total += spanMin(s.from, s.to);
-      });
-    })
-    const start = hmToMin(c.time);
-    const end = c.outTime ? hmToMin(c.outTime) : nowTotalMinutes(); // 하원 미입력 시 현재 시각
-    const gross = Math.max(0, end - start);
-    const outing = commuteTotalMin(c);
-    return Math.max(0, gross - outing);
-  };
+  let academyAfterIn = 0;
+
+  Object.values(c.academyBySubject || {}).forEach((data: any) => {
+    (data.slots || []).forEach((s: any) => {
+      const slotStart = hmToMin(s.from);
+      const slotEnd = hmToMin(s.to);
+
+      if (slotEnd <= start) return;
+
+      const overlap = Math.max(
+        0,
+        Math.min(end, slotEnd) - Math.max(start, slotStart)
+      );
+
+      academyAfterIn += overlap;
+    });
+  });
+
+  const outing = commuteTotalMin(c);
+
+  return Math.max(0, gross - academyAfterIn - outing);
+};
 
   // ==========================
 // 🔥 Firestore 저장 함수 추가
@@ -2043,7 +2096,7 @@ const updateDayCell = (
               <span style={{ color: "#000000", fontSize: 20 }}>PTIMUM</span>
               <span style={{ color: "#1e3a8a", fontSize: 30 }}>E</span>
               <span style={{ color: "#000000", fontSize: 20 }}>DUCORE</span>
-              <span style={{ color: "#b71c1c", fontSize: 16, fontStyle: "italic", margin: 20 }}> -YOU MAKE YOUR STUDY- </span>
+              <span style={{ color: "#1aa368ff", fontSize: 20, fontStyle: "italic", margin: 20 }}> -Design Your Routine · Own the Result- </span>
             </h1>
           </div>
 
