@@ -61,8 +61,7 @@ async function loadStudentRecords(studentId: string) {
   // -----------------------------
   // ③ 날짜 기준으로 정렬
   // -----------------------------
-  results.sort((a, b) => (a.date > b.date ? -1 : 1));
-
+  results.sort((a, b) => (a.date > b.date ? 1 : -1));
   return results;
 }
 export default function StudentPage() {
@@ -121,19 +120,24 @@ const handleSelectStudent = async (student: any) => {
   setPasswordInput("");
   setTodayInTime(null);
 
-  // 🔥 날짜별 문서에서 학생 기록 읽기
+  // 1) 기록 불러오기
   const logs = await loadStudentRecords(student.id);
 
+  // 2) 🔥 최신순 → 오름차순(과거 → 오늘) 강제 정렬
+  logs.sort((a, b) => (a.date > b.date ? 1 : -1));
+
+  // 3) 달력에 전달
   setRecords(logs);
+
   calculateMonthlyStats(logs);
-  
-const testSnap = await getDocs(
-  collection(db, "studyPlans", student.id, "tests")
-);
-setTestList(testSnap.docs.map((d) => d.data()));
 
+  // 시험기간 로드
+  const testSnap = await getDocs(
+    collection(db, "studyPlans", student.id, "tests")
+  );
+  setTestList(testSnap.docs.map((d) => d.data()));
 
-  // 자동 포커스
+  // 포커스
   setTimeout(() => {
     const el = document.getElementById("pw-input");
     el?.focus();
@@ -142,15 +146,15 @@ setTestList(testSnap.docs.map((d) => d.data()));
 
 
 // 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용)
+// 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용 + 학원 외출 시간 차감)
 const calcNetStudyMin_SP = (rec: any) => {
-  const t1 = rec.inTime;
-  const t2 = rec.outTime;
+  const t1 = rec.time;      // 등원
+  const t2 = rec.outTime;   // 하원
 
-  if (!t1) return 0; // 등원 없으면 0
-if (!t1 || !t2) return 0;
+  if (!t1 || !t2) return 0; // 둘 다 있어야 순공 계산
 
-  // ISO 형태 처리 (학생 등원 버튼은 ISO 저장되는 문제 있었음)
   const toHM = (v: string) => {
+    // ISO 형태 처리 (혹시 남아있을 수도 있어서)
     if (v.includes("T")) {
       const d = new Date(v);
       const hh = d.getHours();
@@ -160,20 +164,32 @@ if (!t1 || !t2) return 0;
     return v; // HH:MM
   };
 
+  const toMin = (hm: string) => {
+    const [h, m] = hm.split(":").map(Number);
+    return h * 60 + m;
+  };
+
   const inHM = toHM(t1);
   const outHM = toHM(t2);
 
-  const [ih, im] = inHM.split(":").map(Number);
-  const [oh, om] = outHM.split(":").map(Number);
+  let total = toMin(outHM) - toMin(inHM);
+  if (total <= 0) return 0;
 
-  const inDate = new Date(2025, 0, 1, ih, im);
-  const outDate = new Date(2025, 0, 1, oh, om);
+  // 🔹 학원 다녀온 시간(academyIn ~ academyOut) 빼기
+  if (rec.academyIn && rec.academyOut) {
+    try {
+      const aIn = toMin(toHM(rec.academyIn));
+      const aOut = toMin(toHM(rec.academyOut));
+      if (aOut > aIn) {
+        total -= (aOut - aIn);
+      }
+    } catch (e) {
+      console.warn("academy time parse error", e);
+    }
+  }
 
-  const diff = (outDate.getTime() - inDate.getTime()) / 60000;
-
-  return Math.max(0, diff);
+  return Math.max(0, total);
 };
-
 
   // 🔹 비밀번호 인증
 const verifyPassword = () => {
@@ -289,35 +305,48 @@ const checkIn = async () => {
   const hhmm = now.toTimeString().slice(0, 5);
   const today = new Date().toISOString().slice(0, 10);
 
-  // 🔥 Firestore(App 스타일) 저장
   await saveAppStyleCheckIn(selected.id, hhmm);
 
-  // 🔥 StudentPage 화면 즉시 업데이트
-  setRecords((prev) => [
-    ...prev.filter((r) => r.date !== today),
-    {
-      date: today,
-      inTime: hhmm,
-      outTime: null,
-    },
-  ]);
+  // 화면 즉시 반영
+  setRecords((prev) => {
+    const withoutToday = prev.filter((r) => r.date !== today);
+    const existing = prev.find((r) => r.date === today) || {};
+    return [
+      ...withoutToday,
+      {
+        ...existing,
+        date: today,
+        time: hhmm,
+      },
+    ];
+  });
 
   setTodayInTime(now.toISOString());
   alert("✅ 등원 처리 완료");
 };
+
 // 🔥 App 스타일 등원 저장
 async function saveAppStyleCheckIn(studentId: string, time: string) {
   const date = new Date().toISOString().slice(0, 10);
   const ref = doc(db, "records", date);
 
-  await setDoc(ref, {
-  [studentId]: {
-    time: time,       // 메인 App 계산용
-    inTime: time,     // StudentPage/calendar용
-    outTime: null,
-  },
-}, { merge: true }); 
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() as any) : {};
+  const prev = data[studentId] || {};
+
+  await setDoc(
+    ref,
+    {
+      [studentId]: {
+        ...prev,
+        time,                 // 첫 등원
+        outTime: prev.outTime ?? null, // 하원은 건드리지 않음
+      },
+    },
+    { merge: true }
+  );
 }
+
 
 
 // 🔹 학생용 하원 처리 
@@ -330,7 +359,7 @@ const checkOut = async () => {
 
   const todayLog = records.find((r) => r.date === today);
 
-  if (!todayLog || !todayLog.inTime) {
+  if (!todayLog || !todayLog.time) {
     alert("등원 기록이 없습니다.");
     return;
   }
@@ -341,9 +370,8 @@ const checkOut = async () => {
 
   await saveAppStyleCheckOut(selected.id, hhmm);
 
-  // 🔥 2) 화면 업데이트
-  setRecords(prev =>
-    prev.map(r =>
+  setRecords((prev) =>
+    prev.map((r) =>
       r.date === today ? { ...r, outTime: hhmm } : r
     )
   );
@@ -351,22 +379,115 @@ const checkOut = async () => {
   alert("👋 하원 처리 완료!");
 };
 
+// 🔹 학원 등원 (학원 가기)
+const academyIn = async () => {
+  if (!selected) return;
+
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0, 5);
+  const today = new Date().toISOString().slice(0, 10);
+
+  await saveAcademyIn(selected.id, hhmm);
+
+  setRecords((prev) => {
+    const exists = prev.find((r) => r.date === today);
+    if (!exists) {
+      return [...prev, { date: today, academyIn: hhmm }];
+    }
+    return prev.map((r) =>
+      r.date === today ? { ...r, academyIn: hhmm } : r
+    );
+  });
+
+  alert("📚 학원 등원 시간 기록 완료");
+};
+
+// 🔹 학원 하원 (학원 끝나고 복귀)
+const academyOut = async () => {
+  if (!selected) return;
+
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0, 5);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const todayLog = records.find((r) => r.date === today);
+  if (!todayLog || !todayLog.academyIn) {
+    alert("학원 등원 기록이 없습니다.");
+    return;
+  }
+
+  await saveAcademyOut(selected.id, hhmm);
+
+  setRecords((prev) =>
+    prev.map((r) =>
+      r.date === today ? { ...r, academyOut: hhmm } : r
+    )
+  );
+
+  alert("🏫 학원 하원 시간 기록 완료");
+};
+
 async function saveAppStyleCheckOut(studentId: string, time: string) {
   const date = new Date().toISOString().slice(0, 10);
   const ref = doc(db, "records", date);
 
   const snap = await getDoc(ref);
-  const data = snap.exists() ? snap.data() : {};
-
+  const data = snap.exists() ? (snap.data() as any) : {};
   const prev = data[studentId] || {};
 
-  await setDoc(ref, {
-  [studentId]: {
-    time: prev.time ?? prev.inTime ?? null,
-    inTime: prev.inTime ?? null,
-    outTime: time,
-  },
-}, { merge: true });
+  await setDoc(
+    ref,
+    {
+      [studentId]: {
+        ...prev,
+        time: prev.time ?? null, // 등원은 있으면 유지
+        outTime: time,           // 마지막 하원
+      },
+    },
+    { merge: true }
+  );
+}
+
+// 🔥 학원 등원 저장
+async function saveAcademyIn(studentId: string, time: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);
+
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() as any) : {};
+  const prev = data[studentId] || {};
+
+  await setDoc(
+    ref,
+    {
+      [studentId]: {
+        ...prev,
+        academyIn: time,          // 학원 등원
+      },
+    },
+    { merge: true }
+  );
+}
+
+// 🔥 학원 하원 저장
+async function saveAcademyOut(studentId: string, time: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);
+
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() as any) : {};
+  const prev = data[studentId] || {};
+
+  await setDoc(
+    ref,
+    {
+      [studentId]: {
+        ...prev,
+        academyOut: time,         // 학원 하원
+      },
+    },
+    { merge: true }
+  );
 }
 
   // 🔹 그래프 데이터
@@ -392,7 +513,7 @@ const realAbsences = (() => {
   const monthStr = `${y}-${String(m).padStart(2, "0")}`;  
   
   const presentDays = new Set(  
-    records.filter(r => r.date.startsWith(monthStr) && r.inTime)
+   records.filter(r => r.date.startsWith(monthStr) && (r.time ?? r.inTime))
       .map(r => r.date)  
   );  
   
@@ -564,25 +685,24 @@ const renderCalendar = () => {
   (t) => dateStr >= t.start && dateStr <= t.end
 );
 
-          let bg = "#f3f4f6";
-          if (dow === 6) bg = "#dbeafe";
-          if (dow === 0) bg = "#ffe4e6";
-          if (isTestDay) bg = "#FFE4E6"; // 연한 핑크
+let bg = "#f3f4f6"; // 기본
 
-          if (log) {
-            if (log.inTime) bg = "#dcfce7";
-            else bg = "#fee2e2";
-          }
+if (dow === 6) bg = "#dbeafe";   // 토요일
+if (dow === 0) bg = "#ffe4e6";   // 일요일
+
+if (log) {
+  if (log.time || log.inTime) bg = "#dcfce7";  // 출석
+  else bg = "#fee2e2";                         // 결석
+}
+
 
 // 날짜 박스 안 inTime 표시
 let inTimeLabel = null;
 
 if (log) {
-  const raw = log.inTime ?? log.time;
-
+  const raw = log.time ?? log.inTime;   // ★★★ 반드시 이렇게
   if (typeof raw === "string") {
     if (raw.includes("T")) {
-      // ISO → HH:MM
       const d = new Date(raw);
       if (!isNaN(d.getTime())) {
         inTimeLabel = d.toLocaleTimeString("ko-KR", {
@@ -591,20 +711,18 @@ if (log) {
         });
       }
     } else if (raw.includes(":")) {
-      // HH:MM 그대로
       inTimeLabel = raw;
     }
   }
 }
+
 // 날짜 박스 안 outTime 표시
 let outTimeLabel = null;
 
 if (log) {
   const rawOut = log.outTime;
-
   if (typeof rawOut === "string") {
     if (rawOut.includes("T")) {
-      // ISO → HH:MM
       const d = new Date(rawOut);
       if (!isNaN(d.getTime())) {
         outTimeLabel = d.toLocaleTimeString("ko-KR", {
@@ -613,65 +731,87 @@ if (log) {
         });
       }
     } else if (rawOut.includes(":")) {
-      // HH:MM 그대로
       outTimeLabel = rawOut;
     }
   }
 }
 
+// 학원 등하원 라벨
+let academyLabel = null;
+if (log && log.academyIn && log.academyOut) {
+  academyLabel = `${log.academyIn}~${log.academyOut}`;
+}
+
 
           return (
             <div
-              key={dateStr}
-              style={{
-                height: 48,
-                borderRadius: 10,
-                background: bg,
-                color: "#374151",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                alignItems: "center",
-                fontWeight: 600,
-                fontSize: 13,
-                paddingTop: 4,
-                paddingBottom: 3,
-                transition: "0.2s",
-              }}
-            >
-              <div>{day}</div>
-             {inTimeLabel && (
-  <div
-    style={{
-      marginTop: 2,
-      fontSize: 10,
-      color: "#1d4ed8",
-      fontWeight: 700,
-      width: "100%",          // 💥 전체 폭 사용
-      textAlign: "center",     // 💥 가운데 정렬 강제
-      lineHeight: "1.1",
-    }}
-  >
-    {inTimeLabel}
-  </div>
-)}
+  key={dateStr}
+  style={{
+    height: "auto",
+    borderRadius: 10,
+    background: bg,
+    color: "#374151",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    fontWeight: 600,
+    fontSize: 13,
+    paddingTop: 6,
+    paddingBottom: 8,
+    transition: "0.2s",
+  }}
+>
+  <div>{day}</div>
 
-{outTimeLabel && (
-  <div
-    style={{
-      marginTop: 1,
-      fontSize: 10,
-      color: "#b91c1c",  // 🔥 빨강: 하원
-      fontWeight: 700,
-      width: "100%",
-      textAlign: "center",
-      lineHeight: "1.1",
-    }}
-  >
-    {outTimeLabel}
-  </div>
-)}
-            </div>
+  {inTimeLabel && (
+    <div
+      style={{
+        marginTop: 2,
+        fontSize: 10,
+        color: "#1d4ed8",
+        fontWeight: 700,
+        width: "100%",
+        textAlign: "center",
+        lineHeight: "1.1",
+      }}
+    >
+      {inTimeLabel}
+    </div>
+  )}
+
+  {outTimeLabel && (
+    <div
+      style={{
+        marginTop: 1,
+        fontSize: 10,
+        color: "#b91c1c",
+        fontWeight: 700,
+        width: "100%",
+        textAlign: "center",
+        lineHeight: "1.1",
+      }}
+    >
+      {outTimeLabel}
+    </div>
+  )}
+
+  {/* 🔥 여기 추가! */}
+  {academyLabel && (
+    <div
+      style={{
+        marginTop: 1,
+        fontSize: 9,
+        color: "#4b5563",
+        width: "100%",
+        textAlign: "center",
+        lineHeight: "1.1",
+      }}
+    >
+      {academyLabel}
+    </div>
+  )}
+</div>
           );
         })}
       </div>
@@ -718,7 +858,7 @@ if (log) {
           <span
             style={{
               marginLeft: 10,
-              color: "#b71c1c",
+              color: "#1aa368ff",
               fontSize: 20,
               fontStyle: "italic",
               fontWeight: 600,
@@ -1086,7 +1226,8 @@ if (log) {
 
 
             {/* 등원/하원 버튼 & 요약 */}
-            <div
+           {/* 등원/하원 버튼 & 요약 */}
+<div
   style={{
     padding: "18px 18px",
     borderRadius: 14,
@@ -1101,21 +1242,23 @@ if (log) {
       color: "#6b7280",
     }}
   >
-    오늘 학습을 시작할 때 <b>등원</b>, 마칠 때 <b>하원</b> 버튼을 눌러주세요.
+    오늘 학습 시작할 때 <b>등원</b>, 마칠 때 <b>하원</b>을 눌러 주세요.
+    <br />
+    학원에 다녀올 때는 <b>학원 등원 / 학원 하원</b>으로 기록합니다.
   </p>
 
   <div
     style={{
-      display: "flex",
-      gap: 10,
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 8,
       marginTop: 10,
     }}
   >
     <button
       onClick={checkIn}
       style={{
-        flex: 1,
-        padding: "11px 0",
+        padding: "10px 0",
         borderRadius: 10,
         border: "none",
         background: "#2563eb",
@@ -1131,8 +1274,7 @@ if (log) {
     <button
       onClick={checkOut}
       style={{
-        flex: 1,
-        padding: "11px 0",
+        padding: "10px 0",
         borderRadius: 10,
         border: "none",
         background: "#ef4444",
@@ -1143,6 +1285,38 @@ if (log) {
       }}
     >
       하원
+    </button>
+
+    <button
+      onClick={academyIn}
+      style={{
+        padding: "10px 0",
+        borderRadius: 10,
+        border: "1px solid #22c55e",
+        background: "#ecfdf5",
+        color: "#166534",
+        fontWeight: 700,
+        cursor: "pointer",
+        fontSize: 13,
+      }}
+    >
+      학원 등원
+    </button>
+
+    <button
+      onClick={academyOut}
+      style={{
+        padding: "10px 0",
+        borderRadius: 10,
+        border: "1px solid #22c55e",
+        background: "#f0fdf4",
+        color: "#15803d",
+        fontWeight: 700,
+        cursor: "pointer",
+        fontSize: 13,
+      }}
+    >
+      학원 하원
     </button>
   </div>
 
@@ -1165,7 +1339,6 @@ if (log) {
     )}
   </div>
 
-  {/* 🔥 추가된 부분: 카드 안 아래로 이동 */}
   <button
     onClick={() => {
       setSelected(null);

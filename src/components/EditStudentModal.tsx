@@ -140,6 +140,7 @@ function EditStudentModal({
     englishScore: student.englishScore ?? 0,
     mathScore: student.mathScore ?? 0,
     scienceScore: student.scienceScore ?? 0,
+     entryDate: (student as any).entryDate || "",
   });
 
  /** ✅ 과목 리스트 */
@@ -487,6 +488,15 @@ async function printScheduleToPDF() {
             style={inp}
             placeholder="부모님 연락처"
           />
+
+          <input
+  type="date"
+  name="entryDate"
+  value={form.entryDate || ""}
+  onChange={handleChange}
+  style={inp}
+  placeholder="입학일"
+/>
         </div>
 
 
@@ -1219,6 +1229,7 @@ async function printScheduleToPDF() {
 
     const updated = {
       ...form,
+       entryDate: form.entryDate || null,
       personalSchedule: {
         current: sched.current, // 오늘까지 유지
         next: {

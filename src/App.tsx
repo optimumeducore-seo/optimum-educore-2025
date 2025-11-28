@@ -180,6 +180,7 @@ export type Student = {
   englishScore?: number;
   mathScore?: number;
   scienceScore?: number;
+  entryDate?: string;
 };
 
 export type Records = Record<string, Record<string, DayCell>>;
@@ -621,20 +622,21 @@ async function handleCheckOut(studentId: string, inputtime: string) {
       );
 
       await setDoc(
-        doc(db, "students", s.id),
-        {
-          id: s.id,
-          name: s.name || "",
-          grade: s.grade || "",
-          school: s.school || "",
-          studentPhone: s.studentPhone || "",
-          parentPhone: s.parentPhone || "",
-          groupId: groupId || "default",
-          removed: false,
-          createdAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+  doc(db, "students", s.id),
+  {
+    id: s.id,
+    name: s.name || "",
+    grade: s.grade || "",
+    school: s.school || "",
+    studentPhone: s.studentPhone || "",
+    parentPhone: s.parentPhone || "",
+    entryDate: s.entryDate ?? null,   // ⭐ 여기 추가
+    groupId: groupId || "default",
+    removed: false,
+    createdAt: serverTimestamp(),
+  },
+  { merge: true }
+);
 
       console.log("✅ Firestore에 학생 저장 완료:", s.name || "(이름 없음)");
     } catch (e) {
@@ -831,14 +833,15 @@ const defaultDayCell: DayCell = {
       }));
 
       await setDoc(
-        doc(db, "students", student.id),
-        {
-          ...student,
-          groupId: store.currentGroupId || "default", // ✅ 추가
-          createdAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+  doc(db, "students", student.id),
+  {
+    ...student,
+    entryDate: student.entryDate ?? null,   // ⭐ 여기 추가
+    groupId: store.currentGroupId || "default",
+    createdAt: serverTimestamp(),
+  },
+  { merge: true }
+);
 
       console.log("✅ Firestore 저장 완료:", student.name);
       alert(`${student.name} 학생이 등록되었습니다.`);
@@ -2385,6 +2388,16 @@ const updateDayCell = (
                 value={newStu.parentPhone || ""}
                 onChange={(e) => setNewStu(s => ({ ...s, parentPhone: e.target.value }))}
               />
+             <input
+  type="date"
+  value={newStu.entryDate || ""}
+  onChange={(e) =>
+    setNewStu((prev) => ({ ...prev, entryDate: e.target.value }))
+  }
+  style={inp}
+  placeholder="입학일"
+/>
+              
 
               <button
                 style={{
