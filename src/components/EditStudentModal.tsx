@@ -1202,19 +1202,19 @@ async function printScheduleToPDF() {
     📄 PDF로 저장
   </button>
 
-          <button
+         <button
   style={btnD}
   onClick={async () => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // 자정 기준 비교용
+    today.setHours(0, 0, 0, 0);
 
-    // 🔹 현재 스케줄 상태 불러오기
+    // 🔹 현재 활성 스케줄 결정
     const active =
       sched.next && new Date() >= new Date(sched.next.effectiveDate)
         ? sched.next.data
         : sched.current;
 
-    // 🔹 영어 등 과목 중 공백 슬롯 제거 (from, to 없는 것 필터링)
+    // 🔹 과목별 공백 슬롯 제거
     Object.keys(active).forEach((subj) => {
       const data = active[subj as AcademyType];
       if (data?.slots) {
@@ -1222,19 +1222,19 @@ async function printScheduleToPDF() {
       }
     });
 
-    // 🔹 내일부터 적용될 새 스케줄 만들기
+    // 🔹 내일부터 적용될 스케줄 준비
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(0, 0, 0, 0);
 
     const updated = {
-      ...form,
-       entryDate: form.entryDate || null,
+      ...form,                // 🔥 entryDate 포함
+      entryDate: form.entryDate || null,
       personalSchedule: {
-        current: sched.current, // 오늘까지 유지
+        current: sched.current, // 오늘까지
         next: {
           effectiveDate: tomorrow.toISOString(),
-          data: JSON.parse(JSON.stringify(active)), // 내일부터 적용
+          data: JSON.parse(JSON.stringify(active)), // 내일부터 적용될 시간표
         },
       },
       academySubjects: Object.keys(active).filter(
@@ -1242,48 +1242,51 @@ async function printScheduleToPDF() {
       ) as AcademyType[],
     };
 
-    // ✅ Firestore 완전 덮어쓰기 (이전 요일 데이터 제거용)
-await setDoc(
-  doc(db, "students", student.id),
-  {
-    ...student,
-    personalSchedule: {
-      current: {
-        ...sched.current,
-        // ✅ 영어 중복 제거 로직
-        영어: {
-          ...sched.current.영어,
-          slots: (sched.current.영어?.slots || []).filter(
-            (slot, index, self) =>
-              index ===
-              self.findIndex(
-                (s) =>
-                  s.day === slot.day &&
-                  s.from === slot.from &&
-                  s.to === slot.to
-              )
-          ),
+    // 🔥 Firestore 업데이트 (중복 제거 포함)
+    await setDoc(
+      doc(db, "students", student.id),
+      {
+        ...student,              // 기존 학생 정보 유지
+        ...updated,              // entryDate + 기본 정보 병합
+
+        personalSchedule: {
+          current: {
+            ...sched.current,
+            // 🔹 영어 중복 제거
+            영어: {
+              ...sched.current.영어,
+              slots: (sched.current.영어?.slots || []).filter(
+                (slot, index, self) =>
+                  index ===
+                  self.findIndex(
+                    (s) =>
+                      s.day === slot.day &&
+                      s.from === slot.from &&
+                      s.to === slot.to
+                  )
+              ),
+            },
+          },
+
+          // 🔹 next 일정은 그대로 저장
+          next: sched.next ? JSON.parse(JSON.stringify(sched.next)) : undefined,
+
+          // 🔥 개별 시간은 완전 병합 저장
+          timeBlocks: JSON.parse(JSON.stringify(timeBlocks || [])),
         },
+
+        academySubjects: Object.keys(active).filter(
+          (k) => (active[k as AcademyType]?.slots ?? []).length > 0
+        ) as AcademyType[],
       },
-     next: sched.next ? JSON.parse(JSON.stringify(sched.next)) : undefined,
+      { merge: true }
+    );
 
-      // ✅ 개별 시간(timeBlocks) 함께 저장
-      timeBlocks: JSON.parse(JSON.stringify(timeBlocks || [])),
-    },
+    // 로컬 반영
+    const newStudent = { ...student, ...updated };
+    onSave(newStudent);
 
-    // ✅ 활성 과목 목록 업데이트
-    academySubjects: Object.keys(active).filter(
-      (k) => (active[k as AcademyType]?.slots ?? []).length > 0
-    ) as AcademyType[],
-  },
-  { merge: true } // 🔹 과거 데이터(history 등 유지)
-);
-
-// ✅ 로컬 상태도 즉시 반영
-const newStudent = { ...student, ...updated }; // 새 객체로 복사 (참조 끊기)
-onSave(newStudent);
-
-alert("✅ Firestore에 완전 반영되었습니다.\n(이전 요일 데이터 모두 초기화됨)");
+    alert("✅ 저장 완료! (입학일 포함 모든 정보 Firestore 반영됨)");
   }}
 >
   저장
