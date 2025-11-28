@@ -14,6 +14,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { arrayUnion } from "firebase/firestore";
+import { useLocation } from "react-router-dom";
 
 // 🔥 학생 기록을 두 구조(records + students/logs)에서 모두 읽어서 합치기
 async function loadStudentRecords(studentId: string) {
@@ -39,7 +40,10 @@ async function loadStudentRecords(studentId: string) {
       date: dateStr,
       ...data[studentId],
     });
+    
   }
+
+
 
   // -----------------------------
   // ② 기존 students/<id>/logs 배열도 읽기
@@ -77,6 +81,9 @@ export default function StudentPage() {
   const [todayInTime, setTodayInTime] = useState<string | null>(null);
   const isTeacher = false;
 
+    const location = useLocation();  
+const params = new URLSearchParams(location.search);
+const autoId = params.get("id");
   // 🔹 학생 전체 목록 로드
   useEffect(() => {
     const loadStudents = async () => {
@@ -85,6 +92,13 @@ export default function StudentPage() {
     };
     loadStudents();
   }, []);
+
+  useEffect(() => {
+  if (autoId && students.length > 0) {
+    const target = students.find((s) => s.id === autoId);
+    if (target) handleSelectStudent(target);
+  }
+}, [students, autoId]);
 
   // 🔹 월간 통계 계산
   const calculateMonthlyStats = (logs: any[]) => {
@@ -121,10 +135,15 @@ const handleSelectStudent = async (student: any) => {
   setTodayInTime(null);
 
   // 1) 기록 불러오기
-  const logs = await loadStudentRecords(student.id);
+let logs = await loadStudentRecords(student.id);
 
-  // 2) 🔥 최신순 → 오름차순(과거 → 오늘) 강제 정렬
-  logs.sort((a, b) => (a.date > b.date ? 1 : -1));
+// 🔥 입학일 있으면 그 이후만 (여기 추가)
+if (student.entryDate) {
+  logs = logs.filter(r => r.date >= student.entryDate);
+}
+
+// 🔥 정렬 오름차순
+logs.sort((a, b) => (a.date > b.date ? 1 : -1));
 
   // 3) 달력에 전달
   setRecords(logs);

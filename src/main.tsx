@@ -11,7 +11,9 @@ import ExamInputPage from "./pages/ExamInputPage";
 import StudyPlanPage from "./pages/StudyPlanPage.tsx";
 import TermPrintPage from "./pages/TermPrintPage.tsx";
 import PortfolioPrintPage from "./pages/PortfolioPrintPage.tsx";
-import ExamManagePage from "./pages/ExamManagePage";
+import ExamManagePage from "./pages/ExamManagePage.tsx";
+import QrCheckInPage from "./pages/QrCheckInPage.tsx";
+import QRCardsPage from "./pages/QRCardsPage.tsx";
 
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -25,7 +27,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <Route path="/study-plan/term-print/:id" element={<TermPrintPage />} />
 <Route path="/study-plan/portfolio-print/:id" element={<PortfolioPrintPage />} />
 <Route path="/exam-manage" element={<ExamManagePage />} />
-
+<Route path="/qr-checkin" element={<QrCheckInPage />} />
+<Route path="/qr-cards" element={<QRCardsPage />} />
   <Route path="/" element={<App />} />
 </Routes>
 </BrowserRouter>
