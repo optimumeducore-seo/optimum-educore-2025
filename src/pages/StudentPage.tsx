@@ -62,6 +62,7 @@ async function loadStudentRecords(studentId: string) {
     }
   }
 
+
   // -----------------------------
   // ③ 날짜 기준으로 정렬
   // -----------------------------
@@ -69,6 +70,24 @@ async function loadStudentRecords(studentId: string) {
   return results;
 }
 export default function StudentPage() {
+   const checkIP = async () => {
+  try {
+    const res = await fetch("https://api.ipify.org?format=json");
+    const { ip } = await res.json();
+
+    const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
+
+    console.log("현재 접속 IP:", ip);
+
+    return ip === allowedIP;
+  } catch (err) {
+    console.error("IP 확인 실패:", err);
+    return false; // 실패하면 차단
+  }
+};
+
+const isMobile = window.innerWidth <= 480;
+
   const [students, setStudents] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<any | null>(null);
@@ -318,6 +337,15 @@ const saveTestPeriod = async () => {
 // 🔥 학생용 checkIn: App 구조로 저장
 
 const checkIn = async () => {
+   const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
+   const res = await fetch("https://api.ipify.org?format=json");
+    const { ip } = await res.json();
+  // 🚫 외부 접속 차단
+  if (ip !== allowedIP) {
+    alert("⚠️ 외부에서는 체크아웃이 불가능합니다.");
+    return;
+  }
+
   if (!selected) return;
 
   const now = new Date();
@@ -326,7 +354,6 @@ const checkIn = async () => {
 
   await saveAppStyleCheckIn(selected.id, hhmm);
 
-  // 화면 즉시 반영
   setRecords((prev) => {
     const withoutToday = prev.filter((r) => r.date !== today);
     const existing = prev.find((r) => r.date === today) || {};
@@ -370,6 +397,15 @@ async function saveAppStyleCheckIn(studentId: string, time: string) {
 
 // 🔹 학생용 하원 처리 
 const checkOut = async () => {
+   const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
+   const res = await fetch("https://api.ipify.org?format=json");
+    const { ip } = await res.json();
+  // 🚫 외부 접속 차단
+  if (ip !== allowedIP) {
+    alert("⚠️ 외부에서는 체크아웃이 불가능합니다.");
+    return;
+  }
+
   if (!selected) return;
 
   const now = new Date();
@@ -400,6 +436,15 @@ const checkOut = async () => {
 
 // 🔹 학원 등원 (학원 가기)
 const academyIn = async () => {
+  const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
+   const res = await fetch("https://api.ipify.org?format=json");
+    const { ip } = await res.json();
+  // 🚫 외부 접속 차단
+  if (ip !== allowedIP) {
+    alert("⚠️ 외부에서는 체크아웃이 불가능합니다.");
+    return;
+  }
+
   if (!selected) return;
 
   const now = new Date();
@@ -423,6 +468,15 @@ const academyIn = async () => {
 
 // 🔹 학원 하원 (학원 끝나고 복귀)
 const academyOut = async () => {
+   const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
+   const res = await fetch("https://api.ipify.org?format=json");
+    const { ip } = await res.json();
+  // 🚫 외부 접속 차단
+  if (ip !== allowedIP) {
+    alert("⚠️ 외부에서는 체크아웃이 불가능합니다.");
+    return;
+  }
+
   if (!selected) return;
 
   const now = new Date();
@@ -839,10 +893,10 @@ if (log && log.academyIn && log.academyOut) {
 };
   return (
     <div
-      style={{
-        maxWidth: 860,
-        margin: "40px auto",
-        padding: "40px 32px",
+  style={{
+    maxWidth: isMobile ? "100%" : 860,
+    margin: isMobile ? "20px auto" : "40px auto",
+    padding: isMobile ? "20px 16px" : "40px 32px",
         background: "#ffffff",
         borderRadius: 20,
         boxShadow: "0 8px 22px rgba(15,23,42,0.12)",
@@ -850,54 +904,96 @@ if (log && log.academyIn && log.academyOut) {
       }}
     >
       {/* ===== 브랜드 헤더 ===== */}
-      <div
+      {/* ===== 브랜드 헤더 ===== */}
+<div
+  style={{
+    textAlign: "center",
+    paddingBottom: isMobile ? 16 : 20,
+    borderBottom: "1px solid #e5e7eb",
+    marginBottom: isMobile ? 20 : 26,
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      flexDirection: isMobile ? "column" : "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: isMobile ? 2 : 4,
+      userSelect: "none",
+    }}
+  >
+    <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+      <span
         style={{
-          textAlign: "center",
-          paddingBottom: 20,
-          borderBottom: "1px solid #e5e7eb",
-          marginBottom: 26,
+          color: "#b71c1c",
+          fontSize: isMobile ? 26 : 40,
+          fontWeight: 900,
         }}
       >
-        <div
-          style={{
-            display: "inline-flex",
-            alignItems: "baseline",
-            gap: 4,
-            userSelect: "none",
-          }}
-        >
-          <span style={{ color: "#b71c1c", fontSize: 40, fontWeight: 900 }}>O</span>
-          <span style={{ color: "#000000", fontSize: 24, fontWeight: 800 }}>
-            PTIMUM
-          </span>
-          <span style={{ color: "#1e3a8a", fontSize: 40, fontWeight: 900 }}>E</span>
-          <span style={{ color: "#000000", fontSize: 24, fontWeight: 800 }}>
-            DUCORE
-          </span>
-          <span
-            style={{
-              marginLeft: 10,
-              color: "#1aa368ff",
-              fontSize: 20,
-              fontStyle: "italic",
-              fontWeight: 600,
-            }}
-          >
-            - Design Your Routine · Own the Result -
-          </span>
-        </div>
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 12,
-            color: "#6b7280",
-            letterSpacing: 1,
-          }}
-        >
-          OPTIMUM EDUCORE STUDENT PORTAL
-        </div>
-      </div>
+        O
+      </span>
 
+      <span
+        style={{
+          color: "#000000",
+          fontSize: isMobile ? 18 : 24,
+          fontWeight: 800,
+        }}
+      >
+        PTIMUM
+      </span>
+
+      <span
+        style={{
+          color: "#1e3a8a",
+          fontSize: isMobile ? 26 : 40,
+          fontWeight: 900,
+        }}
+      >
+        E
+      </span>
+
+      <span
+        style={{
+          color: "#000000",
+          fontSize: isMobile ? 18 : 24,
+          fontWeight: 800,
+        }}
+      >
+        DUCORE
+      </span>
+    </div>
+
+    {/* 슬로건 */}
+    <span
+      style={{
+        marginTop: isMobile ? 4 : 0,
+        marginLeft: isMobile ? 0 : 10,
+        color: "#1aa368ff",
+        fontSize: isMobile ? 12 : 20,
+        fontStyle: "italic",
+        fontWeight: 600,
+        textAlign: "center",
+        lineHeight: 1.2,
+      }}
+    >
+      - Design Your Routine · Own the Result -
+    </span>
+  </div>
+
+  {/* 아래 작은 텍스트 */}
+  <div
+    style={{
+      marginTop: isMobile ? 6 : 4,
+      fontSize: isMobile ? 10 : 12,
+      color: "#6b7280",
+      letterSpacing: 1,
+    }}
+  >
+    OPTIMUM EDUCORE STUDENT PORTAL
+  </div>
+</div>
      {/* ===== 검색 입력 ===== */}
 <input
   type="text"
@@ -1160,13 +1256,15 @@ if (log && log.academyIn && log.academyOut) {
 )}
           {/* 상단: 학생 정보 + 오늘 등원 정보 + 등/하원 버튼 */}
           <div
-            style={{
-              marginTop: 26,
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
-              gap: 16,
-            }}
-          >
+  style={{
+    marginTop: 26,
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "1fr"
+      : "minmax(0, 1.4fr) minmax(0, 1fr)",
+    gap: isMobile ? 12 : 16,
+  }}
+>
             {/* 학생 기본 정보 카드 */}
             <div
               style={{
@@ -1385,13 +1483,15 @@ if (log && log.academyIn && log.academyOut) {
 
           {/* 월별 요약 + 달력 */}
           <div
-            style={{
-              marginTop: 30,
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1.1fr) minmax(0, 1.1fr)",
-              gap: 18,
-            }}
-          >
+  style={{
+    marginTop: 30,
+    display: "grid",
+    gridTemplateColumns: isMobile
+      ? "1fr"
+      : "minmax(0, 1.1fr) minmax(0, 1.1fr)",
+    gap: isMobile ? 12 : 18,
+  }}
+>
             {/* 월별 순공 요약 카드 */}
 <div
   style={{
@@ -1634,7 +1734,16 @@ if (log && log.academyIn && log.academyOut) {
       )}
     </div>
   );
-  <style>{`
+<style>{`
+  @media (max-width: 480px) {
+    .brand-title span {
+      font-size: 16px !important;
+    }
+    .brand-title .big {
+      font-size: 26px !important;
+    }
+  }
+
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
