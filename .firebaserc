@@ -1,5 +1,7 @@
 {
   "projects": {
     "default": "optimum-educore-2025"
-  }
+  },
+  "targets": {},
+  "etags": {}
 }

@@ -14,6 +14,8 @@ import PortfolioPrintPage from "./pages/PortfolioPrintPage.tsx";
 import ExamManagePage from "./pages/ExamManagePage.tsx";
 import QrCheckInPage from "./pages/QrCheckInPage.tsx";
 import QRCardsPage from "./pages/QRCardsPage.tsx";
+import StudyPlanDashboardPage from "./pages/StudyPlanDashboardPage";
+
 
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -29,6 +31,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 <Route path="/exam-manage" element={<ExamManagePage />} />
 <Route path="/qr-checkin" element={<QrCheckInPage />} />
 <Route path="/qr-cards" element={<QRCardsPage />} />
+  <Route path="/study-plan/dashboard" element={<StudyPlanDashboardPage />} />
   <Route path="/" element={<App />} />
 </Routes>
 </BrowserRouter>

@@ -62,29 +62,38 @@ async function loadStudentRecords(studentId: string) {
     }
   }
 
+  // 🔥 아이폰 포함 전체 디바이스에서 내부망 체크 (무료, 안정적)
+ results.sort((a, b) => (a.date > b.date ? 1 : -1));
+  return results;
+}
 
+async function getPublicIP() {
+  try {
+    const res = await fetch("https://api.ipify.org?format=json");
+    const data = await res.json();
+    return data.ip;
+  } catch (e) {
+    console.error("IP 가져오기 실패", e);
+    return null;
+  }
+}
+
+const allowedPublicIPs = [
+  "175.215.126.",
+];
+
+async function isLocalNetwork() {
+  const ip = await getPublicIP();
+  if (!ip) return false;
+
+  return allowedPublicIPs.some(prefix => ip.startsWith(prefix));
+}
   // -----------------------------
   // ③ 날짜 기준으로 정렬
   // -----------------------------
-  results.sort((a, b) => (a.date > b.date ? 1 : -1));
-  return results;
-}
+ 
 export default function StudentPage() {
-   const checkIP = async () => {
-  try {
-    const res = await fetch("https://api.ipify.org?format=json");
-    const { ip } = await res.json();
 
-    const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
-
-    console.log("현재 접속 IP:", ip);
-
-    return ip === allowedIP;
-  } catch (err) {
-    console.error("IP 확인 실패:", err);
-    return false; // 실패하면 차단
-  }
-};
 
 const isMobile = window.innerWidth <= 480;
 
@@ -337,14 +346,11 @@ const saveTestPeriod = async () => {
 // 🔥 학생용 checkIn: App 구조로 저장
 
 const checkIn = async () => {
-   const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
-   const res = await fetch("https://api.ipify.org?format=json");
-    const { ip } = await res.json();
-  // 🚫 외부 접속 차단
-  if (ip !== allowedIP) {
-    alert("⚠️ 외부에서는 체크아웃이 불가능합니다.");
-    return;
-  }
+   const ok = await isLocalNetwork();
+if (!ok) {
+  alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  return;
+}
 
   if (!selected) return;
 
@@ -380,13 +386,17 @@ async function saveAppStyleCheckIn(studentId: string, time: string) {
   const data = snap.exists() ? (snap.data() as any) : {};
   const prev = data[studentId] || {};
 
+  const ip = await getPublicIP(); // 🔥 IP 가져오기
+
   await setDoc(
     ref,
     {
       [studentId]: {
         ...prev,
-        time,                 // 첫 등원
-        outTime: prev.outTime ?? null, // 하원은 건드리지 않음
+        time,
+        outTime: prev.outTime ?? null,
+        ip: ip || null,              // 🔥 IP 저장
+        device: navigator.userAgent, // 🔥 기기 정보 저장
       },
     },
     { merge: true }
@@ -397,14 +407,11 @@ async function saveAppStyleCheckIn(studentId: string, time: string) {
 
 // 🔹 학생용 하원 처리 
 const checkOut = async () => {
-   const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
-   const res = await fetch("https://api.ipify.org?format=json");
-    const { ip } = await res.json();
-  // 🚫 외부 접속 차단
-  if (ip !== allowedIP) {
-    alert("⚠️ 외부에서는 체크아웃이 불가능합니다.");
-    return;
-  }
+   const ok = await isLocalNetwork();
+if (!ok) {
+  alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  return;
+}
 
   if (!selected) return;
 
@@ -434,16 +441,15 @@ const checkOut = async () => {
   alert("👋 하원 처리 완료!");
 };
 
+
+
 // 🔹 학원 등원 (학원 가기)
 const academyIn = async () => {
-  const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
-   const res = await fetch("https://api.ipify.org?format=json");
-    const { ip } = await res.json();
-  // 🚫 외부 접속 차단
-  if (ip !== allowedIP) {
-    alert("⚠️ 외부에서는 체크아웃이 불가능합니다.");
-    return;
-  }
+ const ok = await isLocalNetwork();
+if (!ok) {
+  alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  return;
+}
 
   if (!selected) return;
 
@@ -468,14 +474,11 @@ const academyIn = async () => {
 
 // 🔹 학원 하원 (학원 끝나고 복귀)
 const academyOut = async () => {
-   const allowedIP = "175.215.126.3";  // ← 여기에 너 IP 적용됨
-   const res = await fetch("https://api.ipify.org?format=json");
-    const { ip } = await res.json();
-  // 🚫 외부 접속 차단
-  if (ip !== allowedIP) {
-    alert("⚠️ 외부에서는 체크아웃이 불가능합니다.");
-    return;
-  }
+   const ok = await isLocalNetwork();
+if (!ok) {
+  alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  return;
+}
 
   if (!selected) return;
 
@@ -508,18 +511,23 @@ async function saveAppStyleCheckOut(studentId: string, time: string) {
   const data = snap.exists() ? (snap.data() as any) : {};
   const prev = data[studentId] || {};
 
+  const ip = await getPublicIP(); // 🔥 IP 가져오기
+
   await setDoc(
     ref,
     {
       [studentId]: {
         ...prev,
-        time: prev.time ?? null, // 등원은 있으면 유지
-        outTime: time,           // 마지막 하원
+        time: prev.time ?? null,
+        outTime: time,
+        outIP: ip || null,              // 🔥 하원할 때 IP 저장
+        outDevice: navigator.userAgent, // 🔥 디바이스 정보도 저장
       },
     },
     { merge: true }
   );
 }
+
 
 // 🔥 학원 등원 저장
 async function saveAcademyIn(studentId: string, time: string) {
@@ -530,18 +538,21 @@ async function saveAcademyIn(studentId: string, time: string) {
   const data = snap.exists() ? (snap.data() as any) : {};
   const prev = data[studentId] || {};
 
+  const ip = await getPublicIP(); // 🔥 공인 IP 가져오기
+
   await setDoc(
     ref,
     {
       [studentId]: {
         ...prev,
-        academyIn: time,          // 학원 등원
+        academyIn: time,
+        academyInIP: ip || null,              // 🔥 IP 저장
+        academyInDevice: navigator.userAgent, // 🔥 기기 정보 저장
       },
     },
     { merge: true }
   );
 }
-
 // 🔥 학원 하원 저장
 async function saveAcademyOut(studentId: string, time: string) {
   const date = new Date().toISOString().slice(0, 10);
@@ -551,18 +562,21 @@ async function saveAcademyOut(studentId: string, time: string) {
   const data = snap.exists() ? (snap.data() as any) : {};
   const prev = data[studentId] || {};
 
+  const ip = await getPublicIP(); // 🔥 공인 IP
+
   await setDoc(
     ref,
     {
       [studentId]: {
         ...prev,
-        academyOut: time,         // 학원 하원
+        academyOut: time,
+        academyOutIP: ip || null,               // 🔥 IP 저장
+        academyOutDevice: navigator.userAgent,  // 🔥 기기 정보 저장
       },
     },
     { merge: true }
   );
 }
-
   // 🔹 그래프 데이터
   const chartData = records
     .slice()

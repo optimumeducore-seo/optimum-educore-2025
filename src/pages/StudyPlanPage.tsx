@@ -11,6 +11,9 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { deleteDoc } from "firebase/firestore";
+import { uploadProof } from "../services/storage";
+import { getStorage, ref, deleteObject } from "firebase/storage";
+
 
 /* ------------------------------------------------------------------ */
 /* 타입 / 상수 정의 */
@@ -24,6 +27,10 @@ type SubjectPlan = {
   memo?: string;
   done?: boolean;
   updatedAt?: any;
+
+  // 🔥 추가: 집공 인증용
+  proofImages?: string[];   // 인증샷 URL 배열
+  proofMemo?: string;       // 인증 메모(오늘 뭐 했는지)
 };
 
 type DayPlan = {
@@ -105,6 +112,8 @@ export default function StudyPlanPage() {
   const [studentInput, setStudentInput] = useState("");
   const [memo, setMemo] = useState("");
   const [done, setDone] = useState(false);
+  const [proofImages, setProofImages] = useState<string[]>([]);
+  const [proofMemo, setProofMemo] = useState("");
 
   const [showPrintOptions, setShowPrintOptions] = useState(false);
   const [start, setStart] = useState("");
@@ -117,6 +126,9 @@ export default function StudyPlanPage() {
   const [testStart, setTestStart] = useState("");
   const [testEnd, setTestEnd] = useState("");
   const [testMemo, setTestMemo] = useState("");
+  const [zoomImgIndex, setZoomImgIndex] = useState<number | null>(null);
+
+  
 
   // 🔹 빠른 기간 선택 (텀 스케줄 출력용)
   const quickRange = (type: string) => {
@@ -185,17 +197,21 @@ export default function StudyPlanPage() {
         const subjects: Record<string, SubjectPlan> = {};
 
         SUBJECTS.forEach(({ key }) => {
-          const sRaw = raw[key];
-          if (!sRaw) return;
+  const sRaw = raw[key];
+  if (!sRaw) return;
 
-          subjects[key] = {
-            teacherTasks: normalizeTasks(sRaw.teacherTasks),
-            studentPlans: normalizeTasks(sRaw.studentPlans),
-            memo: sRaw.memo || "",
-            done: !!sRaw.done,
-            updatedAt: sRaw.updatedAt,
-          };
-        });
+  subjects[key] = {
+    teacherTasks: normalizeTasks(sRaw.teacherTasks),
+    studentPlans: normalizeTasks(sRaw.studentPlans),
+    memo: sRaw.memo || "",
+    done: !!sRaw.done,
+    updatedAt: sRaw.updatedAt,
+
+    // 🔥 여기 추가 (인증샷 & 메모)
+    proofImages: sRaw.proofImages || [],
+    proofMemo: sRaw.proofMemo || "",
+  };
+});
 
         map[d.id] = {
           date: d.id,
@@ -225,22 +241,24 @@ export default function StudyPlanPage() {
 /* ------------------------------------------------------------------ */
 
   useEffect(() => {
-    if (!selectedDate) {
-      setTeacherInput("");
-      setStudentInput("");
-      setMemo("");
-      setDone(false);
-      return;
+  if (!selectedDate || !id) return;
+
+  const loadProof = async () => {
+    const ref = doc(db, "proofs", id, "days", selectedDate);
+    const snap = await getDoc(ref);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      setProofImages(data.images || []);
+      setProofMemo(data.memo || "");
+    } else {
+      setProofImages([]);
+      setProofMemo("");
     }
+  };
 
-    const day = plans[selectedDate];
-    const subj = day?.subjects?.[selectedSubject];
-
-    setTeacherInput((subj?.teacherTasks || []).map((t) => t.text).join("\n"));
-    setStudentInput((subj?.studentPlans || []).map((t) => t.text).join("\n"));
-    setMemo(subj?.memo || "");
-    setDone(!!subj?.done);
-  }, [selectedDate, selectedSubject, plans]);
+  loadProof();
+}, [selectedDate, id]);
 
  const [examData, setExamData] = useState<ExamItem[]>([]);
 
@@ -271,6 +289,30 @@ useEffect(() => {
 }, [student]);
 
 
+
+// ✅ 오늘 날짜의 "선생님 과제" 요약 (과목별로 한 번에 보기용)
+  const todayTeacherSummary = React.useMemo(() => {
+    if (!selectedDate) return [];
+
+    const day = plans[selectedDate];
+    if (!day || !day.subjects) return [];
+
+    const list: { key: string; label: string; tasks: TaskItem[] }[] = [];
+
+    SUBJECTS.forEach(({ key, label }) => {
+      const subj = day.subjects[key];
+      const tasks = subj?.teacherTasks || [];
+      if (!tasks.length) return;
+
+      list.push({
+        key,
+        label,
+        tasks,
+      });
+    });
+
+    return list;
+  }, [plans, selectedDate]);
 
   /* ------------------------------------------------------------------ */
   /* 🔹 체크박스 토글 (선생님/학생 공통) */
@@ -322,6 +364,8 @@ useEffect(() => {
       return { ...prev, [selectedDate]: updatedDay };
     });
   };
+
+   
 
   /* ------------------------------------------------------------------ */
   /* 🔹 날짜 선택 */
@@ -394,48 +438,49 @@ useEffect(() => {
 
     const ref = doc(db, "studyPlans", id, "days", selectedDate);
 
-    if (isTeacher) {
-      const prevTeacher = prevSubj?.teacherTasks || [];
+   if (isTeacher) {
+  const prevTeacher = prevSubj?.teacherTasks || [];
 
-      const teacherTasks = teacherInput
-        .split("\n")
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .map((text) => ({
-          text,
-          done: prevTeacher.find((x) => x.text === text)?.done ?? false,
-        }));
+  const teacherTasks = teacherInput
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((text) => ({
+      text,
+      done: prevTeacher.find((x) => x.text === text)?.done ?? false,
+    }));
 
-      const mergedSubject: SubjectPlan = {
-        teacherTasks,
-        studentPlans: prevSubj?.studentPlans || [],
-        memo: memo.trim(),
-        done: prevSubj?.done ?? done,
-        updatedAt: serverTimestamp(),
-      };
+  const mergedSubject: SubjectPlan = {
+    teacherTasks,
+    studentPlans: prevSubj?.studentPlans || [],   // 🔥 수정 포인트!
+    memo: memo.trim(),
+    done,
+    updatedAt: serverTimestamp(),
+    proofImages: prevSubj?.proofImages || [],     // 그대로 유지
+    proofMemo: prevSubj?.proofMemo || "",
+  };
 
-      const data = cleanForFirestore({
-        date: selectedDate,
+  const data = cleanForFirestore({
+    date: selectedDate,
+    [selectedSubject]: mergedSubject,
+  });
+
+  await setDoc(ref, data, { merge: true });
+
+  setPlans((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      date: selectedDate,
+      subjects: {
+        ...(prev[selectedDate]?.subjects || {}),
         [selectedSubject]: mergedSubject,
-      });
+      },
+    },
+  }));
 
-      await setDoc(ref, data, { merge: true });
-
-      setPlans((prev) => ({
-        ...prev,
-        [selectedDate]: {
-          date: selectedDate,
-          subjects: {
-            ...(prev[selectedDate]?.subjects || {}),
-            [selectedSubject]: mergedSubject,
-          },
-        },
-      }));
-
-      alert("저장 완료! (선생님 계획)");
-      return;
-    }
-
+  alert("저장 완료! (선생님 계획)");
+  return;
+}
     if (isStudent) {
       const prevStudent = prevSubj?.studentPlans || [];
 
@@ -938,6 +983,71 @@ const isTestDay = (ds: string) => {
             border: "1px solid #E5E7EB",
           }}
         >
+          {/* 📘 오늘 선생님 과제 요약 (과목 탭 위에 노출) */}
+{selectedDate && todayTeacherSummary.length > 0 && (
+  <div
+    style={{
+      marginBottom: 14,
+      padding: "10px 12px",
+      borderRadius: 10,
+      border: "1px solid #DBEAFE",
+      background: "#EFF6FF",
+    }}
+  >
+    <div
+      style={{
+        fontSize: 12,
+        fontWeight: 800,
+        color: "#1D4ED8",
+        marginBottom: 6,
+      }}
+    >
+      📘 오늘 선생님 과제 한눈에 보기
+    </div>
+
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        fontSize: 12,
+        color: "#1F2937",
+      }}
+    >
+      {todayTeacherSummary.map((subj) => (
+        <div
+          key={subj.key}
+          style={{
+            padding: "6px 8px",
+            borderRadius: 8,
+            background: "#FFFFFF",
+            border: "1px dashed #BFDBFE",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 700,
+              fontSize: 12,
+              marginBottom: 3,
+              color: "#1E3A8A",
+            }}
+          >
+            {subj.label}
+          </div>
+          <div
+            style={{
+              whiteSpace: "pre-line",
+              fontSize: 11,
+              lineHeight: 1.4,
+            }}
+          >
+            {subj.tasks.map((t) => `• ${t.text}`).join("\n")}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
           {/* 과목 탭 (5개씩 두 줄) */}
           <div
             style={{
@@ -1101,6 +1211,18 @@ const isTestDay = (ds: string) => {
                 </label>
               )
             )}
+             {/* 🔥 집공 인증샷 섹션 */}
+          {selectedDate && (
+            <ProofSection
+  images={proofImages}
+  setImages={setProofImages}
+  memo={proofMemo}
+  setMemo={setProofMemo}
+  readonly={isParent || isTeacher}
+  studentId={id || ""}           // ← 여기 추가!
+  selectedDate={selectedDate || ""}
+/>
+          )}
 
           {/* 메모 */}
           {selectedDate && (
@@ -1389,6 +1511,7 @@ const isTestDay = (ds: string) => {
   );
 }
 
+
 /* ------------------------------------------------------------------ */
 /* 📌 공통 InputSection */
 /* ------------------------------------------------------------------ */
@@ -1445,6 +1568,298 @@ function InputSection({
         rows={rows}
         style={textarea}
         placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
+type ProofSectionProps = {
+  images: string[];
+  setImages: React.Dispatch<React.SetStateAction<string[]>>;
+  memo: string;
+  setMemo: React.Dispatch<React.SetStateAction<string>>;
+  readonly: boolean;
+  studentId: string;
+  selectedDate: string;
+};
+
+function ProofSection({
+  images,
+  setImages,
+  memo,
+  setMemo,
+  readonly,
+  studentId,
+  selectedDate,
+}: ProofSectionProps) {
+
+  const [zoomImg, setZoomImg] = useState<string | null>(null);
+const deleteImage = async (url: string, index: number) => {
+  if (!selectedDate) return;
+
+  // 1) 상태에서 삭제
+  const newList = images.filter((_, i) => i !== index);
+  setImages(newList);
+
+  try {
+    // 2) Storage에서 삭제
+    const storage = getStorage();
+    const fileRef = ref(storage, url);
+
+    await deleteObject(fileRef);
+
+    // 3) Firestore 업데이트
+    await setDoc(
+      doc(db, "proofs", studentId, "days", selectedDate),
+      {
+        images: newList,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("삭제 오류:", err);
+  }
+};
+  /** ------------------------------------------------------
+   * 🔥 1) 자동 리사이즈 (긴 변 1200px)
+   --------------------------------------------------------*/
+  const resizeImage = (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      const img = document.createElement("img");
+      const reader = new FileReader();
+
+      reader.onload = (e) => (img.src = e.target!.result as string);
+      reader.readAsDataURL(file);
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 1200;
+
+        let w = img.width;
+        let h = img.height;
+
+        if (w > h && w > MAX) {
+          h = (h * MAX) / w;
+          w = MAX;
+        } else if (h > w && h > MAX) {
+          w = (w * MAX) / h;
+          h = MAX;
+        }
+
+        canvas.width = w;
+        canvas.height = h;
+
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, w, h);
+
+        canvas.toBlob((blob) => {
+          if (blob)
+            resolve(new File([blob], file.name, { type: "image/jpeg" }));
+        }, "image/jpeg", 0.85);
+      };
+    });
+  };
+
+  /** ------------------------------------------------------
+   * 🔥 2) 파일 업로드 + 리사이즈 + 저장
+   --------------------------------------------------------*/
+  const handleFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const arr = Array.from(files);
+    const urls: string[] = [];
+
+    // storage 업로드
+    for (const f of arr) {
+      const resized = await resizeImage(f); // ⭐ 자동 리사이즈 적용
+      const url = await uploadProof(resized, studentId);
+      if (url) urls.push(url);
+    }
+
+    // 화면에 즉시 표시
+    setImages((prev) => [...prev, ...urls]);
+
+    // 날짜별 Firestore 저장
+    if (selectedDate) {
+      const newItems = urls.map((url) => ({
+    url,
+  }));
+
+  await setDoc(
+    doc(db, "proofs", studentId, "days", selectedDate),
+    {
+      images: [...images, ...newItems], // 기존 + 새 이미지 누적
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+  };
+
+  /** ------------------------------------------------------
+   * 🔥 3) 확대된 이미지에서 좌우 이동 처리
+   --------------------------------------------------------*/
+  const moveImage = (dir: "prev" | "next") => {
+    if (!zoomImg) return;
+    const idx = images.indexOf(zoomImg);
+
+    if (idx === -1) return;
+
+    if (dir === "prev" && idx > 0) {
+      setZoomImg(images[idx - 1]);
+    }
+    if (dir === "next" && idx < images.length - 1) {
+      setZoomImg(images[idx + 1]);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 10, marginBottom: 16 }}>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#4B5563",
+          marginBottom: 6,
+        }}
+      >
+        📸 집공 인증샷 / 메모
+      </div>
+
+      {!readonly && (
+        <input
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={handleFiles}
+          style={{ fontSize: 12, marginBottom: 8 }}
+        />
+      )}
+
+      {/* 썸네일 */}
+      {images.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            marginBottom: 8,
+          }}
+        >
+          {images.map((url, i) => (
+            <div key={i} style={{ position: "relative" }}>
+              <img
+                src={url}
+                onClick={() => setZoomImg(url)}
+                style={{
+                  width: 72,
+                  height: 72,
+                  objectFit: "cover",
+                  borderRadius: 8,
+                  border: "1px solid #E5E7EB",
+                  cursor: "pointer",
+                }}
+              />
+
+              {!readonly && (
+                <button
+                  type="button"
+                 onClick={() => deleteImage(url, i)}
+                  style={{
+                    position: "absolute",
+                    top: -6,
+                    right: -6,
+                    width: 18,
+                    height: 18,
+                    borderRadius: "999px",
+                    border: "none",
+                    background: "#EF4444",
+                    color: "#FFF",
+                    fontSize: 10,
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 🔥 확대 + 좌우 슬라이드 */}
+      {zoomImg && (
+        <div
+          onClick={() => setZoomImg(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.75)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 999,
+            cursor: "zoom-out",
+          }}
+        >
+          {/* 이전 버튼 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              moveImage("prev");
+            }}
+            style={{
+              position: "absolute",
+              left: 20,
+              fontSize: 40,
+              background: "transparent",
+              border: "none",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            ‹
+          </button>
+
+          {/* 확대 이미지 */}
+          <img
+            src={zoomImg}
+            style={{
+              maxWidth: "90%",
+              maxHeight: "90%",
+              borderRadius: 12,
+            }}
+          />
+
+          {/* 다음 버튼 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              moveImage("next");
+            }}
+            style={{
+              position: "absolute",
+              right: 20,
+              fontSize: 40,
+              background: "transparent",
+              border: "none",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            ›
+          </button>
+        </div>
+      )}
+
+      <textarea
+        value={memo}
+        onChange={(e) => setMemo(e.target.value)}
+        readOnly={readonly}
+        rows={2}
+        placeholder="집에서 공부한 내용, 인증 메모를 적어주세요."
+        style={textarea}
       />
     </div>
   );

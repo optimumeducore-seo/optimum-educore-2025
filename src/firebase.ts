@@ -13,9 +13,9 @@ const firebaseConfig = {
   apiKey: "AIzaSyCgMyqtp4Vlg6YWvDbQfRtTkG5xrgUO9x0",
   authDomain: "optimum-educore-2025.firebaseapp.com",
   projectId: "optimum-educore-2025",
-  storageBucket: "optimum-educore-2025.appspot.com", // ✅ 수정
+ storageBucket: "optimum-educore-2025.firebasestorage.app",
   messagingSenderId: "717693241717",
-  appId: "1:717693241717:web:ecfd474f41271db992eb3c",
+  appId: "1:717693241717:web:ecfd474f41271db992eb3c"
 };
 
 // Firebase 초기화 (한 번만!)
