@@ -38,6 +38,8 @@ type DayCell = {
   restroomMin?: number;
   mealMin?: number;
   memo?: string;
+  academyIn?: string;
+  academyOut?: string;
   academyBySubject?: Record<string, SubjectEntry>;
 };
 
@@ -606,7 +608,8 @@ function getEnglishMonth(ym: string) {
   let rest = 0;
   let short = 0;
   let days = 0;
-  let academy = 0;  // ⭐ 추가
+  let academy = 0;
+  let academyOuting = 0;   // 🔥 추가
 
   monthDates.forEach((date) => {
     const cell = records[date];
@@ -614,22 +617,24 @@ function getEnglishMonth(ym: string) {
 
     days++;
 
-    // 순공 계산: 등원~하원
     const start = cell.time ? hmToMin(cell.time) : 0;
     const end = cell.outTime ? hmToMin(cell.outTime) : start;
     const gross = Math.max(0, end - start);
 
-    // 이동/화장실/식사
     const outing =
       (cell.commuteMin ?? 0) +
       (cell.restroomMin ?? 0) +
       (cell.mealMin ?? 0);
 
-    // 순공 + 생활시간
-    study += Math.max(0, gross - outing);
+    const net =
+      typeof cell.studyMin === "number"
+        ? cell.studyMin
+        : Math.max(0, gross - outing);
+
+    study += net;
     short += outing;
 
-    // ⭐⭐⭐ 학원시간 누적
+    // 📌 학원 수업시간 합산 (기존)
     if (cell.academyBySubject) {
       Object.values(cell.academyBySubject).forEach((data: any) => {
         const academyTotal =
@@ -643,68 +648,90 @@ function getEnglishMonth(ym: string) {
         academy += academyTotal;
       });
     }
+
+    // 🔥 학원 외출 실제 시간(academyIn/academyOut)
+    if (cell.academyIn && cell.academyOut) {
+      const toMin = (hm: string) => {
+        const [h, m] = hm.split(":").map(Number);
+        return h * 60 + m;
+      };
+      academyOuting += toMin(cell.academyOut) - toMin(cell.academyIn);
+    }
   });
 
-  // ⭐ return에 academy 반드시 포함!!
-  return { days, study, rest, short, academy };
+  return { days, study, rest, short, academy, academyOuting };  // 🔥 추가
 }, [monthDates, records]);
-
  
 
 
-  const prevSummary = useMemo(() => {
-    const prevMonth = new Date();
-    prevMonth.setMonth(prevMonth.getMonth() - 1);
-    const prevMonthKey = prevMonth.toISOString().slice(0, 7);
+ const prevSummary = useMemo(() => {
+  const prevMonth = new Date();
+  prevMonth.setMonth(prevMonth.getMonth() - 1);
+  const prevMonthKey = prevMonth.toISOString().slice(0, 7);
 
-    const prevMonthDates = sortDates(
-      Object.keys(records).filter((d) => d.startsWith(prevMonthKey))
-    );
+  const prevMonthDates = sortDates(
+    Object.keys(records).filter((d) => d.startsWith(prevMonthKey))
+  );
 
-    if (prevMonthDates.length === 0) return null;
+  if (prevMonthDates.length === 0) return null;
 
-    let study = 0;
-    let rest = 0;
-    let short = 0;
-    let days = 0;
-    let academy = 0;
+  let study = 0;
+  let rest = 0;
+  let short = 0;
+  let days = 0;
+  let academy = 0;
+  let academyOuting = 0;   // 🔥 추가
 
-    prevMonthDates.forEach((date) => {
-      const cell = records[date];
-      if (!cell) return;
+  prevMonthDates.forEach((date) => {
+    const cell = records[date];
+    if (!cell) return;
 
-      days++;
+    days++;
 
-      const start = cell.time ? hmToMin(cell.time) : 0;
-      const end = cell.outTime ? hmToMin(cell.outTime) : start;
-      const gross = Math.max(0, end - start);
+    const start = cell.time ? hmToMin(cell.time) : 0;
+    const end = cell.outTime ? hmToMin(cell.outTime) : start;
+    const gross = Math.max(0, end - start);
 
-      const outing =
-        (cell.commuteMin ?? 0) +
-        (cell.restroomMin ?? 0) +
-        (cell.mealMin ?? 0);
+    const outing =
+      (cell.commuteMin ?? 0) +
+      (cell.restroomMin ?? 0) +
+      (cell.mealMin ?? 0);
 
-      study += Math.max(0, gross - outing);
-      short += outing;
+    const net =
+      typeof cell.studyMin === "number"
+        ? cell.studyMin
+        : Math.max(0, gross - outing);
 
-      if (cell.academyBySubject) {
-        Object.values(cell.academyBySubject).forEach((data: any) => {
-          const academyTotal =
-            data.slots?.reduce((sum: number, slot: any) => {
-              if (!slot.from || !slot.to) return sum;
-              const [fh, fm] = slot.from.split(":").map(Number);
-              const [th, tm] = slot.to.split(":").map(Number);
-              return sum + ((th * 60 + tm) - (fh * 60 + fm));
-            }, 0) || 0;
+    study += net;
+    short += outing;
 
-          academy += academyTotal;
-        });
-      }
-    });
+    // 기존 학원 수업 계산
+    if (cell.academyBySubject) {
+      Object.values(cell.academyBySubject).forEach((data: any) => {
+        const academyTotal =
+          data.slots?.reduce((sum: number, slot: any) => {
+            if (!slot.from || !slot.to) return sum;
+            const [fh, fm] = slot.from.split(":").map(Number);
+            const [th, tm] = slot.to.split(":").map(Number);
+            return sum + ((th * 60 + tm) - (fh * 60 + fm));
+          }, 0) || 0;
 
-    return { days, study, rest, short, academy };
-  }, [records]);
+        academy += academyTotal;
+      });
+    }
 
+    // 🔥 학원 외출 실제 시간
+    if (cell.academyIn && cell.academyOut) {
+      const toMin = (hm: string) => {
+        const [h, m] = hm.split(":").map(Number);
+        return h * 60 + m;
+      };
+      academyOuting += toMin(cell.academyOut) - toMin(cell.academyIn);
+    }
+  });
+
+  return { days, study, rest, short, academy, academyOuting };  // 🔥 추가
+}, [records]);
   const attendanceDays = monthDates.filter(date => !!records[date]?.time).length;
    /* ===============================
         로딩 처리
@@ -1019,10 +1046,11 @@ function getEnglishMonth(ym: string) {
 
 function DoughnutSection({ summary }: { summary: any }) {
   const items = [
-    { label: "순공", value: summary.study, color: "#1E3A8A" },
-    { label: "생활시간(이동·식사·화장실)", value: summary.short, color: "#b4d149ff" },
-    { label: "학원학습", value: summary.academy, color: "#C8A76A" },
-  ];
+  { label: "순공", value: summary.study, color: "#1E3A8A" },
+  { label: "생활시간", value: summary.short, color: "#b4d149ff" },
+  { label: "학원학습", value: summary.academy, color: "#C8A76A" },
+  { label: "학원외출", value: summary.academyOuting, color: "#9b59b6" },
+];
 
   return (
     <div style={{ marginBottom: 28 }}>
@@ -1048,12 +1076,12 @@ function DoughnutSection({ summary }: { summary: any }) {
         }}
       >
         {/* 도넛 */}
-        <DoughnutChart
-          study={summary.study}
-          rest={summary.rest}
-          short={summary.short}
-          academy={summary.academy}
-        />
+<DoughnutChart
+  study={summary.study}
+  short={summary.short}
+  academy={summary.academy}
+  academyOuting={summary.academyOuting}
+/>
 
         {/* 범례 */}
         <div style={{ fontSize: 14, color: "#333", minWidth: 180 }}>
@@ -1349,33 +1377,63 @@ function TimelineSection({
       )}
 
       {/* 학원 */}
-      {cell.academyBySubject && (
-        <>
-          <div
-            style={{ marginTop: 8, fontWeight: 700, fontSize: 13 }}
-          >
-            학원
-          </div>
+      {/* 학원 */}
+{cell.academyBySubject && (
+  <>
+    <div
+      style={{
+        marginTop: 8,
+        fontWeight: 700,
+        fontSize: 13,
+      }}
+    >
+      학원
+    </div>
 
-          {Object.entries(cell.academyBySubject).map(([sub, data]) => {
-            const total =
-              data.slots?.reduce((sum, slot) => {
-                if (!slot.from || !slot.to) return sum;
-                const [fh, fm] = slot.from.split(":").map(Number);
-                const [th, tm] = slot.to.split(":").map(Number);
-                return sum + (th * 60 + tm - (fh * 60 + fm));
-              }, 0) || 0;
+    {Object.entries(cell.academyBySubject).map(([sub, data]: any) =>
+      data.slots?.map((slot: any, idx: number) => (
+        <TimelineItem
+          key={`${date}-${sub}-${idx}`}
+          label={` - ${sub}`}
+          time={`${slot.from} ~ ${slot.to}`}
+        />
+      ))
+    )}
+  </>
+)}
+{/* 🔥 실제 학원 다녀온 시간 표시 */}
+{(cell.academyIn || cell.academyOut) && (
+  <>
+    <div style={{ marginTop: 8, fontWeight: 700, fontSize: 13 }}>
+      학원 방문 기록
+    </div>
 
-            return (
-              <TimelineItem
-                key={sub}
-                label={` - ${sub}`}
-                time={`${total}분`}
-              />
-            );
-          })}
-        </>
-      )}
+    {cell.academyIn && (
+      <TimelineItem label=" - 학원 등원" time={cell.academyIn} />
+    )}
+
+    {cell.academyOut && (
+      <TimelineItem label=" - 학원 하원" time={cell.academyOut} />
+    )}
+
+    {/* 🔥 총 학원 외출 시간 */}
+    {cell.academyIn && cell.academyOut && (
+      <TimelineItem
+        label=" - 학원 외출 총합"
+        time={
+          (() => {
+            const toMin = (hm: string) => {
+              const [h, m] = hm.split(":").map(Number);
+              return h * 60 + m;
+            };
+            const min = toMin(cell.academyOut) - toMin(cell.academyIn);
+            return `${min}분`;
+          })()
+        }
+      />
+    )}
+  </>
+)}
 
       {/* 메모 */}
       {cell.memo && (
@@ -2681,17 +2739,18 @@ function TimelineItem({ label, time }: { label: string; time?: string }) {
 
 function DoughnutChart({
   study,
-  rest,
   short,
   academy,
+  academyOuting,   // 🔥 추가
 }: {
   study: number;
-  rest: number;
   short: number;
   academy: number;
+  academyOuting: number;
 }) {
-  const total = study + academy + short;
-  const totalLearning = study + academy;   // ⭐ 중앙 숫자용
+  const total = study + academy + short + academyOuting;
+  const totalLearning = study + academy;
+
   const OFFSET = 25;
 
   if (total === 0) {
@@ -2721,7 +2780,7 @@ function DoughnutChart({
           fill="none"
         />
 
-        {/* 학원학습 */}
+        {/* 학원 학습 */}
         <circle
           cx="18"
           cy="18"
@@ -2744,6 +2803,19 @@ function DoughnutChart({
           strokeDashoffset={OFFSET - pct(study) - pct(academy)}
           fill="none"
         />
+
+        {/* 🔥 학원 외출 */}
+        <circle
+          cx="18"
+          cy="18"
+          r="16"
+          stroke="#9b59b6"  // 보라색
+          strokeWidth="4"
+          strokeDasharray={`${pct(academyOuting)} ${100 - pct(academyOuting)}`}
+          strokeDashoffset={OFFSET - pct(study) - pct(academy) - pct(short)}
+          fill="none"
+        />
+
       </svg>
 
       {/* 중앙 숫자 */}
@@ -2764,8 +2836,6 @@ function DoughnutChart({
         </div>
         <div style={{ fontSize: 10, color: "#6B7280" }}>총 학습</div>
       </div>
-      
     </div>
-    
   );
 }

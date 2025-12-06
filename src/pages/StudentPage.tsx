@@ -1,5 +1,5 @@
 // src/pages/StudentPage.tsx
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { db } from "../firebase";
 import { collection, doc, getDocs, getDoc, setDoc } from "firebase/firestore";
 
@@ -283,31 +283,26 @@ const lastDay = new Date(year, month + 1, 0).getDate();
 
   // 🔹 순공 요약
   // 🔹 순공 요약 (11월은 15일부터만 계산)
-const summary = (() => {
+const summary = useMemo(() => {
   if (!records.length) return { total: 0, days: 0 };
 
-  // 오늘 기준 연/월
-  const y = new Date().getFullYear();
-  const m = new Date().getMonth() + 1; // 1~12
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const monthStr = `${y}-${String(m).padStart(2, "0")}`;
 
-  // 이번 달(특히 11월)만 20일 이후로 제한
-  const filtered = records.filter((r) => {
-    const [yy, mm, dd] = r.date.split("-").map(Number);
-
-    // 이번 달 + 날짜 20일 이상만 포함
-    if (yy === y && mm === m) {
-      return dd >= 20;
-    }
-
-    // 다른 달은 전체 포함
-    return true;
-  });
+  // 이번 달 전체
+  const filtered = records.filter((r) =>
+    r.date?.startsWith(monthStr)
+  );
 
   let total = 0;
-  filtered.forEach((r) => (total += calcNetStudyMin_SP(r)));
+  filtered.forEach((r) => {
+    total += calcNetStudyMin_SP(r);
+  });
 
   return { total, days: filtered.length };
-})();
+}, [records]);
 
 
 
@@ -553,6 +548,7 @@ async function saveAcademyIn(studentId: string, time: string) {
     { merge: true }
   );
 }
+
 // 🔥 학원 하원 저장
 async function saveAcademyOut(studentId: string, time: string) {
   const date = new Date().toISOString().slice(0, 10);
@@ -577,6 +573,7 @@ async function saveAcademyOut(studentId: string, time: string) {
     { merge: true }
   );
 }
+
   // 🔹 그래프 데이터
   const chartData = records
     .slice()
@@ -1174,74 +1171,107 @@ if (log && log.academyIn && log.academyOut) {
     outline: "none",
   }}
 />
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-            <button
-              onClick={verifyPassword}
-              style={{
-                flex: 1,
-                padding: "10px 0",
-                border: "none",
-                borderRadius: 8,
-                background: "#2563eb",
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              확인
-            </button>
-            <button
-              onClick={() => {
-                setSelected(null);
-                setVerified(false);
-                setPasswordInput("");
-              }}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                background: "#f9fafb",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              취소
-            </button>
-            <button
-              onClick={resetPassword}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                border: "1px solid #fecaca",
-                background: "#fef2f2",
-                fontSize: 12,
-                color: "#b91c1c",
-                cursor: "pointer",
-              }}
-            >
-              비밀번호 초기화
-            </button>
-                    
-      <button
-  onClick={() => {
-    window.open(`/parent-report/${selected.id}`, "_blank");
-  }}
+        <div
   style={{
-    
-    padding: "10px 0",
-    borderRadius: 10,
-    border: "1px solid #2563eb",
-    background: "#eff6ff",
-    color: "#1e3a8a",
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
+    display: "flex",
+    gap: 6,
+    marginTop: 16,
+    width: "100%",
   }}
 >
-  📄P
-</button>
-          </div>
+  {/* 확인 */}
+  <button
+    onClick={verifyPassword}
+    style={{
+      flex: 1,
+      padding: "10px 0",
+      borderRadius: 8,
+      border: "1px solid #2563eb",
+      background: "#ffffff",
+      color: "#1e40af",
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: "pointer",
+    }}
+  >
+    확인
+  </button>
+
+  {/* 취소 */}
+  <button
+    onClick={() => {
+      setSelected(null);
+      setVerified(false);
+      setPasswordInput("");
+    }}
+    style={{
+      flex: 1,
+      padding: "10px 0",
+      borderRadius: 8,
+      border: "1px solid #d1d5db",
+      background: "#ffffff",
+      color: "#374151",
+      fontSize: 12,
+      fontWeight: 600,
+    }}
+  >
+    취소
+  </button>
+
+  {/* 초기화 */}
+  <button
+    onClick={resetPassword}
+    style={{
+      flex: 1,
+      padding: "10px 0",
+      borderRadius: 8,
+      border: "1px solid #ef4444",
+      background: "#ffffff",
+      color: "#b91c1c",
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: "pointer",
+    }}
+  >
+    초기화
+  </button>
+
+  {/* 학습계획 */}
+  <button
+    onClick={() => window.open(`/study-plan/${selected.id}`, "_blank")}
+    style={{
+      flex: 1.3,
+      padding: "10px 0",
+      borderRadius: 8,
+      border: "1px solid #059669",
+      background: "#ffffff",
+      color: "#065f46",
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: "pointer",
+    }}
+  >
+    Study-plan
+  </button>
+
+  {/* 부모리포트 */}
+  <button
+    onClick={() => window.open(`/parent-report/${selected.id}`, "_blank")}
+    style={{
+      flex: 1.3,
+      padding: "10px 0",
+      borderRadius: 8,
+      border: "1px solid #6366f1",
+      background: "#ffffff",
+      color: "#3730a3",
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: "pointer",
+    }}
+  >
+    Parents Report
+  </button>
+</div>
         </div>
       )}
 
@@ -1636,23 +1666,6 @@ if (log && log.academyIn && log.academyOut) {
       ))
   )}
 
-  <button
-  onClick={() => window.open(`/study-plan/${selected.id}`, "_blank")}
-  style={{
-    marginTop: 12,
-    width: "100%",
-    padding: "10px 0",
-    borderRadius: 10,
-    border: "1px solid #059669",
-    background: "#ecfdf5",
-    color: "#065f46",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
-  }}
->
-  📘 학습과제·계획 보기
-</button>
 
 </div>
 

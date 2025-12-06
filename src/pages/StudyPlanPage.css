@@ -1,0 +1,222 @@
+/* ------------------------------
+   기본 레이아웃
+------------------------------ */
+
+.sp-container {
+  max-width: 960px;
+  margin: 32px auto;
+  padding: 28px 24px;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+  font-family: Pretendard;
+}
+
+/* ------------------------------
+   2컬럼 레이아웃
+------------------------------ */
+
+.sp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+/* 모바일: 1컬럼 */
+@media (max-width: 768px) {
+  .sp-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+}
+
+/* ------------------------------
+   과목 버튼 그리드 (5개씩)
+------------------------------ */
+
+.sp-subject-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* 모바일: 4개씩 */
+@media (max-width: 768px) {
+  .sp-subject-grid {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+}
+
+/* ------------------------------
+   달력 요일 (7칸)
+------------------------------ */
+
+.sp-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 12px;
+  color: #6B7280;
+}
+
+/* ------------------------------
+   달력 날짜 그리드
+------------------------------ */
+
+.sp-day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+/* 모바일: 2칸 레이아웃 */
+@media (max-width: 768px) {
+  .sp-day-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+}
+
+/* 날짜 박스 */
+.sp-day-box {
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 14px 0;
+  height: 120px;
+  background: #F9FAFB;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  font-size: 15px;
+  gap: 3px;
+}
+
+/* 모바일 날짜 박스 */
+@media (max-width: 768px) {
+  .sp-day-box {
+    height: 90px !important;
+    padding: 8px 0 !important;
+    font-size: 14px !important;
+    border-radius: 10px !important;
+  }
+}
+
+/* ------------------------------
+   상단 버튼 줄
+------------------------------ */
+
+.sp-btn-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* 모바일: 세로 정렬 */
+@media (max-width: 768px) {
+  .sp-btn-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+}
+
+/* ------------------------------
+   모바일 전체 패딩 조절
+------------------------------ */
+
+@media (max-width: 768px) {
+  .sp-container {
+    margin: 8px auto !important;
+    padding: 16px !important;
+  }
+}
+
+.sp-day-box {
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 14px 0;
+  height: 120px;
+  background: #F9FAFB;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  font-size: 15px;
+  gap: 3px;
+}
+
+/* 오늘 날짜 강조 */
+.sp-day-box.is-today {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+/* 모바일 */
+@media (max-width: 768px) {
+  .sp-day-box {
+    height: 90px !important;
+    padding: 8px 0 !important;
+    font-size: 14px !important;
+  }
+}
+
+.sp-day-num {
+  font-weight: 700;
+}
+
+.sp-test-badge {
+  font-size: 11px;
+  color: #B91C1C;
+  margin-bottom: 2px;
+}
+
+/* 기본 날짜 배경 */
+.bg-default {
+  background: #f9fafb !important;
+}
+
+/* 계획 존재 */
+.bg-has-plan {
+  background: #e0f2fe !important;
+}
+
+/* 시험기간 */
+.bg-test {
+  background: #ffe4e6 !important;
+}
+
+/* 선택 */
+.bg-selected {
+  background: #fee2e2 !important;
+}
+
+/* 오늘 */
+.sp-day-box.is-today {
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.5);
+}
+
+/* 배지 */
+.badge-blue {
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.badge-green {
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 6px;
+}

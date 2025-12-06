@@ -13,6 +13,7 @@ import { db } from "../firebase";
 import { deleteDoc } from "firebase/firestore";
 import { uploadProof } from "../services/storage";
 import { getStorage, ref, deleteObject } from "firebase/storage";
+import "./StudyPlanPage.css";
 
 
 /* ------------------------------------------------------------------ */
@@ -27,10 +28,9 @@ type SubjectPlan = {
   memo?: string;
   done?: boolean;
   updatedAt?: any;
-
-  // 🔥 추가: 집공 인증용
-  proofImages?: string[];   // 인증샷 URL 배열
-  proofMemo?: string;       // 인증 메모(오늘 뭐 했는지)
+  proofImages?: string[];
+  proofMemo?: string;
+  wordTest?: {  correct?: number;   total?: number;   };
 };
 
 type DayPlan = {
@@ -210,6 +210,7 @@ export default function StudyPlanPage() {
     // 🔥 여기 추가 (인증샷 & 메모)
     proofImages: sRaw.proofImages || [],
     proofMemo: sRaw.proofMemo || "",
+    wordTest: sRaw.wordTest || { correct: 0, total: 0 },
   };
 });
 
@@ -365,7 +366,47 @@ useEffect(() => {
     });
   };
 
-   
+const updateWordTest = async (
+  date: string,
+  subjectKey: string,
+  data: { correct?: number; total?: number }
+) => {
+  if (!id || !date) return;
+
+  // 기존 데이터 불러오기
+  const prevDay = plans[date];
+  const prevSubj = prevDay?.subjects?.[subjectKey] || {};
+
+  const updatedSubject = {
+    ...prevSubj,
+    wordTest: data,
+  };
+
+  const ref = doc(db, "studyPlans", id, "days", date);
+
+  await setDoc(
+  ref,
+  {
+    date,
+    [subjectKey]: {
+      wordTest: data
+    }
+  },
+  { merge: true }
+);
+
+  // React state 업데이트
+  setPlans((prev) => ({
+    ...prev,
+    [date]: {
+      date,
+      subjects: {
+        ...(prev[date]?.subjects || {}),
+        [subjectKey]: updatedSubject,
+      },
+    },
+  }));
+};
 
   /* ------------------------------------------------------------------ */
   /* 🔹 날짜 선택 */
@@ -452,12 +493,13 @@ useEffect(() => {
 
   const mergedSubject: SubjectPlan = {
     teacherTasks,
-    studentPlans: prevSubj?.studentPlans || [],   // 🔥 수정 포인트!
+    studentPlans: prevSubj?.studentPlans || [],
     memo: memo.trim(),
     done,
     updatedAt: serverTimestamp(),
-    proofImages: prevSubj?.proofImages || [],     // 그대로 유지
+    proofImages: prevSubj?.proofImages || [],
     proofMemo: prevSubj?.proofMemo || "",
+    wordTest: prevSubj?.wordTest || {},   // ⭐⭐ 반드시 있어야 함 ⭐⭐
   };
 
   const data = cleanForFirestore({
@@ -482,45 +524,48 @@ useEffect(() => {
   return;
 }
     if (isStudent) {
-      const prevStudent = prevSubj?.studentPlans || [];
+  const prevStudent = prevSubj?.studentPlans || [];
 
-      const studentPlans = studentInput
-        .split("\n")
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .map((text) => ({
-          text,
-          done: prevStudent.find((x) => x.text === text)?.done ?? false,
-        }));
+  const studentPlans = studentInput
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((text) => ({
+      text,
+      done: prevStudent.find((x) => x.text === text)?.done ?? false,
+    }));
 
-      const mergedSubject: SubjectPlan = {
-        teacherTasks: prevSubj?.teacherTasks || [],
-        studentPlans,
-        memo: memo.trim(),
-        done,
-        updatedAt: serverTimestamp(),
-      };
+  const mergedSubject: SubjectPlan = {
+    teacherTasks: prevSubj?.teacherTasks || [],
+    studentPlans,
+    memo: memo.trim(),
+    done,
+    updatedAt: serverTimestamp(),
+    proofImages: prevSubj?.proofImages || [],
+    proofMemo: prevSubj?.proofMemo || "",
+    wordTest: prevSubj?.wordTest || {},   // ⭐⭐ 여기도 반드시 ⭐⭐
+  };
 
-      const data = cleanForFirestore({
-        date: selectedDate,
+  const data = cleanForFirestore({
+    date: selectedDate,
+    [selectedSubject]: mergedSubject,
+  });
+
+  await setDoc(ref, data, { merge: true });
+  
+  setPlans((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      date: selectedDate,
+      subjects: {
+        ...(prev[selectedDate]?.subjects || {}),
         [selectedSubject]: mergedSubject,
-      });
+      },
+    },
+  }));
 
-      await setDoc(ref, data, { merge: true });
-
-      setPlans((prev) => ({
-        ...prev,
-        [selectedDate]: {
-          date: selectedDate,
-          subjects: {
-            ...(prev[selectedDate]?.subjects || {}),
-            [selectedSubject]: mergedSubject,
-          },
-        },
-      }));
-
-      alert("저장 완료! (학생 계획)");
-    }
+  alert("저장 완료! (학생 계획)");
+}
   };
 const getLatestTest = (ds: string) => {
   const d = new Date(ds).getTime();
@@ -637,16 +682,8 @@ const isTestDay = (ds: string) => {
 
         {/* 요일 */}
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(7, 1fr)",
-            textAlign: "center",
-            marginBottom: 6,
-            fontWeight: 700,
-            fontSize: 12,
-            color: "#6B7280",
-          }}
-        >
+  className="sp-calendar-weekdays">
+  
           {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
             <div key={d}>{d}</div>
           ))}
@@ -654,12 +691,8 @@ const isTestDay = (ds: string) => {
 
         {/* 날짜 그리드 */}
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(7, 1fr)",
-            gap: 6,
-          }}
-        >
+  className="sp-day-grid">
+  
           {blanks.map((_, i) => (
             <div key={i} />
           ))}
@@ -683,13 +716,23 @@ const isTestDay = (ds: string) => {
               studentTotal = 0;
 
             if (p?.subjects) {
-              Object.values(p.subjects).forEach((sub) => {
-                teacherDone += sub.teacherTasks.filter((t) => t.done).length;
-                teacherTotal += sub.teacherTasks.length;
-                studentDone += sub.studentPlans.filter((t) => t.done).length;
-                studentTotal += sub.studentPlans.length;
-              });
-            }
+  Object.values(p.subjects).forEach((sub: any) => {
+    const tTasks = sub.teacherTasks ?? [];
+    const sPlans = sub.studentPlans ?? [];
+
+    teacherDone += tTasks.filter((t: any) => t?.done).length;
+    teacherTotal += tTasks.length;
+
+    studentDone += sPlans.filter((t: any) => t?.done).length;
+    studentTotal += sPlans.length;
+  });
+}
+
+            const bgClass =
+  isSelected ? "bg-selected" :
+  testDay ? "bg-test" :
+  teacherTotal || studentTotal ? "bg-has-plan" :
+  "bg-default";
 
             let bg = "#F9FAFB";
             if (teacherTotal || studentTotal) bg = "#E0F2FE";
@@ -703,55 +746,46 @@ const isTestDay = (ds: string) => {
             if (testDay) bg = "#FFE4E6";
             if (isSelected) bg = "#FEE2E2";
 
-            return (
-              <button
-                key={ds}
-                onClick={() => handleSelectDate(ds)}
-                style={{
-                  border: "1px solid #E5E7EB",
-                  borderRadius: 12,
-                  padding: "14px 0",
-                  height: 120,
-                  background: bg,
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  fontSize: 15,
-                  gap: 3,
-                  boxShadow: isToday
-                    ? "0 0 0 2px rgba(59,130,246,0.5)"
-                    : "none",
-                }}
-              >
-                <div style={{ fontWeight: 700 }}>{d}</div>
+          return (
+  <button
+    className={`sp-day-box ${isToday ? "is-today" : ""} ${bgClass}`}
+    key={ds}
+    onClick={() => handleSelectDate(ds)}
+  >
+    <div className="sp-day-num">{d}</div>
 
-                {testDay && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "#B91C1C",
-                      marginBottom: 2,
-                    }}
-                  >
-                    📌 시험기간
-                  </div>
-                )}
+    {testDay && (
+      <div className="sp-test-badge">📌 시험기간</div>
+    )}
 
-                {teacherTotal > 0 && (
-                  <div style={badgeBlue}>
-                    선생님 {teacherDone}/{teacherTotal}
-                  </div>
-                )}
+    {teacherTotal > 0 && (
+      <div className="badge-blue">
+        선생님 {teacherDone}/{teacherTotal}
+      </div>
+    )}
 
-                {studentTotal > 0 && (
-                  <div style={badgeGreen}>
-                    내 계획 {studentDone}/{studentTotal}
-                  </div>
-                )}
-              </button>
-            );
+    {studentTotal > 0 && (
+      <div className="badge-green">
+        내 계획 {studentDone}/{studentTotal}
+      </div>
+    )}
+   {/* 단어 시험 표시 */}
+{p?.subjects?.[selectedSubject]?.wordTest?.total ? (
+  <div
+    style={{
+      fontSize: 10,
+      color: "#DC2626",
+      marginTop: 2,
+      fontWeight: 700,
+    }}
+  >
+    단어{" "}
+    {p?.subjects?.[selectedSubject]?.wordTest?.correct ?? 0}/
+    {p?.subjects?.[selectedSubject]?.wordTest?.total ?? 0}
+  </div>
+) : null}
+  </button>
+);
           })}
         </div>
       </div>
@@ -761,6 +795,7 @@ const isTestDay = (ds: string) => {
   /* ------------------------------------------------------------------ */
   /* UI 시작 */
 /* ------------------------------------------------------------------ */
+const selectedDay = selectedDate ? plans[selectedDate] : undefined;
 
   const currentRoleLabel = isTeacher
     ? "선생님 모드"
@@ -780,17 +815,18 @@ const isTestDay = (ds: string) => {
       : [];
 
   return (
-    <div
-      style={{
-        maxWidth: 960,
-        margin: "32px auto",
-        padding: "28px 24px",
-        background: "#FFF",
-        borderRadius: 18,
-        boxShadow: "0 8px 22px rgba(15,23,42,0.12)",
-        fontFamily: "Pretendard",
-      }}
-    >
+  <div
+    className="sp-container"
+    style={{
+      maxWidth: 960,
+      margin: "32px auto",
+      padding: "28px 24px",
+      background: "#FFF",
+      borderRadius: 18,
+      boxShadow: "0 8px 22px rgba(15,23,42,0.12)",
+      fontFamily: "Pretendard",
+    }}
+  >
       {/* 상단 헤더 */}
       <div
         style={{
@@ -834,15 +870,16 @@ const isTestDay = (ds: string) => {
             border: "1px solid #DDE3FF",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
+          
+          <div className="sp-btn-row"
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  }}
+>
             <button
               onClick={() => navigate(-1)}
               style={{
@@ -955,13 +992,9 @@ const isTestDay = (ds: string) => {
       )}
 
       {/* ---------------- 2컬럼 레이아웃 ---------------- */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 20,
-        }}
-      >
+<div
+  className="sp-grid">
+ 
         {/* 왼쪽: 달력 */}
         <div
           style={{
@@ -1050,13 +1083,14 @@ const isTestDay = (ds: string) => {
 )}
           {/* 과목 탭 (5개씩 두 줄) */}
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(5, 1fr)",
-              gap: 8,
-              marginBottom: 12,
-            }}
-          >
+  className="sp-subject-grid"
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(5, 1fr)",
+    gap: 8,
+    marginBottom: 12,
+  }}
+>
             {SUBJECTS.map((s) => {
               const active = s.key === selectedSubject;
               return (
@@ -1154,6 +1188,171 @@ const isTestDay = (ds: string) => {
               🧾 문제집 기본 템플릿 넣기
             </button>
           )}
+
+      {/* 🔵 단어 시험 기록 */}
+{selectedDate && (
+  <div
+    style={{
+      background: "#F0F9FF",
+      border: "1px solid #93C5FD",
+      padding: 10,
+      borderRadius: 10,
+      marginTop: 12,
+      marginBottom: 12,
+    }}
+  >
+    <div
+      style={{
+        fontSize: 12,
+        fontWeight: 700,
+        color: "#1D4ED8",
+        marginBottom: 6,
+      }}
+    >
+      📘 단어 시험 기록
+    </div>
+
+    <div style={{ display: "flex", gap: 10 }}>
+      {/* ✅ 맞은 개수 */}
+      <input
+        type="number"
+        placeholder="맞은 개수"
+        value={
+          selectedDay?.subjects?.[selectedSubject]?.wordTest?.correct ?? ""
+        }
+        onChange={(e) => {
+          if (!selectedDate || !id) return;
+
+          const num = Number(e.target.value || 0);
+
+          // 1) 화면 상태 업데이트
+          setPlans((prev) => {
+            const day = prev[selectedDate] || { subjects: {} as any };
+            const subjects = day.subjects || {};
+            const subj = subjects[selectedSubject] || {};
+
+            const newWord = {
+              ...(subj.wordTest || { correct: 0, total: 0 }),
+              correct: num,
+            };
+
+            const updatedDay = {
+              ...day,
+              subjects: {
+                ...subjects,
+                [selectedSubject]: {
+                  ...subj,
+                  wordTest: newWord,
+                },
+              },
+            };
+
+            // 🔥 2) Firestore에도 같이 저장
+            const prevSubj =
+              (plans[selectedDate]?.subjects?.[selectedSubject] as any) || {};
+            const fsWord = {
+              ...(prevSubj.wordTest || { correct: 0, total: 0 }),
+              correct: num,
+            };
+
+            const ref = doc(db, "studyPlans", id, "days", selectedDate);
+            setDoc(
+              ref,
+              cleanForFirestore({
+                date: selectedDate,
+                [selectedSubject]: {
+                  ...prevSubj,
+                  wordTest: fsWord,
+                },
+              }),
+              { merge: true }
+            );
+
+            return {
+              ...prev,
+              [selectedDate]: updatedDay,
+            };
+          });
+        }}
+        style={{
+          width: 100,
+          padding: 6,
+          borderRadius: 6,
+          border: "1px solid #d1d5db",
+        }}
+      />
+
+      {/* ✅ 총 문제 수 */}
+      <input
+        type="number"
+        placeholder="총 문제 수"
+        value={
+          selectedDay?.subjects?.[selectedSubject]?.wordTest?.total ?? ""
+        }
+        onChange={(e) => {
+          if (!selectedDate || !id) return;
+
+          const num = Number(e.target.value || 0);
+
+          // 1) 화면 상태 업데이트
+          setPlans((prev) => {
+            const day = prev[selectedDate] || { subjects: {} as any };
+            const subjects = day.subjects || {};
+            const subj = subjects[selectedSubject] || {};
+
+            const newWord = {
+              ...(subj.wordTest || { correct: 0, total: 0 }),
+              total: num,
+            };
+
+            const updatedDay = {
+              ...day,
+              subjects: {
+                ...subjects,
+                [selectedSubject]: {
+                  ...subj,
+                  wordTest: newWord,
+                },
+              },
+            };
+
+            // 🔥 2) Firestore에도 같이 저장
+            const prevSubj =
+              (plans[selectedDate]?.subjects?.[selectedSubject] as any) || {};
+            const fsWord = {
+              ...(prevSubj.wordTest || { correct: 0, total: 0 }),
+              total: num,
+            };
+
+            const ref = doc(db, "studyPlans", id, "days", selectedDate);
+            setDoc(
+              ref,
+              cleanForFirestore({
+                date: selectedDate,
+                [selectedSubject]: {
+                  ...prevSubj,
+                  wordTest: fsWord,
+                },
+              }),
+              { merge: true }
+            );
+
+            return {
+              ...prev,
+              [selectedDate]: updatedDay,
+            };
+          });
+        }}
+        style={{
+          width: 100,
+          padding: 6,
+          borderRadius: 6,
+          border: "1px solid #d1d5db",
+        }}
+      />
+    </div>
+  </div>
+)}
 
           {/* 선생님 과제 체크박스 */}
           {selectedDate &&
@@ -1878,6 +2077,19 @@ function WeeklyView({
   plans: Record<string, DayPlan>;
   tests: any[];
 }) {
+  // 🔥 days 배열 안전 생성 (HMR 시 undefined 방지)
+const base = selectedDate ? new Date(selectedDate) : new Date();
+const dayIndex = base.getDay();
+const monday = new Date(base);
+monday.setDate(base.getDate() - dayIndex + 1);
+
+const days = Array.from({ length: 7 }, (_, i) => {
+  const d = new Date(monday);
+  d.setDate(monday.getDate() + i);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+});
   if (!selectedDate) {
     return (
       <div
@@ -1896,17 +2108,6 @@ function WeeklyView({
     );
   }
 
-  const base = new Date(selectedDate);
-  const day = base.getDay();
-  const monday = new Date(base);
-  monday.setDate(base.getDate() - ((day + 6) % 7));
-
-  const days: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    days.push(d.toISOString().slice(0, 10));
-  }
 
   const dayNames = ["월", "화", "수", "목", "금", "토", "일"];
 
@@ -1942,23 +2143,49 @@ function WeeklyView({
         }}
       >
         {days.map((ds, idx) => {
-          const p = plans[ds];
+  const p = plans[ds];
 
-          let teacherDone = 0,
-            teacherTotal = 0,
-            studentDone = 0,
-            studentTotal = 0;
-          let anyDone = false;
+  // 🔥 기록 없음 early-return (여기가 정확한 위치)
+  if (!p || !p.subjects) {
+    return (
+      <div
+        key={ds}
+        style={{
+          padding: "10px 12px",
+          background: "#FFFFFF",
+          borderRadius: 12,
+          border: "1px solid #E5E7EB",
+          minHeight: 120,
+          boxShadow: "0 3px 8px rgba(0,0,0,0.05)",
+          fontSize: 12,
+          color: "#9CA3AF",
+        }}
+      >
+        기록 없음
+      </div>
+    );
+  }
 
-          if (p?.subjects) {
-            Object.values(p.subjects).forEach((sub) => {
-              teacherDone += sub.teacherTasks.filter((t) => t.done).length;
-              teacherTotal += sub.teacherTasks.length;
-              studentDone += sub.studentPlans.filter((t) => t.done).length;
-              studentTotal += sub.studentPlans.length;
-              if (sub.done) anyDone = true;
-            });
-          }
+  let teacherDone = 0,
+    teacherTotal = 0,
+    studentDone = 0,
+    studentTotal = 0;
+  let anyDone = false;
+
+  if (p.subjects) {
+    Object.values(p.subjects).forEach((sub: any) => {
+      const tTasks = sub.teacherTasks ?? [];
+      const sPlans = sub.studentPlans ?? [];
+
+      teacherDone += tTasks.filter((t: any) => t?.done).length;
+      teacherTotal += tTasks.length;
+
+      studentDone += sPlans.filter((t: any) => t?.done).length;
+      studentTotal += sPlans.length;
+
+      if (sub.done) anyDone = true;
+    });
+  }
 
           const testDay = isTestDay(ds);
 
@@ -2116,3 +2343,4 @@ const applyBtn: React.CSSProperties = {
   border: "none",
   whiteSpace: "nowrap",
 };
+

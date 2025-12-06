@@ -31,9 +31,15 @@ type SubjectPlan = {
   done?: boolean;
   updatedAt?: any;
 
-  // 🔥 추가: 집공 인증용
-  proofImages?: string[];   // 인증샷 URL 배열
-  proofMemo?: string;       // 인증 메모(오늘 뭐 했는지)
+  // 🔥 집공 인증용
+  proofImages?: string[];
+  proofMemo?: string;
+
+  // 🔥 추가! 단어 시험 기록
+  wordTest?: {
+    correct?: number;
+    total?: number;
+  };
 };
 
 type DayPlan = {
@@ -133,6 +139,7 @@ const cleanForFirestore = (obj: any) => {
   return res;
 };
 
+
 /* -------------------------------------------------- */
 /* 메인 컴포넌트: StudyPlanDashboardPage              */
 /* -------------------------------------------------- */
@@ -217,10 +224,9 @@ export default function StudyPlanDashboardPage() {
   memo: sRaw.memo || "",
   done: !!sRaw.done,
   updatedAt: sRaw.updatedAt,
-
-  // 🔥 인증샷 + 인증메모
   proofImages: sRaw.proofImages || [],
   proofMemo: sRaw.proofMemo || "",
+    wordTest: sRaw.wordTest || { correct: 0, total: 0 },
 };
             });
 
@@ -265,6 +271,29 @@ export default function StudyPlanDashboardPage() {
     [students, selectedStudentId]
   );
 
+const [wordCorrect, setWordCorrect] = useState<number>(0);
+const [wordTotal, setWordTotal] = useState<number>(0);
+  useEffect(() => {
+  if (!selectedStudentId || !dateStr) {
+    setTeacherInput("");
+    setStudentInput("");
+    setMemo("");
+    setDone(false);
+    return;
+  }
+
+  const day = dayPlans[selectedStudentId];
+  const subj = day?.subjects?.[selectedSubject];
+
+  setTeacherInput((subj?.teacherTasks || []).map((t) => t.text).join("\n"));
+  setStudentInput((subj?.studentPlans || []).map((t) => t.text).join("\n"));
+  setMemo(subj?.memo || "");
+  setDone(!!subj?.done);
+
+  // 🔥 추가: 단어 시험 불러오기
+  setWordCorrect(subj?.wordTest?.correct ?? 0);
+  setWordTotal(subj?.wordTest?.total ?? 0);
+}, [selectedStudentId, selectedSubject, dayPlans, dateStr]);
   /* ---------------- 저장 (선생님/학생 계획 통합) ---- */
 
   const handleSave = async () => {
@@ -295,15 +324,18 @@ export default function StudyPlanDashboardPage() {
     }));
 
   const mergedSubject: SubjectPlan = {
-        teacherTasks,
-        studentPlans: prevSubj?.studentPlans || [],
-        memo: memo.trim(),
-        done: prevSubj?.done ?? done,
-        updatedAt: serverTimestamp(),
-        // 🔥 학생 인증은 그대로 유지
-        proofImages: prevSubj?.proofImages || [],
-        proofMemo: prevSubj?.proofMemo || "",
-      };
+  teacherTasks,
+  studentPlans: prevSubj?.studentPlans || [],
+  memo: memo.trim(),
+  done: prevSubj?.done ?? done,
+  updatedAt: serverTimestamp(),
+  proofImages: prevSubj?.proofImages || [],
+  proofMemo: prevSubj?.proofMemo || "",
+  wordTest: {
+    correct: wordCorrect ?? prevSubj?.wordTest?.correct ?? 0,
+    total: wordTotal ?? prevSubj?.wordTest?.total ?? 0,
+  },
+};
 
   // 🔥 기존 문서 항목과 병합하지 않고, 해당 과목 필드만 깔끔하게 덮어씀
   await setDoc(
@@ -333,38 +365,44 @@ export default function StudyPlanDashboardPage() {
   /* ---------------- 요약 테이블 계산 ---------------- */
 
   const summaryRows = useMemo(() => {
-    return students.map((s) => {
-      const rec = records[s.id] || {};
-      const netMin = calcNetStudyMin(rec);
-      const inTime = rec.time || rec.inTime || "";
-      const outTime = rec.outTime || "";
+  return students.map((s) => {
+    const rec = records[s.id] || {};
+    const netMin = calcNetStudyMin(rec);
 
-      const day = dayPlans[s.id];
-      let tDone = 0,
-        tTotal = 0,
-        stDone = 0,
-        stTotal = 0;
-      if (day?.subjects) {
-        Object.values(day.subjects).forEach((sub) => {
-          tDone += sub.teacherTasks.filter((t) => t.done).length;
-          tTotal += sub.teacherTasks.length;
-          stDone += sub.studentPlans.filter((t) => t.done).length;
-          stTotal += sub.studentPlans.length;
-        });
-      }
+    const day = dayPlans[s.id];
+    const subj = day?.subjects?.[selectedSubject];
 
-      return {
-        student: s,
-        inTime,
-        outTime,
-        netMin,
-        teacherDone: tDone,
-        teacherTotal: tTotal,
-        studentDone: stDone,
-        studentTotal: stTotal,
-      };
-    });
-  }, [students, records, dayPlans]);
+    let tDone = 0,
+      tTotal = 0,
+      stDone = 0,
+      stTotal = 0;
+
+    if (day?.subjects) {
+      Object.values(day.subjects).forEach((sub) => {
+        tDone += sub.teacherTasks.filter((t) => t.done).length;
+        tTotal += sub.teacherTasks.length;
+        stDone += sub.studentPlans.filter((t) => t.done).length;
+        stTotal += sub.studentPlans.length;
+      });
+    }
+
+    return {
+      student: s,
+      inTime: rec.time || rec.academyIn || "",
+      outTime: rec.outTime || rec.academyOut || "",
+      netMin,
+
+      teacherDone: tDone,
+      teacherTotal: tTotal,
+      studentDone: stDone,
+      studentTotal: stTotal,
+
+      // 🔵 학생 개인의 선택된 과목 wordTest
+      wordCorrect: subj?.wordTest?.correct ?? null,
+      wordTotal: subj?.wordTest?.total ?? null,
+    };
+  });
+}, [students, records, dayPlans, selectedSubject]);
 
   /* ---------------- 렌더 ---------------- */
 
@@ -603,6 +641,7 @@ export default function StudyPlanDashboardPage() {
                   <th style={thCell}>순공</th>
                   <th style={thCell}>선생님 과제</th>
                   <th style={thCell}>학생 계획</th>
+                  <th style={thCell}>단어 시험</th>
                 </tr>
               </thead>
               <tbody>
@@ -647,6 +686,15 @@ export default function StudyPlanDashboardPage() {
                         "-"
                       )}
                     </td>
+                    <td style={tdCell}>
+  {row.wordTotal ? (
+    <>
+      {row.wordCorrect}/{row.wordTotal}
+    </>
+  ) : (
+    "-"
+  )}
+</td>
                   </tr>
                 ))}
               </tbody>
@@ -756,6 +804,49 @@ export default function StudyPlanDashboardPage() {
                   rows={3}
                   placeholder="컨디션, 시험범위, 특이사항 등을 적어주세요."
                 />
+
+                {/* 🔵 단어 시험 입력 */}
+<div style={{ marginBottom: 10 }}>
+  <div
+    style={{
+      fontSize: 12,
+      fontWeight: 700,
+      color: "#4B5563",
+      marginBottom: 4,
+    }}
+  >
+    단어 시험 (맞은 개수 / 총 문제)
+  </div>
+
+  <div style={{ display: "flex", gap: 10 }}>
+    <input
+      type="number"
+      placeholder="맞은 개수"
+      value={wordCorrect}
+      onChange={(e) => setWordCorrect(Number(e.target.value || 0))}
+      style={{
+        width: 100,
+        borderRadius: 8,
+        border: "1px solid #D1D5DB",
+        padding: "6px 8px",
+        fontSize: 12,
+      }}
+    />
+    <input
+      type="number"
+      placeholder="총 문제 수"
+      value={wordTotal}
+      onChange={(e) => setWordTotal(Number(e.target.value || 0))}
+      style={{
+        width: 100,
+        borderRadius: 8,
+        border: "1px solid #D1D5DB",
+        padding: "6px 8px",
+        fontSize: 12,
+      }}
+    />
+  </div>
+</div>
 
                 {/* 🔥 집공 인증샷/메모 표시 (읽기 전용) */}
 {(() => {

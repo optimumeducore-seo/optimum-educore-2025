@@ -136,6 +136,8 @@ export interface DayCell {
   outTime?: string;
   academyFrom?: string;
   academyTo?: string;
+  academyIn?: string;
+  academyOut?: string;
   enabledSubjects?: AcademyType[];
   academyBySubject?: Partial<Record<AcademyType, SubjectEntry>>;
   overrideAcademyTimes?: Record<string, { subject: string; from: string; to: string; date: string }>;
@@ -145,6 +147,11 @@ export interface DayCell {
   commuteMin?: number; // 이동 / 통학 시간(분 단위)
   memo?: string;
   comment?: string;
+  wordTest?: {
+  correct: number;   // 맞은 개수
+  total: number;     // 총 문제 수
+  memo?: string;     // 틀린 단어 메모 (선택)
+};
   studyNote?: string;
   tasks?: TaskItem[];
   hwDone?: boolean;
@@ -548,6 +555,7 @@ export default function App() {
     .slice(0, 10);
 }
 
+
 // ✅ 학생용 등원 처리 (오늘 날짜 기준, records/날짜/학생ID 구조)
 // =============================
 
@@ -644,12 +652,26 @@ async function handleCheckOut(studentId: string, inputtime: string) {
     }
   }
 
+  const timeBox: React.CSSProperties = {
+  width: 70,
+  textAlign: "center",
+  fontSize: 14,
+  padding: "4px 6px",
+  border: "1px solid #d1d5db",      // 연회색 테두리
+  borderRadius: 8,                   // 둥근 모서리
+  background: "#ffffff",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.05)", // 아주 은은한 그림자
+  boxSizing: "border-box",
+};
 
   // DayCell 기본 구조 정의
 const defaultDayCell: DayCell = {
   status: "P",
   time: undefined,
   outTime: undefined,
+  academyIn: undefined,
+  academyOut: undefined,
+
 
   // 🔥 기본 메모류
   comment: "",
@@ -2010,8 +2032,8 @@ const updateDayCell = (
   };
   const sectionTitle: React.CSSProperties = { textAlign: "center", fontWeight: 800, color: "#2563eb", fontSize: 14 };
   const timeInp: React.CSSProperties = {
-    ...inp, width: 120, padding: "6px 8px", fontSize: 12,
-    height: 34, lineHeight: "32px", fontVariantNumeric: "tabular-nums",
+    ...inp, width: 90, minWidth: 90, padding: "4px 4px", fontSize: 11,
+    height: 30, lineHeight: "28px", fontVariantNumeric: "tabular-nums",
   };
   const SHOW_STUDENT_COUNT = false;
 
@@ -2050,11 +2072,12 @@ const updateDayCell = (
     border: "none", // 테두리 제거
     borderRadius: 8,
     background: "rgba(226, 232, 240, 0.6)", // 💡 연그레이(파스텔톤)
-    fontSize: 13,
-    height: 30,
+    fontSize: 12,
+    height: 26,
     color: "#1f2937",
     textAlign: "center",
-    width: 90,
+    width: 65,
+    minWidth: 65,
     transition: "background 0.25s, box-shadow 0.25s",
     boxSizing: "border-box",
   };
@@ -2078,13 +2101,30 @@ const updateDayCell = (
 
     <div className="app-main-container" style={{ minHeight: "100vh", background: "#f5f7fb", color: "#111", padding: 20 }}>
       {/* 전역 스타일: time 숫자 잘림 방지 */}
-      <style>{`
-        input[type="time"]{
-          height: 34px; line-height: 32px; font-size:12px; box-sizing:border-box;
-        }
-        input[type="time"]::-webkit-datetime-edit { padding: 0 2px; }
-        input[type="time"]::-webkit-date-and-time-value { min-width: 7.6ch; }
-      `}</style>
+     <style>{`
+  /* 숫자만 보이게: 오전/오후 없애기 */
+  input[type="time"]::-webkit-datetime-edit-ampm-field {
+    display: none;
+  }
+
+  /* 내부 간격 조정 */
+  input[type="time"]::-webkit-datetime-edit {
+    padding: 0 2px;
+  }
+
+  /* 시간 폭 고정 */
+  input[type="time"]::-webkit-date-and-time-value {
+    min-width: 7.6ch;
+  }
+
+  /* 전체 타임 입력 필드 스타일 */
+  input[type="time"] {
+    height: 34px;
+    line-height: 32px;
+    font-size: 12px;
+    box-sizing: border-box;
+  }
+`}</style>
 
       <div className="app-main-container">
 
@@ -2388,13 +2428,13 @@ const updateDayCell = (
                 value={newStu.parentPhone || ""}
                 onChange={(e) => setNewStu(s => ({ ...s, parentPhone: e.target.value }))}
               />
-             <input
+           <input
   type="date"
   value={newStu.entryDate || ""}
   onChange={(e) =>
     setNewStu((prev) => ({ ...prev, entryDate: e.target.value }))
   }
-  style={inp}
+  style={{ ...inp, width: 140, height: 38 }}  // ✅ 이 줄 추가
   placeholder="입학일"
 />
               
@@ -2427,7 +2467,7 @@ const updateDayCell = (
                 }}
                 onClick={reloadStudents}
               >
-                🔄 새로고침
+                🔄 고침
               </button>
 
               <button
@@ -2447,14 +2487,6 @@ const updateDayCell = (
             </div>
 
           </div>
-
-
-
-
-
-
-
-
 
           <div style={{
             padding: "20px",
@@ -2613,142 +2645,165 @@ const updateDayCell = (
                           <td style={{ padding: 10, textAlign: "center" }}>{s.grade || "-"}</td>
                           <td style={{ padding: 10, textAlign: "center" }}>{s.school || "-"}</td>
 
-                          {/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
-{/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
-{/* 등/하교 2줄 (반드시 TD 안에서 그리드 구성) */}
-<td style={{ padding: 10 }}>
-  {/* 🔹 등원 줄 */}
+<td style={{ padding: 10, minWidth: 220 }}>
+
+  {/* 🔹 1줄차 : 에듀 등원 / 학원 등원 */}
   <div
     style={{
       display: "grid",
-      gridTemplateColumns: "1fr auto auto",
+      gridTemplateColumns: "1fr 1fr auto auto",
       gap: 6,
+      marginBottom: 8,
       alignItems: "center",
-      marginBottom: 6,
     }}
   >
-    {/* 선생님이 직접 입력하는 등원 시간 */}
+    {/* 에듀 등원 */}
     <input
-      type="time"
-      value={inputTimes[s.id] ?? cell.time ?? ""}
-      onChange={(e) =>
-        setInputTimes((prev) => ({
-          ...prev,
-          [s.id]: e.target.value,
-        }))
-      }
-      placeholder="선생님 입력 HH:MM"
-      style={{
-        ...timeInp,
-        border: "1px solid #888",
-        background: "#fff9e6",
-        fontSize: 11,
-      }}
+      type="text"
+      value={cell.time ?? ""}
+      onChange={(e) => {
+  let v = e.target.value.replace(/\D/g, "");
+
+  if (v.length <= 2) {
+    // 1~2자리: 시(hour)만 입력 중
+    updateDayCell(date, s.id, (b) => ({ ...b, time: v }));
+    return;
+  }
+
+  if (v.length === 3) {
+    // 153 → 15:3
+    updateDayCell(date, s.id, (b) => ({ ...b, time: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
+    return;
+  }
+
+  // 4자리 이상 → 15:30 고정
+  v = v.slice(0, 4);
+  updateDayCell(date, s.id, (b) => ({ ...b, time: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
+}}
+      placeholder="00:00"
+      style={timeBox}
     />
-
-    {/* ✅ 등원 버튼 */}
-    <button
-      style={btn}
-      onClick={() => {
-        // 1) 최종 등원 시간 결정 (입력값 있으면 그거, 없으면 지금 시간)
-        const finalIn =
-          inputTimes[s.id] && inputTimes[s.id].length >= 4
-            ? inputTimes[s.id]
-            : nowHM();
-
-        const ds = date; // ✅ 화면에서 선택한 날짜 그대로
-
-        // 2) 로컬 store.records[ds][sid] 업데이트
-        updateDayCell(ds, s.id, (base) => ({
-          ...base,
-          status: base.status ?? "P",
-          time: finalIn,
-          // inTime 필드도 같이 맞춰줌 (FS에서 쓰고 싶으면)
-          // @ts-ignore
-          inTime: finalIn,
-        }));
-
-        // 3) Firestore에도 같은 값 저장
-        handleCheckIn(s.id, finalIn);
-      }}
-    >
-      등원
-    </button>
-
-    {/* 등원 시간 지우기 */}
     <button
       style={btnXS}
-      title="등원 시간 지우기"
-      onClick={() => {
-        if (!confirm("이 학생의 등원 시간을 지울까요?")) return;
-        updateDayCell(date, s.id, (base) => ({
-          ...base,
-          time: undefined,
-          // @ts-ignore
-          inTime: undefined,
-        }));
-        setInputTimes((prev) => ({ ...prev, [s.id]: "" }));
-      }}
+      onClick={() =>
+        updateDayCell(date, s.id, (b) => ({ ...b, time: undefined }))
+      }
     >
       ×
     </button>
+
+    {/* 학원 등원 */}
+<input
+  type="text"
+  value={cell.academyIn ?? ""}
+  onChange={(e) => {
+    let v = e.target.value.replace(/\D/g, "");
+
+    if (v.length <= 2) {
+      updateDayCell(date, s.id, (b) => ({ ...b, academyIn: v }));
+      return;
+    }
+
+    if (v.length === 3) {
+      updateDayCell(date, s.id, (b) => ({ ...b, academyIn: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
+      return;
+    }
+
+    // 4자리 이상 → 15:30 고정
+    v = v.slice(0, 4);
+    updateDayCell(date, s.id, (b) => ({ ...b, academyIn: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
+  }}
+  placeholder="00:00"
+  style={timeBox}
+/>
+<button
+  style={btnXS}
+  onClick={() =>
+    updateDayCell(date, s.id, (b) => ({ ...b, academyIn: undefined }))
+  }
+>
+  ×
+</button>
   </div>
 
-  {/* 🔹 하원 줄 */}
+  {/* 🔹 2줄차 : 에듀 하원 / 학원 하원 */}
   <div
     style={{
       display: "grid",
-      gridTemplateColumns: "1fr auto auto",
+      gridTemplateColumns: "1fr 1fr auto auto",
       gap: 6,
       alignItems: "center",
     }}
   >
-    {/* 하원 시간 직접 수정 input */}
-    <input
-      type="time"
-      value={cell.outTime ?? ""}
-      onChange={(e) => setOutTime(s.id, e.target.value)}
-      style={timeInp}
-    />
+    {/* 에듀 하원 */}
+<input
+  type="text"
+  value={cell.outTime ?? ""}
+  onChange={(e) => {
+    let v = e.target.value.replace(/\D/g, "");
 
-    {/* ✅ 하원 버튼 */}
-    <button
-      style={btn}
-      onClick={() => {
-        // 1) 최종 하원 시간: 이미 입력한 값이 있으면 그거, 없으면 지금
-        const finalOut =
-          cell.outTime && cell.outTime.length >= 4
-            ? cell.outTime
-            : nowHM();
+    if (v.length <= 2) {
+      setOutTime(s.id, v);
+      return;
+    }
 
-        const ds = date; // ✅ 이 날짜 기준으로 저장
+    if (v.length === 3) {
+      setOutTime(s.id, `${v.slice(0, 2)}:${v.slice(2, 3)}`);
+      return;
+    }
 
-        // 2) 로컬 state 업데이트
-        setOutTime(s.id, finalOut); // 내부에서 updateDayCell(date, ...) 사용
+    // 4자리 이상 → 15:30 형식 고정
+    v = v.slice(0, 4);
+    setOutTime(s.id, `${v.slice(0, 2)}:${v.slice(2, 4)}`);
+  }}
+  placeholder="00:00"
+  style={timeBox}
+/>
+<button
+  style={btnXS}
+  onClick={() =>
+    updateDayCell(date, s.id, (b) => ({ ...b, outTime: undefined }))
+  }
+>
+  ×
+</button>
 
-        // 3) Firestore에 같은 시간/같은 날짜로 저장
-        handleCheckOut(s.id, finalOut);
-      }}
-    >
-      하원
-    </button>
+    {/* 학원 하원 */}
+<input
+  type="text"
+  value={cell.academyOut ?? ""}
+  onChange={(e) => {
+    let v = e.target.value.replace(/\D/g, "");
 
-    {/* 하원 시간 지우기 */}
-    <button
-      style={btnXS}
-      title="하원 시간 지우기"
-      onClick={() => {
-        if (!confirm("이 학생의 하원 시간을 지울까요?")) return;
-        setOutTime(s.id, "");
-      }}
-    >
-      ×
-    </button>
+    if (v.length <= 2) {
+      updateDayCell(date, s.id, (b) => ({ ...b, academyOut: v }));
+      return;
+    }
+
+    if (v.length === 3) {
+      updateDayCell(date, s.id, (b) => ({ ...b, academyOut: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
+      return;
+    }
+
+    v = v.slice(0, 4);
+    updateDayCell(date, s.id, (b) => ({ ...b, academyOut: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
+  }}
+  placeholder="00:00"
+  style={timeBox}
+/>
+<button
+  style={btnXS}
+  onClick={() =>
+    updateDayCell(date, s.id, (b) => ({ ...b, academyOut: undefined }))
+  }
+>
+  ×
+</button>
   </div>
 </td>
 
                           {/* 상태 팝업 */}
-                          <td style={{ padding: 10, position: "relative" }}>
+                          <td style={{ padding: 10, position: "relative" }}>n
                             <div
                               style={{
                                 display: "flex",
@@ -4192,6 +4247,8 @@ function StudentCalendarModal({
     fontSize: 12,
     fontWeight: 700,
   };
+
+  
 
   // 첫 주 앞 공백 필드
   const first = new Date(r.start);
