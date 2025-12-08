@@ -4,11 +4,50 @@ import {
   doc,
   getDoc,
   setDoc,
+  getDocs,
   collection,
   query,
   where,
-  getDocs,
+  writeBatch,
+  serverTimestamp,
 } from "firebase/firestore";
+
+
+// --------------------------------------
+//  C: 과제 자동 주기(Assignment Cycle)
+// --------------------------------------
+
+// 요일 타입
+export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+
+// 학생별 과목 규칙 타입
+export interface SubjectRule {
+  days: Weekday[];
+  examMode?: boolean;
+  disabled?: boolean;
+}
+
+// 전체 규칙 구조
+export interface AssignmentRules {
+  [subject: string]: SubjectRule;
+}
+
+// 규칙 저장
+export const saveAssignmentRules = async (
+  studentId: string,
+  rules: AssignmentRules
+) => {
+  await setDoc(doc(db, "assignmentRules", studentId), rules, { merge: true });
+};
+
+// 규칙 불러오기
+export const loadAssignmentRules = async (
+  studentId: string
+): Promise<AssignmentRules | null> => {
+  const snap = await getDoc(doc(db, "assignmentRules", studentId));
+  if (!snap.exists()) return null;
+  return snap.data() as AssignmentRules;
+};
 
 /* --------------------------------------------
    🔵 grade (학교 성적) 불러오기
@@ -63,3 +102,4 @@ export const loadMockExams = async (studentId: string) => {
     return [];
   }
 };
+

@@ -9,6 +9,9 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import type { AssignmentRules, Weekday } from "../services/firestore";
+import { saveAssignmentRules, loadAssignmentRules } from "../services/firestore";
+
 
 /* -------------------------------------------------- */
 /* 타입 정의 (간단 버전)                              */
@@ -49,6 +52,21 @@ type DayPlan = {
 
 type RecordsForDate = Record<string, any>;
 
+type StudentLite = {
+  id: string;
+  name: string;
+  grade?: string;
+};
+
+
+// 요일 옵션 (타입 지정 필수!)
+const WEEKDAY_OPTIONS: [Weekday, string][] = [
+  ["mon", "월"],
+  ["tue", "화"],
+  ["wed", "수"],
+  ["thu", "목"],
+  ["fri", "금"],
+];
 const SUBJECTS = [
   { key: "kor", label: "국어" },
   { key: "math", label: "수학" },
@@ -156,6 +174,69 @@ export default function StudyPlanDashboardPage() {
     null
   );
   const [selectedSubject, setSelectedSubject] = useState<string>("kor");
+// 학년 선택
+const [selectedGrade, setSelectedGrade] = useState("");
+
+// 여러 학생 선택
+const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+
+// 과목 선택
+const [ruleSubject, setRuleSubject] = useState("kor");
+
+// 여러 학생에게 넣을 과제 입력값
+const [multiTaskInput, setMultiTaskInput] = useState("");
+
+const [assignDate, setAssignDate] = useState(
+  new Date().toISOString().slice(0, 10)
+);
+// 학생 체크 토글
+const toggleStudent = (id: string) => {
+  setSelectedStudentIds(prev =>
+    prev.includes(id)
+      ? prev.filter(s => s !== id)
+      : [...prev, id]
+  );
+};
+
+// 🔥 선택 학생들에게 오늘(dateStr) 과제 저장
+// 여러 학생에게 같은 과제 저장
+const saveMultiTask = async () => {
+  if (!selectedStudentIds.length)
+    return alert("학생을 1명 이상 선택하세요.");
+
+  if (!multiTaskInput.trim())
+    return alert("과제를 입력하세요.");
+
+  if (!assignDate)
+    return alert("날짜가 선택되지 않았습니다.");
+
+  const tasks = multiTaskInput
+    .split("\n")
+    .map(t => t.trim())
+    .filter(Boolean)
+    .map(text => ({ text, done: false }));
+
+  await Promise.all(
+    selectedStudentIds.map(async (sid) => {
+      const ref = doc(db, "studyPlans", sid, "days", assignDate);
+
+      await setDoc(
+        ref,
+        {
+          date: assignDate,
+          [ruleSubject]: {
+            teacherTasks: tasks,
+            updatedAt: serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+    })
+  );
+
+  alert("✔ 선택한 학생들에게 과제가 저장되었습니다!");
+};
+
 
   // 상세 입력 상태 (우측 하단)
   const [teacherInput, setTeacherInput] = useState("");
@@ -164,32 +245,84 @@ export default function StudyPlanDashboardPage() {
   const [done, setDone] = useState(false);
 
   const [loading, setLoading] = useState(false);
+  // 1) 선택된 학생
+const [selectedRuleStudentId, setSelectedRuleStudentId] = useState("");
+
+// 2) 학생의 규칙 데이터
+const [ruleState, setRuleState] = useState<AssignmentRules>({});
+
+// 3) 요일 ON/OFF 함수
+const toggleRuleDay = (subject: string, day: Weekday) => {
+  setRuleState(prev => {
+    const cur = prev[subject] || { days: [] };
+    const exists = cur.days.includes(day);
+
+    return {
+      ...prev,
+      [subject]: {
+        days: exists
+          ? cur.days.filter(d => d !== day)
+          : [...cur.days, day],
+      },
+    };
+  });
+};
+
+
+
+// 4) 저장 함수
+const handleSaveRule = async () => {
+  if (!selectedRuleStudentId) return alert("학생을 선택하세요.");
+
+  await saveAssignmentRules(selectedRuleStudentId, ruleState);
+  alert("저장 완료!");
+};
+
+
 
   /* ---------------- 학생 목록 로드 ---------------- */
 
   useEffect(() => {
-    const loadStudents = async () => {
-      const snap = await getDocs(collection(db, "students"));
-      const list: Student[] = snap.docs
-        .map((d) => ({ id: d.id, ...(d.data() as any) }))
-        .filter((s) => !s.removed);
+  const loadStudents = async () => {
+    const snap = await getDocs(collection(db, "students"));
+    const list: StudentLite[] = snap.docs.map((d) => ({
+      id: d.id,
+      name: (d.data() as any).name || "이름 없음",
+      grade: (d.data() as any).grade,
+    }));
 
-      // 학년 → 이름 순 정렬
-      list.sort((a, b) => {
-        const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
-        const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
-        if (g1 !== g2) return g2 - g1;
-        return (a.name || "").localeCompare(b.name || "", "ko");
+    setStudents(list);
+
+    // 첫 학생 자동 선택
+    if (list.length > 0) {
+      setSelectedRuleStudentId(list[0].id);
+      setSelectedStudentId(list[0].id);
+    }
+  };
+
+  loadStudents();
+}, []);
+
+useEffect(() => {
+  if (!selectedRuleStudentId) return;
+
+  const run = async () => {
+    const loaded = await loadAssignmentRules(selectedRuleStudentId);
+
+    if (loaded) {
+      setRuleState(loaded);
+    } else {
+      // 과목별 빈 구조 생성
+      const empty: AssignmentRules = {};
+      ["kor", "math", "eng", "sci"].forEach((sub) => {
+        empty[sub] = { days: [] };
       });
+      setRuleState(empty);
+    }
+  };
 
-      setStudents(list);
-      if (!selectedStudentId && list[0]) {
-        setSelectedStudentId(list[0].id);
-      }
-    };
-
-    loadStudents();
-  }, []);
+  run();
+}, [selectedRuleStudentId]);
 
   /* ---------------- 출결 / 플래너 로드 (날짜별) ----- */
 
@@ -418,6 +551,190 @@ const [wordTotal, setWordTotal] = useState<number>(0);
         fontFamily: "Pretendard, -apple-system, BlinkMacSystemFont, system-ui",
       }}
     >
+ {/* ========================================= */}
+{/* 🔥 학년별 · 다중 학생 오늘 과제 입력 */} 
+{/* ========================================= */}
+
+<div
+  style={{
+    marginBottom: 24,
+    padding: 16,
+    background: "#FFFFFF",
+    borderRadius: 12,
+    border: "1px solid #E5E7EB",
+  }}
+>
+  <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 12 }}>
+    📝 학년별 · 다중학생 오늘 과제 입력
+  </div>
+
+  {/* 1) 학년 선택 */}
+  {/* 🔥 한 줄로 정렬되는 선택 UI */}
+<div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: 16,
+    marginBottom: 12,
+    flexWrap: "wrap",
+  }}
+>
+  {/* 학년 선택 */}
+  <div>
+    <label style={{ fontSize: 13, fontWeight: 600, marginRight: 6 }}>
+      학년:
+    </label>
+    <select
+      value={selectedGrade}
+      onChange={(e) => {
+        setSelectedGrade(e.target.value);
+        setSelectedStudentIds([]);
+      }}
+      style={{
+        padding: "6px 8px",
+        borderRadius: 8,
+        border: "1px solid #CBD5E1",
+      }}
+    >
+      <option value="">학년 선택</option>
+      <option value="1">중1</option>
+      <option value="2">중2</option>
+      <option value="3">중3</option>
+    </select>
+  </div>
+
+  {/* 과목 */}
+  <div>
+    <label style={{ fontSize: 13, fontWeight: 600, marginRight: 6 }}>
+      과목:
+    </label>
+    <select
+      value={ruleSubject}
+      onChange={(e) => setRuleSubject(e.target.value)}
+      style={{
+        padding: "6px 8px",
+        borderRadius: 8,
+        border: "1px solid #CBD5E1",
+      }}
+    >
+      <option value="kor">국어</option>
+      <option value="math">수학</option>
+      <option value="eng">영어</option>
+      <option value="sci">과학</option>
+      <option value="soc">사회</option>
+      <option value="hist1">역사1</option>
+      <option value="hist2">역사2</option>
+      <option value="tech">기술가정</option>
+      <option value="hanja">한자</option>
+      <option value="jp">일본어</option>
+    </select>
+  </div>
+
+  {/* 날짜 */}
+  <div>
+    <label style={{ fontSize: 13, fontWeight: 600, marginRight: 6 }}>
+      날짜:
+    </label>
+    <input
+      type="date"
+      value={assignDate}
+      onChange={(e) => setAssignDate(e.target.value)}
+      style={{
+        padding: "6px 8px",
+        borderRadius: 8,
+        border: "1px solid #CBD5E1",
+      }}
+    />
+  </div>
+</div>{/* ============================== */}
+{/* 🔥 2) 체크 가능한 학생 목록 */}
+{/* ============================== */}
+
+{selectedGrade && (
+  <div style={{ marginBottom: 12 }}>
+    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+      학생 선택:
+    </div>
+
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 10,
+        maxHeight: 120,
+        overflowY: "auto",
+        padding: 6,
+        border: "1px solid #E5E7EB",
+        borderRadius: 8,
+      }}
+    >
+      {students
+        .filter((s) => {
+          // 🔥 학생 grade가 "중3", " 3 ", 3 등 어떤 형식이든 숫자만 비교
+          const gradeNum = String(s.grade).replace(/[^0-9]/g, "");
+          return gradeNum === String(selectedGrade);
+        })
+        .map((s) => (
+          <label key={s.id} style={{ fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={selectedStudentIds.includes(s.id)}
+              onChange={() => toggleStudent(s.id)}
+              style={{ marginRight: 4 }}
+            />
+            {s.name}
+          </label>
+        ))}
+
+      {/* 🔥 필터된 학생이 0명일 때 */}
+      {students.filter((s) => {
+        const gradeNum = String(s.grade).replace(/[^0-9]/g, "");
+        return gradeNum === String(selectedGrade);
+      }).length === 0 && (
+        <div style={{ fontSize: 12, color: "#9CA3AF" }}>
+          해당 학년에 학생이 없습니다.
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
+  {/* 4) 과제 내용 입력 */}
+  <div style={{ marginBottom: 12 }}>
+    <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+      과제 내용:
+    </label>
+    <textarea
+      value={multiTaskInput}
+      onChange={(e) => setMultiTaskInput(e.target.value)}
+      placeholder={"예) 영어 단어 20개 외우기\n문법 p.45~47"}
+      rows={4}
+      style={{
+        width: "100%",
+        borderRadius: 8,
+        border: "1px solid #CBD5E1",
+        padding: 8,
+        fontSize: 12,
+      }}
+    />
+  </div>
+
+  {/* 5) 저장 버튼 */}
+  <button
+    onClick={saveMultiTask}
+    style={{
+      padding: "10px 0",
+      width: "100%",
+      background: "#1E3A8A",
+      borderRadius: 8,
+      color: "#fff",
+      fontSize: 14,
+      fontWeight: 700,
+    }}
+  >
+    ✔ 선택 학생들에게 오늘 과제 저장하기
+  </button>
+</div>
       {/* 상단 헤더 */}
       <div
         style={{
@@ -467,6 +784,7 @@ const [wordTotal, setWordTotal] = useState<number>(0);
           />
         </div>
       </div>
+      
 
       {/* 2컬럼 레이아웃 */}
       <div
