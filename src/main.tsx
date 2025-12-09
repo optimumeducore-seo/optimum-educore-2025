@@ -15,6 +15,8 @@ import ExamManagePage from "./pages/ExamManagePage.tsx";
 import QrCheckInPage from "./pages/QrCheckInPage.tsx";
 import QRCardsPage from "./pages/QRCardsPage.tsx";
 import StudyPlanDashboardPage from "./pages/StudyPlanDashboardPage";
+import BookManagePage from "./pages/BookManagePage.tsx";
+import AutoBookAssignPage from "./pages/AutoBookAssignPage.tsx";
 
 
 
@@ -31,7 +33,10 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 <Route path="/exam-manage" element={<ExamManagePage />} />
 <Route path="/qr-checkin" element={<QrCheckInPage />} />
 <Route path="/qr-cards" element={<QRCardsPage />} />
+  
+  <Route path="/books" element={<BookManagePage />} />
   <Route path="/study-plan/dashboard" element={<StudyPlanDashboardPage />} />
+  <Route path="/auto-assign" element={<AutoBookAssignPage />} />
   <Route path="/" element={<App />} />
 </Routes>
 </BrowserRouter>

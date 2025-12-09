@@ -67,18 +67,48 @@ const cleanForFirestore = (obj: any) => {
   return res;
 };
 
-const normalizeTasks = (v: any): TaskItem[] => {
+const normalizeTasks = (v: any[]): any[] => {
   if (!v || !Array.isArray(v)) return [];
-  if (typeof v[0] === "string") {
-    return v.map((x: string) => ({ text: x, done: false }));
-  }
-  if (typeof v[0] === "object") {
-    return v.map((x: any) => ({
-      text: x.text || "",
-      done: !!x.done,
-    }));
-  }
-  return [];
+
+  return v.map((item: any) => {
+    if (!item) return { text: "", done: false };
+
+    // 1) 문자열 과제 (기존 수동 입력)
+    if (typeof item === "string") {
+      return { text: item, done: false };
+    }
+
+    // 2) 자동 생성된 과제(mainTask + subtasks)
+    if (item.subtasks && Array.isArray(item.subtasks)) {
+      return {
+        text: item.text || "",
+        done: !!item.done,
+        subtasks: item.subtasks.map((s: any) => ({
+          text: s.text || "",
+          done: !!s.done,
+        })),
+      };
+    }
+
+    // 3) 일반 객체 과제(text, done)
+    return {
+      text: item.text || "",
+      done: !!item.done,
+    };
+  });
+};
+
+const makeCleanSubject = (subj: any = {}) => {
+  return {
+    teacherTasks: normalizeTasks(subj.teacherTasks),
+    studentPlans: normalizeTasks(subj.studentPlans),
+    memo: subj.memo || "",
+    done: !!subj.done,
+    proofImages: subj.proofImages || [],
+    proofMemo: subj.proofMemo || "",
+    wordTest: subj.wordTest || { correct: 0, total: 0 },
+    updatedAt: subj.updatedAt,
+  };
 };
 
 /* ------------------------------------------------------------------ */
@@ -196,22 +226,11 @@ export default function StudyPlanPage() {
         const raw = d.data() as any;
         const subjects: Record<string, SubjectPlan> = {};
 
-        SUBJECTS.forEach(({ key }) => {
+       SUBJECTS.forEach(({ key }) => {
   const sRaw = raw[key];
   if (!sRaw) return;
 
-  subjects[key] = {
-    teacherTasks: normalizeTasks(sRaw.teacherTasks),
-    studentPlans: normalizeTasks(sRaw.studentPlans),
-    memo: sRaw.memo || "",
-    done: !!sRaw.done,
-    updatedAt: sRaw.updatedAt,
-
-    // 🔥 여기 추가 (인증샷 & 메모)
-    proofImages: sRaw.proofImages || [],
-    proofMemo: sRaw.proofMemo || "",
-    wordTest: sRaw.wordTest || { correct: 0, total: 0 },
-  };
+  subjects[key] = makeCleanSubject(sRaw);
 });
 
         map[d.id] = {
@@ -245,12 +264,17 @@ export default function StudyPlanPage() {
   if (!selectedDate || !id) return;
 
   const loadProof = async () => {
-    const ref = doc(db, "proofs", id, "days", selectedDate);
+    const ref = doc(db, "studyPlans", id, "days", selectedDate);
     const snap = await getDoc(ref);
 
     if (snap.exists()) {
       const data = snap.data();
-      setProofImages(data.images || []);
+
+      const imgs = (data.proofImages || [])
+  .map((it: any) => (typeof it === "string" ? it : it?.url))
+  .filter(Boolean);
+
+      setProofImages(imgs);
       setProofMemo(data.memo || "");
     } else {
       setProofImages([]);
@@ -260,6 +284,39 @@ export default function StudyPlanPage() {
 
   loadProof();
 }, [selectedDate, id]);
+
+
+
+// -------------------------------------------------------------
+// 🔥 오늘 과제(Subtasks) 자동 로드
+// -------------------------------------------------------------
+useEffect(() => {
+  if (!id || !selectedDate || !selectedSubject) return;
+
+  const loadTodayTasks = async () => {
+  const planRef = doc(db, "studyPlans", id, "days", selectedDate);
+  const snap = await getDoc(planRef);
+
+  if (!snap.exists()) {
+    setTeacherInput("");
+    setStudentInput("");
+    return;
+  }
+
+  const data = snap.data();
+  const cleanSubj = makeCleanSubject(data[selectedSubject]);
+
+  setTeacherInput(
+    cleanSubj.teacherTasks.map((t:any)=>t.text).join("\n")
+  );
+
+  setStudentInput(
+    cleanSubj.studentPlans.map((t:any)=>t.text).join("\n")
+  );
+};
+  loadTodayTasks();
+  
+}, [id, selectedDate, selectedSubject]);
 
  const [examData, setExamData] = useState<ExamItem[]>([]);
 
@@ -1809,13 +1866,13 @@ const deleteImage = async (url: string, index: number) => {
 
     // 3) Firestore 업데이트
     await setDoc(
-      doc(db, "proofs", studentId, "days", selectedDate),
-      {
-        images: newList,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+  doc(db, "studyPlans", studentId, "days", selectedDate),
+  {
+    proofImages: newList,   // 필드명도 맞춰줘야 함!!
+    updatedAt: serverTimestamp(),
+  },
+  { merge: true }
+);
   } catch (err) {
     console.error("삭제 오류:", err);
   }
@@ -1882,18 +1939,14 @@ const deleteImage = async (url: string, index: number) => {
 
     // 날짜별 Firestore 저장
     if (selectedDate) {
-      const newItems = urls.map((url) => ({
-    url,
-  }));
-
   await setDoc(
-    doc(db, "proofs", studentId, "days", selectedDate),
-    {
-      images: [...images, ...newItems], // 기존 + 새 이미지 누적
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  doc(db, "studyPlans", studentId, "days", selectedDate),
+  {
+    proofImages: [...images, ...urls],
+    updatedAt: serverTimestamp(),
+  },
+  { merge: true }
+);
 }
   };
 
