@@ -11,6 +11,8 @@ import {
 import { db } from "../firebase";
 import type { AssignmentRules, Weekday } from "../services/firestore";
 import { saveAssignmentRules, loadAssignmentRules } from "../services/firestore";
+import { rescheduleDeletedAutoTask } from "../services/firestore";
+import type { MainTask } from "../services/firestore";
 
 
 /* -------------------------------------------------- */
@@ -25,7 +27,11 @@ type Student = {
   removed?: boolean;
 };
 
-type TaskItem = { text: string; done: boolean };
+type TaskItem = {
+  text: string;
+  done: boolean;
+  carriedFrom?: string; // 예: "2025-01-06"
+};
 
 type SubjectPlan = {
   teacherTasks: TaskItem[];
@@ -59,14 +65,7 @@ type StudentLite = {
 };
 
 
-// 요일 옵션 (타입 지정 필수!)
-const WEEKDAY_OPTIONS: [Weekday, string][] = [
-  ["mon", "월"],
-  ["tue", "화"],
-  ["wed", "수"],
-  ["thu", "목"],
-  ["fri", "금"],
-];
+
 const SUBJECTS = [
   { key: "kor", label: "국어" },
   { key: "math", label: "수학" },
@@ -149,13 +148,7 @@ const normalizeTasks = (v: any): TaskItem[] => {
   return [];
 };
 
-const cleanForFirestore = (obj: any) => {
-  const res: any = {};
-  Object.entries(obj).forEach(([k, v]) => {
-    if (v !== undefined) res[k] = v;
-  });
-  return res;
-};
+
 
 
 /* -------------------------------------------------- */
@@ -189,6 +182,13 @@ const [multiTaskInput, setMultiTaskInput] = useState("");
 const [assignDate, setAssignDate] = useState(
   new Date().toISOString().slice(0, 10)
 );
+
+const getYesterday = (date: string) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+};
+
 // 학생 체크 토글
 const toggleStudent = (id: string) => {
   setSelectedStudentIds(prev =>
@@ -379,6 +379,10 @@ useEffect(() => {
     load();
   }, [dateStr, students]);
 
+
+ 
+
+
   /* ---------------- 우측 하단 상세 입력 동기화 ------- */
 
   useEffect(() => {
@@ -495,6 +499,117 @@ const [wordTotal, setWordTotal] = useState<number>(0);
   alert("저장 완료! (선생님 대시보드)");
 };
 
+// 🔥 선생님 과제 1개 삭제 + 자동 이월
+const handleDeleteTeacherTask = async (
+  sid: string,
+  date: string,
+  subjectKey: string,
+  taskIndex: number
+) => {
+  if (!sid) return;
+  if (!window.confirm("해당 과제를 삭제할까요?\n(미완료분은 다음 적절한 날짜로 이월됩니다)"))
+    return;
+
+  // 기존 데이터 로드
+  const dayRef = doc(db, "studyPlans", sid, "days", date);
+  const snap = await getDoc(dayRef);
+  if (!snap.exists()) return;
+
+  const raw = snap.data() as any;
+  const subj = raw[subjectKey];
+  if (!subj || !Array.isArray(subj.teacherTasks)) return;
+
+  const tasks = [...subj.teacherTasks];
+  const targetTask = tasks[taskIndex] as MainTask;
+
+  // 🔥 1) 현재 날짜에서 해당 과제 삭제
+  tasks.splice(taskIndex, 1);
+
+  const updatedSubject = {
+    ...subj,
+    teacherTasks: tasks,
+    updatedAt: serverTimestamp(),
+  };
+
+  await setDoc(
+    dayRef,
+    { date, [subjectKey]: updatedSubject },
+    { merge: true }
+  );
+
+  // 🔥 2) 자동 과제(서브태스크 있는 경우)라면 → 자동 이월
+  if (targetTask && Array.isArray(targetTask.subtasks)) {
+    await rescheduleDeletedAutoTask({
+      studentId: sid,
+      subjectKey,
+      fromDate: date,
+      task: targetTask,
+    });
+  }
+
+  // 🔥 3) 대시보드 화면 즉시 반영
+  setDayPlans((prev) => {
+    const day = prev[sid];
+    if (!day) return prev;
+
+    return {
+      ...prev,
+      [sid]: {
+        ...day,
+        subjects: {
+          ...day.subjects,
+          [subjectKey]: updatedSubject,
+        },
+      },
+    };
+  });
+};
+
+// 🔥 학생 1명 기준 미완료 과제 이월 (요약 테이블 버튼용)
+const handleCarryOverForStudent = async (studentId: string) => {
+  const today = dateStr;
+  const yesterday = getYesterday(today);
+
+  if (
+    !window.confirm(
+      "미완료 과제를 오늘로 이월할까요?\n(기존 오늘 과제는 유지됩니다)"
+    )
+  ) return;
+
+  const ref = doc(db, "studyPlans", studentId, "days", yesterday);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+
+  const data = snap.data() as any;
+
+  for (const subjectKey of Object.keys(data)) {
+    const subj = data[subjectKey];
+    if (!subj?.teacherTasks) continue;
+
+    const unfinished = subj.teacherTasks
+      .filter((t: any) => !t.done)
+      .map((t: any) => ({
+        ...t,
+        carriedFrom: yesterday,
+      }));
+
+    if (!unfinished.length) continue;
+
+    await setDoc(
+      doc(db, "studyPlans", studentId, "days", today),
+      {
+        [subjectKey]: {
+          teacherTasks: unfinished,
+          updatedAt: serverTimestamp(),
+        },
+      },
+      { merge: true }
+    );
+  }
+
+  alert("이월 완료!");
+};
+
   /* ---------------- 요약 테이블 계산 ---------------- */
 
   const summaryRows = useMemo(() => {
@@ -508,7 +623,8 @@ const [wordTotal, setWordTotal] = useState<number>(0);
     let tDone = 0,
       tTotal = 0,
       stDone = 0,
-      stTotal = 0;
+      stTotal = 0,
+      unfinishedCount = 0;
 
     if (day?.subjects) {
       Object.values(day.subjects).forEach((sub) => {
@@ -516,11 +632,13 @@ const [wordTotal, setWordTotal] = useState<number>(0);
         tTotal += sub.teacherTasks.length;
         stDone += sub.studentPlans.filter((t) => t.done).length;
         stTotal += sub.studentPlans.length;
+        unfinishedCount += sub.teacherTasks.filter(t => !t.done).length;
       });
     }
 
     return {
       student: s,
+      unfinishedCount,
       inTime: rec.time || rec.academyIn || "",
       outTime: rec.outTime || rec.academyOut || "",
       netMin,
@@ -537,6 +655,132 @@ const [wordTotal, setWordTotal] = useState<number>(0);
   });
 }, [students, records, dayPlans, selectedSubject]);
 
+/* ---------------- 선생님 과제 체크 테이블 rows ---------------- */
+
+type TeacherTaskRow = {
+  sid: string;
+  studentName: string;
+  subjectKey: string;
+  taskIndex: number;
+  text: string;
+  done: boolean;
+};
+
+const teacherTaskRows: TeacherTaskRow[] = useMemo(() => {
+  return students.flatMap((s) => {
+    const day = dayPlans[s.id];
+    if (!day) return [];
+
+    return Object.entries(day.subjects || {}).flatMap(
+      ([subjectKey, subj]) =>
+        (subj.teacherTasks || []).map((task, idx) => ({
+          sid: s.id,
+          studentName: s.name,
+          subjectKey,
+          taskIndex: idx,
+          text: task.text,
+          done: task.done,
+        }))
+    );
+  });
+}, [students, dayPlans]);
+
+const taskByStudent = useMemo(() => {
+  const map: Record<string, TeacherTaskRow[]> = {};
+
+  teacherTaskRows.forEach((row) => {
+    if (!map[row.sid]) map[row.sid] = [];
+    map[row.sid].push(row);
+  });
+
+  return map;
+}, [teacherTaskRows]);
+
+const toggleTeacherTaskDone = async (
+  sid: string,
+  date: string,
+  subject: string,
+  taskIndex: number,
+  newDone: boolean
+) => {
+  const ref = doc(db, "studyPlans", sid, "days", date);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+
+  const data = snap.data() as any;
+  const tasks = [...(data[subject]?.teacherTasks || [])];
+
+  tasks[taskIndex] = {
+    ...tasks[taskIndex],
+    done: newDone,
+  };
+
+  await setDoc(
+    ref,
+    {
+      [subject]: {
+        ...data[subject],
+        teacherTasks: tasks,
+        updatedAt: serverTimestamp(),
+      },
+    },
+    { merge: true }
+  );
+
+  // 🔥 화면 즉시 반영
+  setDayPlans((prev) => ({
+    ...prev,
+    [sid]: {
+      ...prev[sid],
+      subjects: {
+        ...prev[sid]?.subjects,
+        [subject]: {
+          ...prev[sid]?.subjects?.[subject],
+          teacherTasks: tasks,
+        },
+      },
+    },
+  }));
+};
+
+const autoCarryOverUnfinishedTasks = async (
+  fromDate: string,
+  toDate: string
+) => {
+  for (const student of students) {
+    const ref = doc(db, "studyPlans", student.id, "days", fromDate);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) continue;
+
+    const data = snap.data() as any;
+
+    for (const subjectKey of Object.keys(data)) {
+      const subj = data[subjectKey];
+      if (!subj?.teacherTasks) continue;
+
+      const unfinished = subj.teacherTasks
+        .filter((t: any) => !t.done)
+        .map((t: any) => ({
+          ...t,
+          carriedFrom: fromDate, // ⭐ 핵심
+        }));
+
+      if (!unfinished.length) continue;
+
+      await setDoc(
+  doc(db, "studyPlans", student.id, "days", toDate),
+  {
+    [subjectKey]: {
+      teacherTasks: unfinished,
+      updatedAt: serverTimestamp(),
+    },
+  },
+  { merge: true }
+);
+    }
+  }
+};
+
   /* ---------------- 렌더 ---------------- */
 
   return (
@@ -551,22 +795,348 @@ const [wordTotal, setWordTotal] = useState<number>(0);
         fontFamily: "Pretendard, -apple-system, BlinkMacSystemFont, system-ui",
       }}
     >
- {/* ========================================= */}
+
+      {/* 상단 헤더 */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+          gap: 12,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 900,
+              color: "#1E3A8A",
+              marginBottom: 4,
+            }}
+          >
+            📘 학습 플래너 — 선생님 대시보드
+          </div>
+          <div style={{ fontSize: 13, color: "#6B7280" }}>
+            한 화면에서 오늘 모든 학생의 출결 · 순공 · 과제 진행도를 확인하고
+            바로 수정할 수 있습니다.
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <span style={{ fontSize: 13, color: "#4B5563" }}>날짜</span>
+          <input
+            type="date"
+            value={dateStr}
+            onChange={(e) => setDateStr(e.target.value)}
+            style={{
+              padding: "6px 8px",
+              borderRadius: 8,
+              border: "1px solid #CBD5E1",
+              fontSize: 13,
+              background: "#FFFFFF",
+            }}
+          />
+        </div>
+      </div>
+      
+
+      {/* 2컬럼 레이아웃 */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "260px 1fr",
+          gap: 16,
+        }}
+      >
+        {/* 좌측: 학생 리스트 */}
+        <div
+          style={{
+            background: "#FFFFFF",
+            borderRadius: 14,
+            border: "1px solid #E5E7EB",
+            padding: 12,
+            maxHeight: 600,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              color: "#111827",
+              marginBottom: 8,
+            }}
+          >
+            👥 학생 목록
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              color: "#6B7280",
+              marginBottom: 8,
+            }}
+          >
+            클릭하면 오른쪽 상세 플래너가 전환됩니다.
+          </div>
+
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              paddingRight: 4,
+            }}
+          >
+            {students.map((s) => {
+              const active = s.id === selectedStudentId;
+              const rec = records[s.id] || {};
+              const net = calcNetStudyMin(rec);
+
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedStudentId(s.id)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: active
+                      ? "1px solid #1E3A8A"
+                      : "1px solid transparent",
+                    background: active ? "#EEF2FF" : "#F9FAFB",
+                    marginBottom: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 2,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 13,
+                        color: "#111827",
+                      }}
+                    >
+                      {s.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "#6B7280",
+                      }}
+                    >
+                      {s.school} {s.grade}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#6B7280" }}>
+                    순공:{" "}
+                    <b style={{ color: "#16A34A" }}>{minToHM(net)}</b>
+                    {rec.time && (
+                      <>
+                        {" · "}등원 {rec.time}
+                        {rec.outTime && ` / 하원 ${rec.outTime}`}
+                      </>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 우측: 요약 테이블 + 상세 플래너 */}
+        <div
+          style={{
+            display: "grid",
+            
+            gap: 14,
+          }}
+        >
+          {/* 요약 테이블 */}
+          <div
+            style={{
+              background: "#FFFFFF",
+              borderRadius: 14,
+              border: "1px solid #E5E7EB",
+              padding: 12,
+              overflowX: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 8,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 800,
+                  color: "#111827",
+                }}
+              >
+                📊 오늘 전체 학생 요약
+              </div>
+              {loading && (
+                <div style={{ fontSize: 11, color: "#6B7280" }}>
+                  불러오는 중…
+                </div>
+              )}
+            </div>
+
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: 12,
+              }}
+            >
+              <thead>
+                <tr
+                  style={{
+                    background: "#F3F4F6",
+                    borderBottom: "1px solid #E5E7EB",
+                  }}
+                >
+                  <th style={thCell}>학생</th>
+    <th style={thCell}>학교/학년</th>
+    <th style={thCell}>등원</th>
+    <th style={thCell}>하원</th>
+    <th style={thCell}>순공</th>
+    <th style={thCell}>선생님 과제</th>
+    <th style={thCell}>이월</th>   {/* ✅ 여기 */}
+    <th style={thCell}>학생 계획</th>
+    <th style={thCell}>단어 시험</th>
+                  
+                </tr>
+              </thead>
+              <tbody>
+                {summaryRows.map((row) => (
+                  <tr
+                    key={row.student.id}
+                    style={{
+                      borderBottom: "1px solid #F3F4F6",
+                      background:
+                        row.student.id === selectedStudentId
+                          ? "#EEF2FF"
+                          : "transparent",
+                    }}
+                    onClick={() => setSelectedStudentId(row.student.id)}
+                  >
+                    <td style={tdCell}>{row.student.name}</td>
+                    <td style={tdCell}>
+                      {row.student.school} {row.student.grade}
+                    </td>
+                    <td style={tdCell}>{row.inTime || "-"}</td>
+                    <td style={tdCell}>{row.outTime || "-"}</td>
+                    <td style={tdCell}>
+                      <b style={{ color: "#16A34A" }}>
+                        {minToHM(row.netMin)}
+                      </b>
+                    </td>
+                    <td style={tdCell}>
+                      {row.teacherTotal > 0 ? (
+                        <>
+                          {row.teacherDone}/{row.teacherTotal}
+                        </>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td style={tdCell}>
+  {row.unfinishedCount > 0 ? (
+    <button
+  onClick={(e) => {
+    e.stopPropagation();
+    handleCarryOverForStudent(row.student.id);
+  }}
+  style={{
+    padding: "4px 10px",
+    borderRadius: 999, // pill
+    background: "#EEF2FF",
+    color: "#1E3A8A",
+    border: "1px solid #C7D2FE",
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+  }}
+>
+  {row.unfinishedCount}건
+</button>
+  ) : (
+    "-"
+  )}
+</td>
+
+
+                    <td style={tdCell}>
+                      {row.studentTotal > 0 ? (
+                        <>
+                          {row.studentDone}/{row.studentTotal}
+                        </>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td style={tdCell}>
+  {row.wordTotal ? (
+    <>
+      {row.wordCorrect}/{row.wordTotal}
+    </>
+  ) : (
+    "-"
+  )}
+</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 🔥 다중 과제 + 개인 플래너 한 줄 */}
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 16,
+    alignItems: "stretch", // ⭐ 이게 핵심
+    gridAutoRows: "1fr",
+  }}
+>
+
+           {/* ========================================= */}
 {/* 🔥 학년별 · 다중 학생 오늘 과제 입력 */} 
 {/* ========================================= */}
 
-<div
-  style={{
-    marginBottom: 24,
-    padding: 16,
-    background: "#FFFFFF",
-    borderRadius: 12,
-    border: "1px solid #E5E7EB",
-  }}
->
-  <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 12 }}>
-    📝 학년별 · 다중학생 오늘 과제 입력
-  </div>
+  <div
+    style={{
+      background: "#FFFFFF",
+      borderRadius: 12,
+      border: "1px solid #E5E7EB",
+      padding: 16,
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+    }}
+  >
+    <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 12 }}>
+      📝 학년별 · 다중학생 오늘 과제 입력
+    </div>
 
   {/* 1) 학년 선택 */}
   {/* 🔥 한 줄로 정렬되는 선택 UI */}
@@ -735,299 +1305,19 @@ const [wordTotal, setWordTotal] = useState<number>(0);
     ✔ 선택 학생들에게 오늘 과제 저장하기
   </button>
 </div>
-      {/* 상단 헤더 */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-          gap: 12,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 20,
-              fontWeight: 900,
-              color: "#1E3A8A",
-              marginBottom: 4,
-            }}
-          >
-            📘 학습 플래너 — 선생님 대시보드
-          </div>
-          <div style={{ fontSize: 13, color: "#6B7280" }}>
-            한 화면에서 오늘 모든 학생의 출결 · 순공 · 과제 진행도를 확인하고
-            바로 수정할 수 있습니다.
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <span style={{ fontSize: 13, color: "#4B5563" }}>날짜</span>
-          <input
-            type="date"
-            value={dateStr}
-            onChange={(e) => setDateStr(e.target.value)}
-            style={{
-              padding: "6px 8px",
-              borderRadius: 8,
-              border: "1px solid #CBD5E1",
-              fontSize: 13,
-              background: "#FFFFFF",
-            }}
-          />
-        </div>
-      </div>
-      
-
-      {/* 2컬럼 레이아웃 */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "260px 1fr",
-          gap: 16,
-        }}
-      >
-        {/* 좌측: 학생 리스트 */}
-        <div
-          style={{
-            background: "#FFFFFF",
-            borderRadius: 14,
-            border: "1px solid #E5E7EB",
-            padding: 12,
-            maxHeight: 600,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 800,
-              color: "#111827",
-              marginBottom: 8,
-            }}
-          >
-            👥 학생 목록
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#6B7280",
-              marginBottom: 8,
-            }}
-          >
-            클릭하면 오른쪽 상세 플래너가 전환됩니다.
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              paddingRight: 4,
-            }}
-          >
-            {students.map((s) => {
-              const active = s.id === selectedStudentId;
-              const rec = records[s.id] || {};
-              const net = calcNetStudyMin(rec);
-
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedStudentId(s.id)}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: active
-                      ? "1px solid #1E3A8A"
-                      : "1px solid transparent",
-                    background: active ? "#EEF2FF" : "#F9FAFB",
-                    marginBottom: 6,
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 2,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 13,
-                        color: "#111827",
-                      }}
-                    >
-                      {s.name}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: "#6B7280",
-                      }}
-                    >
-                      {s.school} {s.grade}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "#6B7280" }}>
-                    순공:{" "}
-                    <b style={{ color: "#16A34A" }}>{minToHM(net)}</b>
-                    {rec.time && (
-                      <>
-                        {" · "}등원 {rec.time}
-                        {rec.outTime && ` / 하원 ${rec.outTime}`}
-                      </>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 우측: 요약 테이블 + 상세 플래너 */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateRows: "minmax(220px, auto) minmax(260px, auto)",
-            gap: 14,
-          }}
-        >
-          {/* 요약 테이블 */}
-          <div
-            style={{
-              background: "#FFFFFF",
-              borderRadius: 14,
-              border: "1px solid #E5E7EB",
-              padding: 12,
-              overflowX: "auto",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 8,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: "#111827",
-                }}
-              >
-                📊 오늘 전체 학생 요약
-              </div>
-              {loading && (
-                <div style={{ fontSize: 11, color: "#6B7280" }}>
-                  불러오는 중…
-                </div>
-              )}
-            </div>
-
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 12,
-              }}
-            >
-              <thead>
-                <tr
-                  style={{
-                    background: "#F3F4F6",
-                    borderBottom: "1px solid #E5E7EB",
-                  }}
-                >
-                  <th style={thCell}>학생</th>
-                  <th style={thCell}>학교/학년</th>
-                  <th style={thCell}>등원</th>
-                  <th style={thCell}>하원</th>
-                  <th style={thCell}>순공</th>
-                  <th style={thCell}>선생님 과제</th>
-                  <th style={thCell}>학생 계획</th>
-                  <th style={thCell}>단어 시험</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summaryRows.map((row) => (
-                  <tr
-                    key={row.student.id}
-                    style={{
-                      borderBottom: "1px solid #F3F4F6",
-                      background:
-                        row.student.id === selectedStudentId
-                          ? "#EEF2FF"
-                          : "transparent",
-                    }}
-                    onClick={() => setSelectedStudentId(row.student.id)}
-                  >
-                    <td style={tdCell}>{row.student.name}</td>
-                    <td style={tdCell}>
-                      {row.student.school} {row.student.grade}
-                    </td>
-                    <td style={tdCell}>{row.inTime || "-"}</td>
-                    <td style={tdCell}>{row.outTime || "-"}</td>
-                    <td style={tdCell}>
-                      <b style={{ color: "#16A34A" }}>
-                        {minToHM(row.netMin)}
-                      </b>
-                    </td>
-                    <td style={tdCell}>
-                      {row.teacherTotal > 0 ? (
-                        <>
-                          {row.teacherDone}/{row.teacherTotal}
-                        </>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td style={tdCell}>
-                      {row.studentTotal > 0 ? (
-                        <>
-                          {row.studentDone}/{row.studentTotal}
-                        </>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td style={tdCell}>
-  {row.wordTotal ? (
-    <>
-      {row.wordCorrect}/{row.wordTotal}
-    </>
-  ) : (
-    "-"
-  )}
-</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
+        
           {/* 상세 플래너 (선택 학생 · 오늘 날짜 1일분) */}
-          <div
-            style={{
-              background: "#FFFFFF",
-              borderRadius: 14,
-              border: "1px solid #E5E7EB",
-              padding: 14,
-            }}
-          >
+            <div
+    style={{
+      background: "#FFFFFF",
+      borderRadius: 14,
+      border: "1px solid #E5E7EB",
+      padding: 14,
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+    }}
+  >
             <div
               style={{
                 marginBottom: 8,
@@ -1095,6 +1385,94 @@ const [wordTotal, setWordTotal] = useState<number>(0);
               </div>
             ) : (
               <>
+              {/* 🔥 선생님 과제 목록 (개별 삭제 UI) */}
+{(() => {
+  const sid = selectedStudentId;
+  if (!sid) return null;
+
+  const day = dayPlans[sid];
+  const subj = day?.subjects?.[selectedSubject];
+  const tasks = subj?.teacherTasks || [];
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: "#4B5563",
+          marginBottom: 6,
+        }}
+      >
+        📘 자동 배정 과제 목록 (삭제 가능)
+      </div>
+
+      {tasks.length === 0 && (
+        <div style={{ fontSize: 12, color: "#9CA3AF" }}>
+          등록된 과제가 없습니다.
+        </div>
+      )}
+
+      {tasks.map((t, idx) => {
+  const isCarried = !!t.carriedFrom;
+
+  return (
+    <div
+      key={idx}
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        background: isCarried ? "#FFF7ED" : "#F3F4F6",
+        border: isCarried ? "1px solid #FED7AA" : "1px solid transparent",
+        padding: "6px 8px",
+        borderRadius: 8,
+        marginBottom: 6,
+        fontSize: 12,
+      }}
+    >
+      <span>
+        {t.text}
+        {isCarried && (
+          <span
+            style={{
+              marginLeft: 6,
+              fontSize: 10,
+              color: "#EA580C",
+              fontWeight: 700,
+            }}
+          >
+            (이월)
+          </span>
+        )}
+      </span>
+
+      <button
+        onClick={() =>
+          handleDeleteTeacherTask(
+            selectedStudentId!,
+            dateStr,
+            selectedSubject,
+            idx
+          )
+        }
+        style={{
+          background: "#DC2626",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "2px 8px",
+          fontSize: 11,
+        }}
+      >
+        삭제
+      </button>
+    </div>
+  );
+})}
+    </div>
+  );
+})()}
                 {/* 선생님 과제 */}
                 <InputSection
                   title="선생님 과제"
@@ -1267,14 +1645,117 @@ const [wordTotal, setWordTotal] = useState<number>(0);
                 >
                   💾 저장하기
                 </button>
-              </>
+                </>
+              
             )}
           </div>
+          </div>
+          {/* 🔥 카드형 과제 체크 */}
+{/* 🔥 카드형 과제 체크 */}
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+    gap: 14,
+    marginBottom: 16,
+  }}
+>
+  {Object.entries(taskByStudent).map(([sid, tasks]) => {
+    const hasUnfinished = tasks.some(t => !t.done);
+
+    return (
+      <div
+        key={sid}
+        style={{
+          background: "#FFFFFF",
+          borderRadius: 14,
+          border: "1px solid #E5E7EB",
+          padding: 12,
+        }}
+      >
+        {/* 🔹 학생 이름 + 이월 버튼 */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              color: "#1E3A8A",
+            }}
+          >
+            {tasks[0]?.studentName}
+          </div>
+
+          {hasUnfinished && (
+            <button
+              onClick={() => handleCarryOverForStudent(sid)}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "#EEF2FF",
+                color: "#1E3A8A",
+                border: "1px solid #C7D2FE",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              이월
+            </button>
+          )}
+        </div>
+
+        {/* 🔹 과제 리스트 */}
+        {tasks.map((t, i) => (
+          <label
+            key={i}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              marginBottom: 6,
+              background: t.done ? "#ECFDF5" : "#F9FAFB",
+              padding: "6px 8px",
+              borderRadius: 8,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={t.done}
+              onChange={(e) =>
+                toggleTeacherTaskDone(
+                  t.sid,
+                  dateStr,
+                  t.subjectKey,
+                  t.taskIndex,
+                  e.target.checked
+                )
+              }
+            />
+            <span>
+              <b>[{t.subjectKey}]</b> {t.text}
+            </span>
+          </label>
+        ))}
+      </div>
+    );
+  })}
+</div>
+
         </div>
       </div>
     </div>
   );
 }
+
+
 
 /* -------------------------------------------------- */
 /* 공통 InputSection                                  */

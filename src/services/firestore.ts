@@ -26,6 +26,17 @@ export interface TaskItem {
     done: boolean;
   }[];
 }
+export interface SubTask {
+  text: string;
+  done: boolean;
+}
+
+export interface MainTask {
+  id: string;
+  title: string;
+  done: boolean;
+  subtasks: SubTask[];
+}
 
 export const normalizeTasks = (arr: any[]): TaskItem[] => {
   if (!Array.isArray(arr)) return [];
@@ -355,41 +366,40 @@ export const autoAssignNextEpisode = async (params: {
 
   const ep = book.episodes[idx];
 
-  // -------------------------------------------
-  // 🔵 StudyPlanPage가 읽을 수 있는 형태로 변환
-  // -------------------------------------------
-  const taskList: { text: string; done: boolean }[] = [];
+  const taskItem: MainTask = {
+  id: crypto.randomUUID(),        // ⭐ 추가!!!
+  title: `📘 ${ep.title}`,
+  done: false,
+  subtasks: [],
+};
 
-  // 메인 과제 제목
-  taskList.push({ text: `📘 ${ep.title}`, done: false });
+// 문제집
+if (ep.startPage || ep.endPage) {
+  const p1 = ep.startPage ?? "";
+  const p2 = ep.endPage ?? p1;
+  const pageText = p1 !== p2 ? `${p1}~${p2}쪽` : `${p1}쪽`;
 
-  // 문제집
-  if (ep.startPage || ep.endPage) {
-    const p1 = ep.startPage ?? "";
-    const p2 = ep.endPage ?? ep.startPage ?? "";
-    const pageText =
-      p1 && p2 && p1 !== p2 ? `${p1}~${p2}쪽` : `${p1}쪽`;
-
-    taskList.push({
-      text: `문제집: ${pageText}`,
-      done: false,
-    });
-  }
-
-  // 인강
-  if (ep.videoTitle) {
-    const minText = ep.videoMin ? ` (${ep.videoMin}분)` : "";
-    taskList.push({
-      text: `인강: ${ep.videoTitle}${minText}`,
-      done: false,
-    });
-  }
-
-  // 노트 정리
-  taskList.push({
-    text: `노트 정리(핵심 내용 정리)`,
-    done: false,
+  taskItem.subtasks.push({
+    text: `문제집: ${pageText}`,
+    done: false
   });
+}
+
+// 인강
+if (ep.videoTitle) {
+  const minText = ep.videoMin ? ` (${ep.videoMin}분)` : "";
+  taskItem.subtasks.push({
+    text: `인강: ${ep.videoTitle}${minText}`,
+    done: false
+  });
+}
+
+// 노트정리
+taskItem.subtasks.push({
+  text: "노트 정리(핵심 내용 정리)",
+  done: false
+});
+
 
   // -------------------------------------------
   // 🔵 StudyPlan 구조 맞추기
@@ -406,7 +416,7 @@ export const autoAssignNextEpisode = async (params: {
     : [];
 
   const mergedSubject = {
-    teacherTasks: [...prevTeacher, ...taskList],  // 🔥 UI가 읽을 수 있는 구조!
+    teacherTasks: [...prevTeacher, taskItem],  // 🔥 UI가 읽을 수 있는 구조!
     studentPlans: prevSubj.studentPlans || [],
     memo: prevSubj.memo || "",
     done: prevSubj.done || false,
@@ -433,3 +443,157 @@ export const autoAssignNextEpisode = async (params: {
     lastEpisodeIndex: idx + 1,
   });
 };
+
+
+// ===== 날짜 유틸 =====
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function parseYMD(s: string): Date {
+const [y, m, d] = s.split("-").map(Number);
+return new Date(y, m - 1, d);
+}
+
+function formatYMD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+
+// 🔹 기준 날짜에서 "돌아오는 일요일" 구하기
+function getNextSunday(fromDate: string): string {
+const d = parseYMD(fromDate);
+const day = d.getDay(); // 0: 일요일
+const diff = (7 - day) % 7; // 오늘이 일요일이면 0
+d.setDate(d.getDate() + diff);
+return formatYMD(d);
+}
+
+// 🔹 시험기간 / 과제 개수 기준으로 안전한 날짜 찾기
+async function findSafeDateForTask(params: {
+studentId: string;
+subjectKey: string;
+baseDate: string;        // 이 날짜 기준으로 "돌아오는 일요일"부터 탐색
+maxTasksPerDay: number;  // 과제 6개까지 허용 → 6 넘으면 다음날
+}) {
+const { studentId, subjectKey, baseDate, maxTasksPerDay } = params;
+
+// 1) 해당 학생의 시험기간 목록 로드
+const testRef = collection(db, "studyPlans", studentId, "tests");
+const testSnap = await getDocs(testRef);
+const tests = testSnap.docs.map(d => d.data() as any);
+
+// 2) 첫 후보 날짜: 돌아오는 일요일
+let current = getNextSunday(baseDate);
+
+while (true) {
+const currentDate = parseYMD(current);
+
+// 2-1) 시험 블랙아웃 구간인지 체크  
+const inBlackout = tests.some(t => {  
+  if (!t.start || !t.end) return false;  
+  const start = parseYMD(t.start);  
+  const end = parseYMD(t.end);  
+
+  const blackoutStart = new Date(start.getTime() - 28 * DAY_MS); // 4주 전  
+  const blackoutEnd = new Date(end.getTime() + 7 * DAY_MS);      // 시험 끝 + 1주  
+
+  return currentDate >= blackoutStart && currentDate <= blackoutEnd;  
+});  
+
+if (inBlackout) {  
+  // 📌 가장 가까운 "시험 끝 + 7일" 로 점프  
+  const futureTests = tests  
+    .filter(t => t.end)  
+    .map(t => ({ ...t, endDate: parseYMD(t.end) }))  
+    .sort((a, b) => a.endDate.getTime() - b.endDate.getTime());  
+
+  if (futureTests.length > 0) {  
+    const first = futureTests[0];  
+    const afterExam = new Date(first.endDate.getTime() + 7 * DAY_MS);  
+    current = formatYMD(afterExam);  
+    continue; // 다시 검사  
+  }  
+}  
+
+// 2-2) 해당 날짜/과목의 과제 개수 확인  
+const dayRef = doc(db, "studyPlans", studentId, "days", current);  
+const daySnap = await getDoc(dayRef);  
+const raw = daySnap.exists() ? (daySnap.data() as any) : {};  
+const subj = raw[subjectKey] || {};  
+const teacherTasks: any[] = Array.isArray(subj.teacherTasks)  
+  ? subj.teacherTasks  
+  : [];  
+
+if (teacherTasks.length < maxTasksPerDay) {  
+  // ✅ 이 날짜 사용  
+  return current;  
+}  
+
+// 6개 이상 → 다음날로 밀기  
+const nextDate = new Date(currentDate.getTime() + DAY_MS);  
+current = formatYMD(nextDate);
+
+}
+}
+
+// 🔹 삭제된 자동 과제의 '미완료 서브태스크'를 재배치
+export async function rescheduleDeletedAutoTask(params: {
+studentId: string;
+subjectKey: string;
+fromDate: string;   // 원래 과제가 있던 날짜
+task: MainTask;     // 삭제한 메인 과제 (title + subtasks 포함)
+}) {
+const { studentId, subjectKey, fromDate, task } = params;
+
+if (!task || !Array.isArray(task.subtasks)) return;
+
+// 1) 미완료 서브태스크만 추려오기
+const remain = task.subtasks.filter(s => !s.done);
+if (remain.length === 0) return; // 남은 거 없으면 이월 안 함
+
+// 2) 규칙에 맞는 "안전한 날짜" 찾기
+const targetDate = await findSafeDateForTask({
+studentId,
+subjectKey,
+baseDate: fromDate,
+maxTasksPerDay: 6, // 과제 6개까지 허용
+});
+
+// 3) 해당 날짜의 기존 선생님 과제 읽기
+const planRef = doc(db, "studyPlans", studentId, "days", targetDate);
+const snap = await getDoc(planRef);
+const raw = snap.exists() ? (snap.data() as any) : {};
+const subj = raw[subjectKey] || {};
+
+const prevTeacher: any[] = Array.isArray(subj.teacherTasks)
+? subj.teacherTasks
+: [];
+
+// 4) 새 메인 과제(미완료 서브태스크만 포함)
+const newTask: MainTask = {
+  id: crypto.randomUUID(),   // ⭐ 반드시 추가
+  title: task.title,
+  done: false,
+  subtasks: remain.map(s => ({
+    text: s.text,
+    done: false,
+  })),
+};
+
+const mergedSubject = {
+...subj,
+teacherTasks: [...prevTeacher, newTask],
+updatedAt: serverTimestamp(),
+};
+
+// 5) Firestore 저장
+await setDoc(
+planRef,
+{
+date: targetDate,
+[subjectKey]: mergedSubject,
+},
+{ merge: true }
+);
+}

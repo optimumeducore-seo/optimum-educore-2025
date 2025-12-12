@@ -20,7 +20,16 @@ import "./StudyPlanPage.css";
 /* 타입 / 상수 정의 */
 /* ------------------------------------------------------------------ */
 
-type TaskItem = { text: string; done: boolean };
+type TaskItem = {
+  text?: string;      // 수동 과제용
+  title?: string;     // 자동 메인 과제 제목
+  done: boolean;
+  carriedOver?: boolean;   // ✅ 이 줄 추가
+  subtasks?: {
+    text: string;
+    done: boolean;
+  }[];
+};
 
 type SubjectPlan = {
   teacherTasks: TaskItem[];
@@ -73,24 +82,17 @@ const normalizeTasks = (v: any[]): any[] => {
   return v.map((item: any) => {
     if (!item) return { text: "", done: false };
 
-    // 1) 문자열 과제 (기존 수동 입력)
+    // ⭐ 자동 생성된 과제: 구조 그대로 유지
+    if (item.subtasks && Array.isArray(item.subtasks)) {
+      return item;  // 🔥 핵심!!
+    }
+
+    // 문자열로 된 수동 과제
     if (typeof item === "string") {
       return { text: item, done: false };
     }
 
-    // 2) 자동 생성된 과제(mainTask + subtasks)
-    if (item.subtasks && Array.isArray(item.subtasks)) {
-      return {
-        text: item.text || "",
-        done: !!item.done,
-        subtasks: item.subtasks.map((s: any) => ({
-          text: s.text || "",
-          done: !!s.done,
-        })),
-      };
-    }
-
-    // 3) 일반 객체 과제(text, done)
+    // 일반 과제
     return {
       text: item.text || "",
       done: !!item.done,
@@ -98,16 +100,159 @@ const normalizeTasks = (v: any[]): any[] => {
   });
 };
 
+function getNextDate(ds: string) {
+  const d = new Date(ds);
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+}
+
+/* ===============================
+   🔵 과목 데이터 정리 함수
+   =============================== */
 const makeCleanSubject = (subj: any = {}) => {
+  const teacher = Array.isArray(subj.teacherTasks)
+    ? subj.teacherTasks.map((t: any) => {
+
+        // 🔵 0) 레거시 자동과제 복구 (null / undefined 모두)
+        if (t.id && t.title && t.subtasks == null) {
+          return {
+            id: t.id,
+            title: t.title,
+            done: !!t.done,
+            subtasks: [], // ✅ 자동과제로 복구
+          };
+        }
+
+        // 🔵 1) 자동 과제
+        if (Array.isArray(t.subtasks)) {
+          return {
+            id: t.id || crypto.randomUUID(),
+            title: t.title || t.text || "",
+            done: !!t.done,
+            subtasks: t.subtasks.map((s: any) => ({
+              text: s.text,
+              done: !!s.done,
+            })),
+          };
+        }
+
+        // 🔵 2) 일반 과제 (🔥 subtasks 자체를 만들지 않는다)
+        return {
+          id: t.id || crypto.randomUUID(),
+          text: t.text || "",
+          done: !!t.done,
+          // ❌ subtasks 없음
+        };
+      })
+    : [];
+
+  const student = Array.isArray(subj.studentPlans)
+    ? normalizeTasks(subj.studentPlans)
+    : [];
+
   return {
-    teacherTasks: normalizeTasks(subj.teacherTasks),
-    studentPlans: normalizeTasks(subj.studentPlans),
+    teacherTasks: teacher,
+    studentPlans: student,
     memo: subj.memo || "",
     done: !!subj.done,
     proofImages: subj.proofImages || [],
     proofMemo: subj.proofMemo || "",
     wordTest: subj.wordTest || { correct: 0, total: 0 },
-    updatedAt: subj.updatedAt,
+  };
+};
+/* ---------------------------------------------------------- */
+/* 🔥  Legacy 자동 과제 (subtasks: undefined) 데이터 정리용 */
+/* ---------------------------------------------------------- */
+const fixLegacyTasks = async (
+  id: string,
+  selectedDate: string,
+  plans: Record<string, any>
+) => {
+  const day = plans[selectedDate];
+  if (!day || !day.subjects) return;
+
+  let needFix = false;
+  const payload: any = {};
+
+  for (const key of Object.keys(day.subjects)) {
+    const subj = day.subjects[key];
+    if (!subj?.teacherTasks) continue;
+
+    const fixedList = subj.teacherTasks.map((t: any) => {
+  // null 이든 undefined 든 다 잡기
+  if (t.id && t.title && t.subtasks == null) {
+    needFix = true;
+    return {
+      id: t.id,
+      title: t.title,
+      done: !!t.done,
+      subtasks: [], // 자동과제로 인정되도록 복구
+    };
+  }
+  return t;
+});
+
+    if (needFix) {
+      payload[key] = {
+        ...subj,
+        teacherTasks: fixedList,
+      };
+    }
+  }
+
+  if (needFix) {
+    console.log("🔥 Legacy 자동과제 클린업 실행됨 →", selectedDate);
+    await setDoc(
+      doc(db, "studyPlans", id, "days", selectedDate),
+      payload,
+      { merge: true }
+    );
+  }
+};
+
+/* ===============================
+   🔁 과제 이월 유틸
+   =============================== */
+
+const markAsCarriedOver = (t: any) => {
+  if (Array.isArray(t.subtasks)) {
+    return {
+      ...t,
+      carriedOver: true,
+      done: false,
+      subtasks: t.subtasks.map((s: any) => ({
+  ...s,
+  done: false,
+})),
+    };
+  }
+
+  return {
+    ...t,
+    carriedOver: true,
+    done: false,
+  };
+};
+
+const cloneForNextDay = (t: any) => {
+  if (Array.isArray(t.subtasks)) {
+    return {
+      ...t,
+      carriedOver: false,
+      done: false,
+      subtasks: t.subtasks.map((s: any) => ({
+  ...s,
+  done: false,
+})),
+    };
+  }
+
+  return {
+    ...t,
+    carriedOver: false,
+    done: false,
   };
 };
 
@@ -231,6 +376,10 @@ export default function StudyPlanPage() {
   if (!sRaw) return;
 
   subjects[key] = makeCleanSubject(sRaw);
+
+// 🔥 타입 안정화 (UI용)
+subjects[key].teacherTasks = subjects[key].teacherTasks || [];
+subjects[key].studentPlans = subjects[key].studentPlans || [];
 });
 
         map[d.id] = {
@@ -260,32 +409,37 @@ export default function StudyPlanPage() {
   /* 🔹 날짜 / 과목 변경 시 입력창 동기화 */
 /* ------------------------------------------------------------------ */
 
-  useEffect(() => {
-  if (!selectedDate || !id) return;
+const loadProof = async () => {
+  if (!id || !selectedDate) return;
 
-  const loadProof = async () => {
-    const ref = doc(db, "studyPlans", id, "days", selectedDate);
-    const snap = await getDoc(ref);
+  const ref = doc(db, "studyPlans", id, "days", selectedDate);
+  const snap = await getDoc(ref);
 
-    if (snap.exists()) {
-      const data = snap.data();
+  if (snap.exists()) {
+    const data = snap.data();
 
-      const imgs = (data.proofImages || [])
-  .map((it: any) => (typeof it === "string" ? it : it?.url))
-  .filter(Boolean);
+    const imgs = (data.proofImages || [])
+      .map((it: any) => (typeof it === "string" ? it : it?.url))
+      .filter(Boolean);
 
-      setProofImages(imgs);
-      setProofMemo(data.memo || "");
-    } else {
-      setProofImages([]);
-      setProofMemo("");
-    }
-  };
+    setProofImages(imgs);
+    setProofMemo(data.memo || "");
+  } else {
+    setProofImages([]);
+    setProofMemo("");
+  }
+};
 
+useEffect(() => {
+  if (!id || !selectedDate) return;
+
+  fixLegacyTasks(id, selectedDate, plans);
   loadProof();
-}, [selectedDate, id]);
+}, [id, selectedDate, plans]);
 
-
+useEffect(() => {
+(window as any).plans = plans;
+}, [plans]);
 
 // -------------------------------------------------------------
 // 🔥 오늘 과제(Subtasks) 자동 로드
@@ -306,9 +460,12 @@ useEffect(() => {
   const data = snap.data();
   const cleanSubj = makeCleanSubject(data[selectedSubject]);
 
-  setTeacherInput(
-    cleanSubj.teacherTasks.map((t:any)=>t.text).join("\n")
-  );
+ setTeacherInput(
+  cleanSubj.teacherTasks
+    .filter((t: any) => !Array.isArray(t.subtasks)) // 수동 과제만
+    .map((t: any) => t.text)
+    .join("\n")
+);
 
   setStudentInput(
     cleanSubj.studentPlans.map((t:any)=>t.text).join("\n")
@@ -422,6 +579,227 @@ useEffect(() => {
       return { ...prev, [selectedDate]: updatedDay };
     });
   };
+
+
+/* ------------------------------ */
+/* 🔵 메인 과제 전체 토글 */
+/* ------------------------------ */
+const toggleMain = (taskIndex: number) => {
+  if (!id || !selectedDate || !selectedSubject) return;
+
+  setPlans(prev => {
+    const day = prev[selectedDate];
+    if (!day) return prev;
+
+    const subj = day.subjects[selectedSubject];
+    if (!subj) return prev;
+
+    const teacherTasks = subj.teacherTasks.map((task, i) => {
+      if (i !== taskIndex) return task;
+
+      // 🔵 일반 과제
+      if (!Array.isArray(task.subtasks)) {
+        return { ...task, done: !task.done };
+      }
+
+      // 🔵 자동 과제 (메인)
+      // 🔵 자동 과제 (메인)
+const doneCount = task.subtasks.filter(s => s.done).length;
+const total = task.subtasks.length;
+
+// ✔ or △ → 전체 완료
+// ❌ → 전체 완료
+// ✔ → 전체 해제
+const shouldComplete =
+  doneCount === total ? false : true;
+
+return {
+  ...task,
+  done: shouldComplete,
+  subtasks: task.subtasks.map(s => ({
+    ...s,
+    done: shouldComplete,
+  })),
+};
+    });
+
+    const updatedSubject = { ...subj, teacherTasks };
+
+    setDoc(
+      doc(db, "studyPlans", id, "days", selectedDate),
+      { [selectedSubject]: updatedSubject, date: selectedDate },
+      { merge: true }
+    );
+
+    return {
+      ...prev,
+      [selectedDate]: {
+        ...day,
+        subjects: {
+          ...day.subjects,
+          [selectedSubject]: updatedSubject,
+        },
+      },
+    };
+  });
+};
+/* ------------------------------ */
+/* 🔵 서브 과제 개별 토글 */
+/* ------------------------------ */
+const toggleSubtask = (taskIndex: number, subIndex: number) => {
+  if (!id || !selectedDate || !selectedSubject) return;
+
+  setPlans(prev => {
+    const day = prev[selectedDate];
+    if (!day) return prev;
+
+    const subj = day.subjects[selectedSubject];
+    if (!subj) return prev;
+
+    const teacherTasks = subj.teacherTasks.map((task, i) => {
+      if (i !== taskIndex) return task;
+      if (!Array.isArray(task.subtasks)) return task;
+
+      // 🔥 서브 과제 불변 토글
+      const newSubtasks = task.subtasks.map((s, j) =>
+        j === subIndex ? { ...s, done: !s.done } : s
+      );
+
+      const allDone = newSubtasks.every(s => s.done);
+
+      return {
+        ...task,
+        done: allDone,
+        subtasks: newSubtasks,
+      };
+    });
+
+    const updatedSubject = {
+      ...subj,
+      teacherTasks,
+    };
+
+    // Firestore 저장
+    setDoc(
+      doc(db, "studyPlans", id, "days", selectedDate),
+      { [selectedSubject]: updatedSubject, date: selectedDate },
+      { merge: true }
+    );
+
+    return {
+      ...prev,
+      [selectedDate]: {
+        ...day,
+        subjects: {
+          ...day.subjects,
+          [selectedSubject]: updatedSubject,
+        },
+      },
+    };
+  });
+};
+
+/* ------------------------------ */
+/* 🔁 안 한 과제 다음날로 미루기 */
+/* ------------------------------ */
+const carryOverWithMark = async () => {
+  if (!id || !selectedDate || !selectedSubject) return;
+
+  const nextDate = getNextDate(selectedDate);
+
+  setPlans(prev => {
+    const today = prev[selectedDate];
+    if (!today) return prev;
+
+    const subj = today.subjects[selectedSubject];
+    if (!subj) return prev;
+
+    const todayTasks: any[] = [];
+    const nextTasks: any[] = [];
+
+    subj.teacherTasks.forEach(t => {
+      // 🔹 서브과제 있는 자동 과제
+      if (Array.isArray(t.subtasks)) {
+        const doneSubs = t.subtasks.filter(s => s.done);
+        const undoneSubs = t.subtasks.filter(s => !s.done);
+
+        // 오늘에 남길 과제
+        if (doneSubs.length > 0) {
+          todayTasks.push({
+            ...t,
+            subtasks: doneSubs,
+            done: doneSubs.length === t.subtasks.length,
+          });
+        }
+
+        // 내일로 넘길 과제
+        if (undoneSubs.length > 0) {
+          nextTasks.push({
+            ...t,
+            subtasks: undoneSubs.map(s => ({ ...s, done: false })),
+            done: false,
+            carriedOver: true,
+          });
+        }
+
+        return;
+      }
+
+      // 🔹 수동 과제
+      if (t.done) {
+        todayTasks.push(t);
+      } else {
+        todayTasks.push(markAsCarriedOver(t));
+        nextTasks.push(cloneForNextDay(t));
+      }
+    });
+
+    if (nextTasks.length === 0) return prev;
+
+    const nextDay = prev[nextDate] || { date: nextDate, subjects: {} };
+    const nextSubj = nextDay.subjects[selectedSubject] || {
+      teacherTasks: [],
+      studentPlans: [],
+    };
+
+    const updatedToday = { ...subj, teacherTasks: todayTasks };
+    const updatedNext = {
+      ...nextSubj,
+      teacherTasks: [...nextSubj.teacherTasks, ...nextTasks],
+    };
+
+    // Firestore 저장
+    setDoc(
+      doc(db, "studyPlans", id, "days", selectedDate),
+      { date: selectedDate, [selectedSubject]: updatedToday },
+      { merge: true }
+    );
+
+    setDoc(
+      doc(db, "studyPlans", id, "days", nextDate),
+      { date: nextDate, [selectedSubject]: updatedNext },
+      { merge: true }
+    );
+
+    return {
+      ...prev,
+      [selectedDate]: {
+        ...today,
+        subjects: {
+          ...today.subjects,
+          [selectedSubject]: updatedToday,
+        },
+      },
+      [nextDate]: {
+        ...nextDay,
+        subjects: {
+          ...nextDay.subjects,
+          [selectedSubject]: updatedNext,
+        },
+      },
+    };
+  });
+};
 
 const updateWordTest = async (
   date: string,
@@ -539,14 +917,24 @@ const updateWordTest = async (
    if (isTeacher) {
   const prevTeacher = prevSubj?.teacherTasks || [];
 
-  const teacherTasks = teacherInput
+  // 🔵 1) 자동 과제는 유지 (subtasks가 배열인 항목만)
+  const autoList = prevTeacher.filter((t: any) =>
+    Array.isArray(t.subtasks)
+  );
+
+  // 🔵 2) 수동 과제만 입력창으로부터 갱신
+  const manualList = teacherInput
     .split("\n")
     .map((t) => t.trim())
     .filter(Boolean)
     .map((text) => ({
       text,
-      done: prevTeacher.find((x) => x.text === text)?.done ?? false,
+      done:
+        prevTeacher.find((x: any) => x.text === text)?.done ?? false,
     }));
+
+  // 🔵 최종: 자동 + 수동을 합친 새로운 teacherTasks
+  const teacherTasks = [...autoList, ...manualList];
 
   const mergedSubject: SubjectPlan = {
     teacherTasks,
@@ -556,7 +944,7 @@ const updateWordTest = async (
     updatedAt: serverTimestamp(),
     proofImages: prevSubj?.proofImages || [],
     proofMemo: prevSubj?.proofMemo || "",
-    wordTest: prevSubj?.wordTest || {},   // ⭐⭐ 반드시 있어야 함 ⭐⭐
+    wordTest: prevSubj?.wordTest || {}, // ⭐ 반드시 유지
   };
 
   const data = cleanForFirestore({
@@ -1131,7 +1519,7 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
               lineHeight: 1.4,
             }}
           >
-            {subj.tasks.map((t) => `• ${t.text}`).join("\n")}
+            {subj.tasks.map((t) => t.title ?? t.text).join("\n")}
           </div>
         </div>
       ))}
@@ -1412,29 +1800,101 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
 )}
 
           {/* 선생님 과제 체크박스 */}
-          {selectedDate &&
-            plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks?.map(
-              (task, i) => (
-                <label
-                  key={i}
-                  style={{
-                    display: "flex",
-                    gap: 6,
-                    marginBottom: 4,
-                    fontSize: 13,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={task.done}
-                    onChange={() => toggleTask("teacherTasks", i)}
-                    disabled={isParent}
-                  />
-                  <span>{task.text}</span>
-                </label>
-              )
-            )}
+          {/* 🔥 자동 + 수동 과제 렌더링 */}
+{selectedDate &&
+  plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks?.map(
+    (task, i) => {
+      console.log("### CHECK RENDER ###");
+      console.log("isParent:", isParent);
+      console.log("task:", task);
+      // ★ 자동 과제
+      if (Array.isArray(task.subtasks)) {
+        return (
+          <div key={i} style={{ marginBottom: 10 }}>
+            {/* 🟥 메인 박스 */}
+            <label style={{ display: "flex", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={task.done}
+                onChange={() => toggleMain(i)}
+                disabled={isParent}
+              />
+              <b>{task.title}</b>
+            </label>
 
+            {/* 🟦 서브 과제 */}
+            {task.subtasks.map((sub, subIndex) => (
+              <div
+                key={subIndex}
+                style={{
+                  marginLeft: 24,
+                  display: "flex",
+                  gap: 6,
+                  marginBottom: 4,
+                  fontSize: 12,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={sub.done}
+                  onChange={() => toggleSubtask(i, subIndex)}
+                  disabled={isParent}
+                />
+                <span>{sub.text}</span>
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      // ★ 수동 과제 (기존 그대로)
+    return (
+  <label
+    key={i}
+    style={{
+      display: "flex",
+      gap: 6,
+      marginBottom: 4,
+      fontSize: 13,
+    }}
+  >
+    <input
+      type="checkbox"
+      checked={task.done}
+      onChange={() => toggleTask("teacherTasks", i)}
+      disabled={isParent || task.carriedOver}
+    />
+
+    <span
+      style={{
+        textDecoration: task.carriedOver ? "line-through" : "none",
+        color: task.carriedOver ? "#9CA3AF" : "#111827",
+      }}
+    >
+      {task.carriedOver && "❌ "}
+      {task.title || task.text}
+    </span>
+  </label>
+);
+    }
+    )}
+    <button
+  onClick={carryOverWithMark}
+  style={{
+    width: "100%",
+    marginTop: 10,
+    padding: "8px 0",
+    background: "#FEE2E2",
+    color: "#991B1B",
+    borderRadius: 10,
+    border: "1px solid #FCA5A5",
+    fontSize: 13,
+    fontWeight: 700,
+  }}
+>
+  ❌ 안 한 과제 다음날로 미루기
+</button>
+  
           {/* 내 공부 계획 입력 */}
           <InputSection
             readonly={isParent || isTeacher}
