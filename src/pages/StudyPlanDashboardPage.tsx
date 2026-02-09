@@ -29,8 +29,9 @@ type Student = {
 };
 
 type TaskItem = {
-  text?: string;   // 수동 과제
-  title?: string;  // 자동 과제
+  id?: string;          // ✅ 이 줄 하나 추가
+  text?: string;
+  title?: string;
   done?: boolean;
   subtasks?: {
     text: string;
@@ -144,20 +145,19 @@ const normalizeTasks = (v: any): TaskItem[] => {
   if (!Array.isArray(v)) return [];
 
   return v.map((x: any) => ({
-    title: x.title,          // ✅ 추가
-    text: x.text || "",      // 수동용
+    title: x.title ?? "",
+    text: x.text ?? "",
     done: !!x.done,
-    carriedFrom: x.carriedFrom,
+    deleted: x.deleted === true ? true : false,
+    carriedFrom: x.carriedFrom ?? "",
     subtasks: Array.isArray(x.subtasks)
       ? x.subtasks.map((s: any) => ({
-        text: s.text,
+        text: s.text ?? "",
         done: !!s.done,
       }))
-      : undefined,
+      : [],
   }));
 };
-
-
 
 /* -------------------------------------------------- */
 /* 메인 컴포넌트: StudyPlanDashboardPage              */
@@ -202,7 +202,7 @@ export default function StudyPlanDashboardPage() {
   };
 
   const getNextDate = (dateStr: string) => {
-    const d = new Date(dateStr);
+    const d = new Date(dateStr); // ✅ 정확히 이거
     d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   };
@@ -232,7 +232,12 @@ export default function StudyPlanDashboardPage() {
       .split("\n")
       .map(t => t.trim())
       .filter(Boolean)
-      .map(text => ({ text, done: false }));
+      .map(text => ({
+        id: crypto.randomUUID(),   // ⭐ 반드시
+        text,
+        done: false,
+        deleted: false,
+      }))
 
     await Promise.all(
       selectedStudentIds.map(async (sid) => {
@@ -262,7 +267,8 @@ export default function StudyPlanDashboardPage() {
   };
 
   type DashboardTask = {
-    _uiId: string;
+    id?: string;        // ⭐⭐⭐ 이 줄 추가 (Firestore id)
+    _uiId: string;      // 화면용
     sid: string;
     studentName: string;
     subjectKey: string;
@@ -272,6 +278,9 @@ export default function StudyPlanDashboardPage() {
     text?: string;
     title?: string;
     subtasks?: DashboardSubTask[];
+
+    deleted?: boolean;
+    carriedFrom?: string;
   };
 
   const taskByStudent = useMemo<Record<string, DashboardTask[]>>(() => {
@@ -282,32 +291,37 @@ export default function StudyPlanDashboardPage() {
       if (!day || !day.subjects) return;
 
       Object.entries(day.subjects).forEach(([subjectKey, subj]: any) => {
-        (subj.teacherTasks || []).forEach((task: any) => {
-          if (!map[s.id]) map[s.id] = [];
-          const uiId = `${s.id}_${subjectKey}_${task.date}_${map[s.id].length}`;
+        (subj.teacherTasks || [])
+          .forEach((task: any) => {
+            if (!map[s.id]) map[s.id] = [];
+            const uiId = `${s.id}_${subjectKey}_${task.date}_${map[s.id].length}`;
 
-          map[s.id].push({
-            _uiId: uiId,
-            sid: s.id,
-            studentName: s.name,
-            subjectKey,
-            subjectLabel:
-              SUBJECTS.find(x => x.key === subjectKey)?.label || subjectKey,
-            date: task.date,
+            map[s.id].push({
+              id: task.id,          // ⭐⭐⭐ 이 줄 추가
+              _uiId: uiId,
+              sid: s.id,
+              studentName: s.name,
+              subjectKey,
+              subjectLabel:
+                SUBJECTS.find(x => x.key === subjectKey)?.label || subjectKey,
+              date: task.date,
 
-            done: !!task.done,   // ✅ 하나로 통일
+              done: !!task.done,
 
-            text: task.text,
-            title: task.title,
+              // 🔥🔥 반드시 추가
+              deleted: !!task.deleted,
+              carriedFrom: task.carriedFrom,
 
-            subtasks: Array.isArray(task.subtasks)
-              ? task.subtasks.map((s: any) => ({
-                text: s.text,
-                done: !!s.done,   // ✅ 하나로 통일
-              }))
-              : [],
+              text: task.text,
+              title: task.title,
+              subtasks: Array.isArray(task.subtasks)
+                ? task.subtasks.map((s: any) => ({
+                  text: s.text,
+                  done: !!s.done,
+                }))
+                : [],
+            });
           });
-        });
       });
     });
 
@@ -401,33 +415,36 @@ export default function StudyPlanDashboardPage() {
   }, [selectedRuleStudentId]);
 
   /* ---------------- 출결 / 플래너 로드 (날짜별) ----- */
-
   useEffect(() => {
+    loadDayPlans();
+  }, [dateStr, students]);
+
+  const loadDayPlans = async () => {
     if (!dateStr || students.length === 0) return;
 
-    const load = async () => {
-      setLoading(true);
-      try {
-        // 1) 출결 records/<dateStr>
-        const recSnap = await getDoc(doc(db, "records", dateStr));
-        setRecords((recSnap.data() as any) || {});
+    setLoading(true);
+    try {
+      // 1) 출결 records/<dateStr>
+      const recSnap = await getDoc(doc(db, "records", dateStr));
+      setRecords((recSnap.data() as any) || {});
 
-        // 2) 각 학생의 플래너 studyPlans/<sid>/days/<dateStr>
-        const planMap: Record<string, DayPlan> = {};
+      // 2) 각 학생 플래너 studyPlans/<sid>/days/<dateStr>
+      const planMap: Record<string, DayPlan> = {};
 
-        await Promise.all(
-          students.map(async (s) => {
-            const ref = doc(db, "studyPlans", s.id, "days", dateStr);
-            const snap = await getDoc(ref);
-            if (!snap.exists()) return;
+      await Promise.all(
+        students.map(async (s) => {
+          const ref = doc(db, "studyPlans", s.id, "days", dateStr);
+          const snap = await getDoc(ref);
 
+          const subjects: Record<string, SubjectPlan> = {};
+
+          if (snap.exists()) {
             const raw = snap.data() as any;
-            const subjects: Record<string, SubjectPlan> = {};
 
             SUBJECTS.forEach(({ key }) => {
               const sRaw = raw[key];
               if (!sRaw) return;
-              console.log("🔥 RAW teacherTasks", sRaw.teacherTasks);
+
               subjects[key] = {
                 teacherTasks: normalizeTasks(sRaw.teacherTasks),
                 studentPlans: normalizeTasks(sRaw.studentPlans),
@@ -438,30 +455,25 @@ export default function StudyPlanDashboardPage() {
                 proofMemo: sRaw.proofMemo || "",
                 wordTest: sRaw.wordTest || { correct: 0, total: 0 },
               };
-              setDayPlans(planMap);
-
-              const firstSid = Object.keys(planMap)[0];
-              console.log(
-                "🔥 AFTER setDayPlans",
-                planMap[firstSid]?.subjects
-              );
             });
+          }
 
-            planMap[s.id] = {
-              date: dateStr,
-              subjects,
-            };
-          })
-        );
+          // ✅ 학생 단위로 한 번만
+          planMap[s.id] = {
+            date: dateStr,
+            subjects,
+          };
+        })
+      );
 
-        setDayPlans(planMap);
-      } finally {
-        setLoading(false);
-      }
-    };
+      // ✅ 여기서만 setDayPlans
+      setDayPlans(planMap);
 
-    load();
-  }, [dateStr, students]);
+      console.log("✅ DayPlans Loaded", planMap);
+    } finally {
+      setLoading(false);
+    }
+  };
 
 
 
@@ -515,10 +527,12 @@ export default function StudyPlanDashboardPage() {
           .split("\n")
           .map((t) => t.trim())
           .filter(Boolean)
-          .map((text) => ({
+          .map(text => ({
+            id: crypto.randomUUID(),   // ⭐ 반드시
             text,
             done: false,
-          }));
+            deleted: false,
+          }))
 
     const studentPlans: TaskItem[] = studentInput
       .split("\n")
@@ -710,6 +724,10 @@ export default function StudyPlanDashboardPage() {
     const tasks = subj.teacherTasks.map((t: any, i: number) => {
       if (i !== taskIndex) return t;
 
+      if (t.carriedFrom) {
+        return { ...t, done: !t.done };
+      }
+
       if (!Array.isArray(t.subtasks)) {
         return { ...t, done: !t.done };
       }
@@ -775,103 +793,168 @@ export default function StudyPlanDashboardPage() {
 
   const carryOverMainTask = async (
     sid: string,
+    baseDate: string,
     task: DashboardTask,
-    remainingSubs: {
-      text: string;
-      done: boolean;
-    }[]
+    remainingSubs: { text: string; done: boolean }[],
   ) => {
-    // 🔹 기준 날짜는 task.date
-    const nextDate = getNextDate(task.date);
+    // ===============================
+    // 0️⃣ 필수 검증 (여기서 걸리면 이월 금지)
+    // ===============================
+    if (!baseDate) {
+      alert("기준 날짜가 없어 이월할 수 없습니다");
+      return;
+    }
 
-    const ref = doc(db, "studyPlans", sid, "days", nextDate);
-    const snap = await getDoc(ref);
+    if (!task.subjectKey) {
+      alert("과목 정보가 없어 이월할 수 없습니다");
+      return;
+    }
+
+    // 🔥 핵심: Firestore id 없으면 절대 이월 금지
+    const firestoreTaskId = task.id ?? task._uiId;
+    if (!firestoreTaskId) {
+      console.error("❌ Firestore id missing", task);
+      alert("이 과제는 이월할 수 없습니다 (id 없음)");
+      return;
+    }
 
     const subjectKey = task.subjectKey;
-    const data = snap.exists() ? snap.data() : {};
+    const nextDate = getNextDate(baseDate);
 
-    const prevTasks = data?.[subjectKey]?.teacherTasks || [];
+    // ===============================
+    // 1️⃣ 다음날 문서에 새 과제 생성
+    // ===============================
+    const nextRef = doc(db, "studyPlans", sid, "days", nextDate);
+    const nextSnap = await getDoc(nextRef);
+    const nextData = nextSnap.exists() ? nextSnap.data() : {};
+    const prevTasks = nextData?.[subjectKey]?.teacherTasks || [];
 
-    // ✅ Firestore용 MainTask 생성
     const newTask = {
-      id: crypto.randomUUID(),          // ⭐ 필수
+      id: crypto.randomUUID(),          // ✅ 항상 새 id
       title: task.title,
       text: task.text,
       done: false,
       date: nextDate,
       subtasks:
         remainingSubs.length > 0
-          ? remainingSubs.map(s => ({
-            text: s.text,
-            done: false,               // 🔥 핵심
-          }))
+          ? remainingSubs.map(s => ({ text: s.text, done: false }))
           : Array.isArray(task.subtasks)
-            ? task.subtasks.map(s => ({
-              text: s.text,
-              done: false,
-            }))
+            ? task.subtasks.map(s => ({ text: s.text, done: false }))
             : [],
-      carriedFrom: task.date,           // ⭐ 추적용
+      carriedFrom: baseDate,             // 🔥 출처 명확화
     };
 
     await setDoc(
-      ref,
+      nextRef,
       {
         [subjectKey]: {
-          ...(data?.[subjectKey] || {}),
+          ...(nextData?.[subjectKey] || {}),
           teacherTasks: [...prevTasks, newTask],
         },
       },
       { merge: true }
     );
+
+    // ===============================
+    // 2️⃣ 오늘 문서에서 "원본 과제" 삭제 표시
+    // ===============================
+    const todayRef = doc(db, "studyPlans", sid, "days", baseDate);
+    const todaySnap = await getDoc(todayRef);
+
+    if (todaySnap.exists()) {
+      const todayData = todaySnap.data();
+      const todayTasks = todayData?.[subjectKey]?.teacherTasks || [];
+
+      const updatedTasks = todayTasks.map((t: any) =>
+        ((t as any).id ?? (t as any)._uiId) === firestoreTaskId
+          ? { ...t, deleted: true }   // 🔥 여기서 완전 고정
+          : t
+      );
+
+      await setDoc(
+        todayRef,
+        {
+          [subjectKey]: {
+            ...(todayData?.[subjectKey] || {}),
+            teacherTasks: updatedTasks,
+          },
+        },
+        { merge: true }
+      );
+    }
+
+    // ===============================
+    // 3️⃣ 로컬 상태 즉시 반영 (UI 좀비 방지)
+    // ===============================
+    setDayPlans(prev => {
+      const day = prev[sid];
+      if (!day) return prev;
+
+      const subject = day.subjects[subjectKey];
+      if (!subject) return prev;
+
+      return {
+        ...prev,
+        [sid]: {
+          ...day,
+          subjects: {
+            ...day.subjects,
+            [subjectKey]: {
+              ...subject,
+              teacherTasks: subject.teacherTasks.map(t =>
+                ((t as any).id ?? (t as any)._uiId) === firestoreTaskId
+                  ? { ...t, deleted: true }
+                  : t
+              ),
+            },
+          },
+        },
+      };
+    });
 
     alert("✅ 과제가 다음 날로 이월되었습니다");
+    await loadDayPlans();
   };
 
-  const carryOverSubtask = async (
+  const deleteMainTask = async (
     sid: string,
-    task: DashboardTask,
-    subtask: {
-      text: string;
-      done: boolean;
-    }
+    date: string,        // ✅ 반드시 task.date
+    subjectKey: string,
+    taskUiId: string     // ✅ task._uiId 를 받자 (가장 안전)
   ) => {
-    const nextDate = getNextDate(task.date);
+    const ok = window.confirm("이 과제를 완전히 삭제할까요? (되돌릴 수 없음)");
+    if (!ok) return;
 
-    const ref = doc(db, "studyPlans", sid, "days", nextDate);
-    const snap = await getDoc(ref);
+    try {
+      const ref = doc(db, "studyPlans", sid, "days", date);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return;
 
-    const subjectKey = task.subjectKey;
-    const data = snap.exists() ? snap.data() : {};
-    const prevTasks = data?.[subjectKey]?.teacherTasks || [];
+      const data = snap.data() as any;
+      const subj = data?.[subjectKey] || {};
+      const tasks: any[] = Array.isArray(subj.teacherTasks) ? subj.teacherTasks : [];
 
-    const newTask = {
-      title: task.title,
-      text: task.text,
-      done: false,
-      date: nextDate,
-      subtasks: [
+      // ✅ 원본 Firestore task.id == task._uiId 로 매칭해서 삭제
+      const nextTasks = tasks.filter((t: any) => (t.id ?? t._uiId) !== taskUiId);
+
+      await setDoc(
+        ref,
         {
-          text: subtask.text,
-          done: false,
+          [subjectKey]: {
+            ...subj,
+            teacherTasks: nextTasks,
+          },
         },
-      ],
-      carriedFrom: task.date,
-    };
+        { merge: true }
+      );
 
-    await setDoc(
-      ref,
-      {
-        [subjectKey]: {
-          ...(data?.[subjectKey] || {}),
-          teacherTasks: [...prevTasks, newTask],
-        },
-      },
-      { merge: true }
-    );
-  };;
-
-
+      alert("✅ 삭제 완료");
+      await loadDayPlans(); // 🔥 화면 즉시 갱신
+    } catch (e) {
+      console.error("❌ deleteMainTask failed", e);
+      alert("삭제 실패");
+    }
+  };
 
   const toggleTeacherTaskDone = async (
     sid: string,
@@ -1533,54 +1616,103 @@ export default function StudyPlanDashboardPage() {
                         {(() => {
                           const teacherTasks = tasks as DashboardTask[];
 
-                          return teacherTasks.map((task, i) => (
-                            <div key={task._uiId} style={{ marginBottom: 10 }}>
-                              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                <input
-                                  type="checkbox"
-                                  checked={task.done}
-                                  onChange={() =>
-                                    toggleMainFromDashboard(
-                                      sid,
-                                      task.date,        // ✅ 무조건 task.date
-                                      task.subjectKey,
-                                      i
-                                    )
-                                  }
-                                />
-                                <b>{task.title || task.text}</b>
-                              </label>
+                          return teacherTasks.map((task, i) => {
+                            const isCarried = task.deleted === true;
+                            return (
+                              <div key={task._uiId} style={{ marginBottom: 10 }}>
+                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
 
-                              {Array.isArray(task.subtasks) &&
-                                task.subtasks.map((s, j) => (
-                                  <div
-                                    key={j}
-                                    style={{
-                                      marginLeft: 22,
-                                      display: "flex",
-                                      gap: 6,
-                                      fontSize: 12,
-                                      marginTop: 4,
-                                    }}
-                                  >
+                                  {/* ✅ label은 여기까지만 */}
+                                  <label style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
                                     <input
                                       type="checkbox"
-                                      checked={s.done}
+                                      checked={task.done}
+                                      disabled={task.deleted}
                                       onChange={() =>
-                                        toggleSubtaskFromDashboard(
+                                        toggleMainFromDashboard(
                                           sid,
-                                          dateStr,
+                                          task.date,        // ✅ task.date 유지
                                           task.subjectKey,
-                                          i,
-                                          j
+                                          i
                                         )
                                       }
                                     />
-                                    <span>{s.text}</span>
-                                  </div>
-                                ))}
-                            </div>
-                          ));
+
+                                    <b
+                                      style={{
+                                        textDecoration: task.deleted ? "line-through" : "none",
+                                        opacity: task.deleted ? 0.5 : 1,
+                                      }}
+                                    >
+                                      {task.title || task.text}
+                                      {isCarried && (
+                                        <span style={{ marginLeft: 6, fontSize: 11, color: "#999", fontWeight: 500, }}>
+                                          (이월됨)
+                                        </span>
+                                      )}
+                                    </b>
+                                  </label>
+
+                                  {/* ✅ 삭제 버튼은 label 밖 */}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteTeacherTask(
+                                        sid,
+                                        dateStr,          // ⭐ 화면 날짜
+                                        selectedSubject,  // ⭐ 현재 과목
+                                        i
+                                      )
+                                    }
+                                    style={{
+                                      fontSize: 11,
+                                      padding: "2px 6px",
+                                      borderRadius: 4,
+                                      border: "1px solid #ddd",
+                                      background: "#fff",
+                                      color: "#c00",
+                                      cursor: "pointer",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+
+                                {Array.isArray(task.subtasks) &&
+                                  task.subtasks.map((s, j) => (
+                                    <div
+                                      key={j}
+                                      style={{
+                                        marginLeft: 22,
+                                        display: "flex",
+                                        gap: 6,
+                                        fontSize: 12,
+                                        marginTop: 4,
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={s.done}
+                                        onChange={() =>
+                                          toggleSubtaskFromDashboard(
+                                            sid,
+                                            task.date,
+                                            task.subjectKey,
+                                            i,
+                                            j
+                                          )
+                                        }
+                                      />
+                                      <span>{s.text}</span>
+                                    </div>
+                                  ))}
+                              </div>
+
+
+
+                            );
+                          });
                         })()}
                       </div>
                     );
@@ -1792,10 +1924,23 @@ export default function StudyPlanDashboardPage() {
                   </div>
 
                   {tasks.map((task, i) => {
+                    const baseDate = task.date ?? assignDate;
+                    const isCarried = task.deleted === true;
+                    console.log(
+                      "[RENDER TASK]",
+                      task.text,
+                      task.deleted,
+                      task
+                    );
+
+
                     const key = task._uiId;
                     const isDone =
-                      localDoneMap[key] ?? task.done;
+                      task.carriedFrom
+                        ? false
+                        : (localDoneMap[key] ?? task.done);
                     const renderedSubtasks = (task.subtasks ?? []).map((s, j) => {
+
                       const subKey = `${task._uiId}_sub_${j}`;
                       return {
                         ...s,
@@ -1803,7 +1948,14 @@ export default function StudyPlanDashboardPage() {
                       };
                     });
 
-                    const isPast = task.date && task.date < dateStr;
+                    const hasIncompleteSub =
+                      renderedSubtasks.length === 0 ||
+                      renderedSubtasks.some(s => !s.isDone);
+
+                    const canCarryOver =
+  !task.deleted &&        // 아직 이월 안 됐고
+  task.date === baseDate; // 오늘 과제면 무조건
+
                     const totalSubs = renderedSubtasks.length;
 
                     const studentDoneCount =
@@ -1828,7 +1980,6 @@ export default function StudyPlanDashboardPage() {
                       Array.isArray(task.subtasks) && task.subtasks.length > 0;
 
                     const isMainCarryOver =
-                      isPast &&
                       !teacherDone &&
                       (
                         !hasSubtasks ||
@@ -1836,7 +1987,7 @@ export default function StudyPlanDashboardPage() {
                       );
 
                     const partialCarryOverSubtasks =
-                      isPast && hasSubtasks
+                      hasSubtasks
                         ? task.subtasks!.filter(s => !s.done)
                         : [];
 
@@ -1858,7 +2009,9 @@ export default function StudyPlanDashboardPage() {
                           <input
                             type="checkbox"
                             checked={isDone}
+                            disabled={isCarried}          // ⭐ 이월되면 클릭 불가
                             onChange={() => {
+                              if (isCarried) return;      // ⭐ 안전장치
                               setLocalDoneMap(prev => ({
                                 ...prev,
                                 [key]: !isDone,
@@ -1874,7 +2027,14 @@ export default function StudyPlanDashboardPage() {
                           />
 
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <b>{task.title || task.text}</b>
+                            <b
+                              style={{
+                                textDecoration: task.deleted ? "line-through" : "none",
+                                opacity: task.deleted ? 0.5 : 1,
+                              }}
+                            >
+                              {task.title || task.text}
+                            </b>
                             {studentDone && !teacherDone && (
                               <span
                                 style={{
@@ -1889,16 +2049,29 @@ export default function StudyPlanDashboardPage() {
                             )}
 
                             {/* 🔥 메인 이월 뱃지 */}
-                            {isMainCarryOver && (
+                            {!isCarried && canCarryOver && (
                               <button
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  const baseDate = task.date ?? assignDate;
+
+                                  console.log("[CARRYOVER CLICK]", {
+                                    sid,
+                                    baseDate,
+                                    taskId: task.id,
+                                    uiId: task._uiId,
+                                    deleted: task.deleted,
+                                    done: isDone,
+                                    remainingSubs: renderedSubtasks.filter(s => !s.isDone),
+                                  });
+
                                   carryOverMainTask(
                                     sid,
+                                    baseDate,
                                     task,
-                                    partialCarryOverSubtasks   // ⭐ 중요
-                                  )
-                                }
+                                    renderedSubtasks.filter(s => !s.isDone)
+                                  );
+                                }}
                                 style={{
                                   fontSize: 10,
                                   padding: "2px 8px",
@@ -1913,84 +2086,85 @@ export default function StudyPlanDashboardPage() {
                                 이월
                               </button>
                             )}
+
                           </div>
                         </label>
                         {hasSubtasks && (
-  <div
-    style={{
-      height: 8,
-      background: "#F1F5F9",
-      borderRadius: 999,
-      marginTop: 6,
-      overflow: "hidden",
-    }}
-  >
-    <div
-      style={{
-        height: "100%",
-        width: `${progress}%`,
-        background: "#3B82F6",
-        transition: "width 0.25s ease",
-      }}
-    />
-  </div>
-)}
+                          <div
+                            style={{
+                              height: 8,
+                              background: "#F1F5F9",
+                              borderRadius: 999,
+                              marginTop: 6,
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${progress}%`,
+                                background: "#3B82F6",
+                                transition: "width 0.25s ease",
+                              }}
+                            />
+                          </div>
+                        )}
 
-                       {renderedSubtasks.map((s, j) => {
-  const subkey = `${task._uiId}_sub_${j}`;
-  const isSubDone = s.isDone;
-  const isSubCarry = isPast && !s.isDone;
+                        {renderedSubtasks.map((s, j) => {
+                          const subkey = `${task._uiId}_sub_${j}`;
+                          const isSubDone = s.isDone;
 
-  return (
-    <div
-      key={subkey}
-      style={{
-        marginLeft: 22,
-        marginTop: 4,
-        fontSize: 11,
-        opacity: isSubDone ? 0.6 : 1,
-        display: "flex",
-        gap: 6,
-        alignItems: "center",
-      }}
-    >
-      <input
-        type="checkbox"
-        checked={isSubDone}
-        onChange={() => {
-          setLocalSubDoneMap(prev => ({
-            ...prev,
-            [subkey]: !isSubDone,
-          }));
+                          // ⭐⭐⭐ 이 줄 추가 ⭐⭐⭐
+                          const isSubCarried = !!task.deleted || !!task.carriedFrom;
 
-          toggleSubtaskFromDashboard(
-            sid,
-            dateStr,
-            task.subjectKey,
-            i,
-            j
-          );
-        }}
-      />
-      <span
-        style={{
-          textDecoration: isSubDone ? "line-through" : "none",
-        }}
-      >
-        {s.text}
-      </span>
+                          const isSubCarry = !teacherDone && !s.isDone;
 
-                              {/* 🔥 서브 이월 뱃지 */}
-                              {isSubCarry && (
+                          return (
+                            <div
+                              key={subkey}
+                              style={{
+                                marginLeft: 22,
+                                marginTop: 4,
+                                fontSize: 11,
+                                opacity: isSubDone ? 0.6 : 1,
+                                display: "flex",
+                                gap: 6,
+                                alignItems: "center",
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSubDone}
+                                onChange={() => {
+                                  setLocalSubDoneMap(prev => ({
+                                    ...prev,
+                                    [subkey]: !isSubDone,
+                                  }));
+
+                                  toggleSubtaskFromDashboard(
+                                    sid,
+                                    dateStr,
+                                    task.subjectKey,
+                                    i,
+                                    j
+                                  );
+                                }}
+                              />
+
+                              <span
+                                style={{
+                                  textDecoration: isSubDone ? "line-through" : "none",
+                                }}
+                              >
+                                {s.text}
+                              </span>
+
+                              {/* 🔥 서브 이월 버튼 */}
+                              {/*
+                              {!isSubCarried && isSubCarry && (
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    carryOverSubtask(
-                                      sid,
-                                      task,
-                                      s,
-                                    )
-                                  }
+                                  onClick={() => carryOverSubtask(sid, task, s)}
                                   style={{
                                     fontSize: 9,
                                     padding: "1px 6px",
@@ -2004,7 +2178,8 @@ export default function StudyPlanDashboardPage() {
                                 >
                                   이월
                                 </button>
-                              )}
+                                
+                              )}*/}
                             </div>
                           );
                         })}
