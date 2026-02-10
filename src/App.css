@@ -1,3 +1,12 @@
+/* 모바일 터치 하이라이트 제거 & 강제 캐시 방지 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  cache-control: no-cache !important;
+}
+
 #root {
   max-width: 1280px;
   margin: 0 auto;
@@ -46,4 +55,108 @@
     transform: scale(1);
     opacity: 1;
   }
+}
+
+/* ============================
+   📘 모의고사 표 정렬 최적화
+============================= */
+
+/* 전체 표 */
+.mock-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* 🔥 모든 열 동일 폭 */
+}
+
+/* 헤더 & 바디 공통 */
+.mock-table th,
+.mock-table td {
+  width: 90px;        /* 🔥 모의고사 각 회차 칸 폭 동일 */
+  text-align: center;
+  padding: 8px 4px;
+  border: 1px solid #eee;
+  font-size: 13px;
+}
+
+/* 과목명 컬럼만 넓게 */
+.mock-table .subject-col {
+  width: 130px;       /* 🔥 통과/통사/역사 글자수 많아도 안정적 */
+  font-weight: 600;
+  background: #fafafa;
+}
+
+/* 학부모 보고서 전체 스타일 통일 */
+.mock-table th {
+  background: #f5f7fc;
+  font-weight: 700;
+  font-size: 13px;
+}
+@media print {
+  /* 전체 숨기고 print-area만 출력 */
+  body * { visibility: hidden !important; }
+  #print-area, #print-area * { visibility: visible !important; }
+
+  /* A4 여백 */
+  @page { size: A4 portrait; margin: 8mm; }
+
+  /* ✅ 화면용 레이아웃(#root) 때문에 폭이 줄어드는 문제 방지 */
+  html, body { width: 100% !important; height: auto !important; margin: 0 !important; }
+  #root { max-width: none !important; margin: 0 !important; padding: 0 !important; text-align: left !important; }
+
+  /* print-area 상단 고정 + 4열 고정 그리드 */
+  #print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 6mm !important;
+  }
+
+  /* ✅ 학생 카드 박스 크기 동일 */
+  #print-area .print-card {
+    box-sizing: border-box !important;
+    border: 1px solid #bbb !important;
+    border-radius: 6px !important;
+    padding: 5mm !important;
+    background: #fff !important;
+
+    height: 88mm !important;        /* ✅ 12명(4x3) */
+    overflow: hidden !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* ✅ 카드 안 “과제 박스”를 인쇄에선 납작하게(제일 중요) */
+  #print-area .print-task {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 1.2mm 0 !important;
+    opacity: 1 !important;
+  }
+
+  /* 텍스트 */
+  #print-area .print-name {
+    font-weight: 800 !important;
+    font-size: 11pt !important;
+    margin: 0 0 2mm 0 !important;
+  }
+  #print-area .print-task b {
+    font-size: 9pt !important;
+    font-weight: 700 !important;
+  }
+  #print-area .print-task,
+  #print-area .print-task span,
+  #print-area .print-task div {
+    font-size: 8.5pt !important;
+    line-height: 1.2 !important;
+  }
+
+  /* 인쇄에서 숨길 것 */
+  button, input, .no-print { display: none !important; }
+
+  /* (선택) 진행바 숨기기 */
+  #print-area div[style*="height: 8px"] { display: none !important; }
 }

@@ -193,6 +193,8 @@ export default function StudyPlanDashboardPage() {
   const [localSubDoneMap, setLocalSubDoneMap] =
     useState<Record<string, boolean>>({});
 
+    const [printMode, setPrintMode] = useState<8 | 12>(12);
+
   const getYesterday = (date: string) => {
     const d = new Date(date);
     d.setDate(d.getDate() - 1);
@@ -652,91 +654,128 @@ export default function StudyPlanDashboardPage() {
       alert("삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     }
   };
-
- const handlePrint = () => {
-  // 1. 이름표 붙인 구역 가져오기
-  const printElement = document.getElementById('print-area');
-  
-  // 📍 안전장치: 혹시라도 구역을 못 찾으면 실행 안 함
+const handlePrint = () => {
+  const printElement = document.getElementById("print-area");
   if (!printElement) {
-    alert("인쇄할 구역을 찾을 수 없어요!");
+    alert("인쇄할 구역(#print-area)을 찾을 수 없어요!");
     return;
   }
 
-  const printContents = printElement.innerHTML;
-  const originalContents = document.body.innerHTML;
+  const cards = Array.from(printElement.querySelectorAll(".print-card"));
+  if (cards.length === 0) {
+    alert("학생 카드(.print-card)를 찾을 수 없어요! className 확인해줘요.");
+    return;
+  }
 
-  // 2. 인쇄용 스타일 (버튼 숨기고, 종이에 꽉 차게!)
-  const printStyle = `
-    <style>
-      @media print {
-        /* 1. 여백 최소화 및 기본 폰트 설정 */
-        body { padding: 5mm !important; background: white !important; font-family: 'Malgun Gothic', sans-serif; }
-        
-        /* 2. 한 페이지 12명 최적화 그리드 (가로 4명 x 세로 3줄 권장) */
-        #print-area { 
-          display: grid !important; 
-          grid-template-columns: repeat(4, 1fr) !important; 
-          gap: 6px !important; 
-          width: 100% !important;
-        }
+  // ✅ 8명(4x2) / 12명(4x3) 카드 높이만 다르게
+  const cardHeight = printMode === 8 ? "130mm" : "88mm";
 
-        /* 3. 카드 디자인: 12명이 들어가야 하므로 높이와 여백을 더 줄임 */
-        div[style*="border"] { 
-          border: 0.5px solid #bbb !important; 
-          padding: 6px !important;
-          margin: 0 !important;
-          border-radius: 4px !important;
-          page-break-inside: avoid !important;
-          background: #fff !important;
-          min-height: 100px; /* 너무 높으면 다음 장으로 넘어가니까 조절 */
-        }
+  const style = `
+  <style>
+    @page { size: A4 portrait; margin: 8mm; }
+    body { margin: 0; font-family: 'Malgun Gothic', sans-serif; }
 
-        /* 4. 글자 크기: 12명용 초소형 최적화 */
-        b { 
-          font-size: 9.5px !important; 
-          color: #1e3a8a !important; 
-          display: block; 
-          margin-bottom: 2px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        
-        /* 과제 리스트 텍스트 */
-        div { 
-          font-size: 8.5px !important; 
-          color: #333 !important; 
-          line-height: 1.1; 
-          margin-bottom: 1px;
-        }
-        
-        /* 5. 불필요한 요소 제거 */
-        button, .no-print, input[type="checkbox"], .carried-badge { display: none !important; }
-        
-        /* 제목은 작고 깔끔하게 상단 고정 */
-        h2 { 
-          font-size: 14px; 
-          text-align: center; 
-          color: #1e3a8a; 
-          margin-top: 0;
-          margin-bottom: 10px; 
-          border-bottom: 1px solid #1e3a8a; 
-        }
-      }
-    </style>
+    /* ✅ 4열 고정 */
+    .sheet {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6mm;
+    }
+
+    /* ✅ 카드 크기 통일 */
+    .card {
+      border: 1px solid #bbb;
+      border-radius: 6px;
+      padding: 5mm;
+      height: ${cardHeight};
+      box-sizing: border-box;
+      overflow: hidden;
+      page-break-inside: avoid;
+      background: #fff;
+    }
+
+    .name {
+      font-weight: 800;
+      font-size: 12pt;
+      margin-bottom: 3mm;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .task {
+      font-size: 9pt;
+      line-height: 1.2;
+      margin: 1.2mm 0;
+      border: none !important;
+      background: transparent !important;
+      padding: 0 !important;
+    }
+
+    /* ✅ 이월 강조 */
+    .task.carried { font-weight: 800; }
+    .badge {
+      display: inline-block;
+      font-size: 8pt;
+      padding: 0.2mm 1.5mm;
+      margin-right: 2mm;
+      border: 1px solid #d97706;
+      border-radius: 999px;
+    }
+
+    /* 체크박스/버튼 숨김 */
+    input, button { display:none !important; }
+  </style>
   `;
 
-  // 3. 화면 갈아치우기
-  document.body.innerHTML = printStyle + "<h2>📋 학생별 주간 학습 계획표</h2>" + printContents;
+  // ✅ print-card들을 가벼운 HTML로 변환
+  const htmlCards = cards
+    .map((card) => {
+      const nameEl = card.querySelector(".print-name") || card.querySelector("div");
+      const name = (nameEl?.textContent || "").trim();
 
-  // 4. 인쇄 실행 후 원래대로 복구
-  window.print();
-  document.body.innerHTML = originalContents;
-  
-  // 📍 중요: 화면 복구 후 버튼들이 다시 잘 눌리게 페이지 새로고침!
-  window.location.reload();
+      // ✅ b 태그(과제 제목) + data-carried="1" 여부 읽기
+      const taskEls = Array.from(card.querySelectorAll(".print-task b"));
+
+      const tasks = taskEls
+        .map((b) => {
+          const text = (b.textContent || "").trim();
+          const carried = b.getAttribute("data-carried") === "1";
+          return { text, carried };
+        })
+        .filter((t) => !!t.text);
+
+      const taskHtml = tasks
+        .map(({ text, carried }) => {
+          const badge = carried ? `<span class="badge">이월</span>` : "";
+          const cls = carried ? "task carried" : "task";
+          return `<div class="${cls}">• ${badge}${text}</div>`;
+        })
+        .join("");
+
+      return `<div class="card">
+        <div class="name">${name}</div>
+        ${taskHtml}
+      </div>`;
+    })
+    .join("");
+
+  const win = window.open("", "_blank", "width=900,height=700");
+  if (!win) {
+    alert("팝업이 차단됐어요! 팝업 허용 후 다시 시도해 주세요.");
+    return;
+  }
+
+  win.document.open();
+  win.document.write(`${style}<div class="sheet">${htmlCards}</div>`);
+  win.document.close();
+
+  win.focus();
+  win.print();
+  win.close();
 };
+
+
   /* ---------------- 요약 테이블 계산 ---------------- */
 
   const summaryRows = useMemo(() => {
@@ -1911,6 +1950,44 @@ export default function StudyPlanDashboardPage() {
                     />
                     이 과목 오늘 계획 완료
                   </label>
+
+                  {/* 🖨️ 인쇄 모드 선택 */}
+<div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+  <button
+    type="button"
+    onClick={() => setPrintMode(8)}
+    style={{
+      flex: 1,
+      padding: "6px 0",
+      borderRadius: 8,
+      border: printMode === 8 ? "2px solid #1E3A8A" : "1px solid #E5E7EB",
+      background: printMode === 8 ? "#EEF2FF" : "#fff",
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: "pointer",
+    }}
+  >
+    8명 / 페이지
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setPrintMode(12)}
+    style={{
+      flex: 1,
+      padding: "6px 0",
+      borderRadius: 8,
+      border: printMode === 12 ? "2px solid #1E3A8A" : "1px solid #E5E7EB",
+      background: printMode === 12 ? "#EEF2FF" : "#fff",
+      fontSize: 12,
+      fontWeight: 600,
+      cursor: "pointer",
+    }}
+  >
+    12명 / 페이지
+  </button>
+</div>
+
 {/* 🖨️ 인쇄 버튼 추가 */}
 <button
   onClick={handlePrint}
@@ -1976,6 +2053,7 @@ export default function StudyPlanDashboardPage() {
               return (
                 <div
                   key={sid}
+                    className="print-card" 
                   style={{
                     border: "1px solid #e5e7eb",
                     borderRadius: 10,
@@ -1983,9 +2061,12 @@ export default function StudyPlanDashboardPage() {
                     background: "#fff",
                   }}
                 >
-                  <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 14 }}>
-                    {student.name}
-                  </div>
+                  <div
+  className="print-name"   // ✅ (선택)
+  style={{ fontWeight: 700, marginBottom: 8, fontSize: 14 }}
+>
+  {student.name}
+</div>
 
                   {tasks.map((task, i) => {
                     const baseDate = task.date ?? assignDate;
@@ -2060,159 +2141,205 @@ console.log(`[버튼 체크 - ${task.text}]`, {
     isTeacherDone: teacherDone,        // 이게 true면 안 나옴 (선생님이 완료하면 이월 불가)
     hasIncompleteSub: !hasSubtasks || (task.subtasks && task.subtasks.some(s => !s.done))
   });
+  const isCarryOver = isCarried; // = task.deleted === true (이월로 사용)
 
-                    return (
-                      <div
-                        key={key}
-                        style={{
-                          padding: "8px 10px",
-                          borderRadius: 8,
-                          marginBottom: 6,
-                          background: isDone ? "#E5F0FF" : "#F9FAFB",
-                          border: isDone ? "1px solid #93C5FD" : "1px solid #E5E7EB",
-                          opacity: isDone ? 0.7 : 1,
-                        }}
-                      >
-                        {/* 🔹 메인 과제 */}
-                        <label style={{ display: "flex", gap: 6, fontSize: 12, alignItems: "center" }}>
-                          <input
-                            type="checkbox"
-                            checked={isDone}
-                            disabled={isCarried}          // ⭐ 이월되면 클릭 불가
-                            onChange={() => {
-                              if (isCarried) return;      // ⭐ 안전장치
-                              setLocalDoneMap(prev => ({
-                                ...prev,
-                                [key]: !isDone,
-                              }));
-
-                              toggleMainFromDashboard(
-                                sid,
-                                dateStr,
-                                task.subjectKey,
-                                i
-                              );
-                            }}
-                          />
-
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <b
-                              style={{
-                                textDecoration: task.deleted ? "line-through" : "none",
-                                opacity: task.deleted ? 0.5 : 1,
-                              }}
-                            >
-                              {task.title || task.text}
-                            </b>
-                            {studentDone && !teacherDone && (
-                              <span
-                                style={{
-                                  marginLeft: 6,
-                                  fontSize: 11,
-                                  color: "#F59E0B",
-                                  fontWeight: 500,
-                                }}
-                              >
-                                학생 완료 (확인 필요)
-                              </span>
-                            )}
-
-                            {/* 🔥 메인 이월 뱃지 */}
-                           {(!isCarried) && ( // 일단 canCarryOver 조건을 빼고 테스트해봐!
-  <button
-    type="button"
-    onClick={() => {
-      const baseDate = task.date ?? assignDate;
-      // 이월 로직 실행
-      carryOverMainTask(sid, baseDate, task, renderedSubtasks.filter(s => !s.isDone));
-    }}
+const bg = isCarryOver
+  ? "#FFFBEB" // 이월: 아주 연한 노랑
+  : isDone
+  ? "#E5F0FF" // 완료(학생체크): 연한 파랑
+  : "#F9FAFB"; // 기본
+return (
+  <div
+    key={key}
+    className="print-task"
     style={{
-      fontSize: 10,
-      padding: "2px 8px",
-      borderRadius: 999,
-      background: "#FEF3C7", // 노란색
-      color: "#92400E",
-      fontWeight: 700,
-      border: "1px solid #FCD34D",
-      cursor: "pointer",
-      marginRight: 4, // 삭제 버튼이랑 안 겹치게 간격 주기
+      padding: "8px 10px",
+      borderRadius: 8,
+      marginBottom: 6,
+      background: bg,
+
+      // ✅ 이월 강조: 왼쪽 라인만 주황
+      borderLeft: isCarryOver ? "6px solid #FB923C" : undefined,
+
+      border: isDone ? "1px solid #93C5FD" : "1px solid #E5E7EB",
+      opacity: isDone ? 0.7 : 1,
     }}
   >
-    이
-  </button>
-)}
+    {/* 🔹 메인 과제 */}
+    <label style={{ display: "flex", gap: 6, fontSize: 12, alignItems: "center" }}>
+      <input
+        type="checkbox"
+        checked={isDone}
+        disabled={isCarried}
+        onChange={() => {
+          if (isCarried) return;
+          setLocalDoneMap((prev) => ({
+            ...prev,
+            [key]: !isDone,
+          }));
 
-                          </div>
-                        </label>
-                        {hasSubtasks && (
-                          <div
-                            style={{
-                              height: 8,
-                              background: "#F1F5F9",
-                              borderRadius: 999,
-                              marginTop: 6,
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                height: "100%",
-                                width: `${progress}%`,
-                                background: "#3B82F6",
-                                transition: "width 0.25s ease",
-                              }}
-                            />
-                          </div>
-                        )}
+          toggleMainFromDashboard(sid, dateStr, task.subjectKey, i);
+        }}
+      />
 
-                        {renderedSubtasks.map((s, j) => {
-                          const subkey = `${task._uiId}_sub_${j}`;
-                          const isSubDone = s.isDone;
+      <div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "1fr auto", // ✅ 왼쪽 1칸, 오른쪽 1칸
+    alignItems: "center",
+    columnGap: 8,
+    width: "100%",
+  }}
+>
+  {/* 왼쪽: 과제 제목 */}
+ <b
+  data-carried={isCarryOver ? "1" : "0"}
+  style={{
+    color: isCarryOver ? "#B91C1C" : "#111827", // 🔴 확실한 빨강
+    fontWeight: isCarryOver ? 800 : 600,
+    background: isCarryOver ? "#FEE2E2" : "transparent",
+    padding: isCarryOver ? "2px 4px" : 0,
+    borderRadius: 4,
+  }}
+>
+  {task.title || task.text}
+</b>
 
-                          // ⭐⭐⭐ 이 줄 추가 ⭐⭐⭐
-                          const isSubCarried = !!task.deleted || !!task.carriedFrom;
+  {/* 오른쪽: 배지/문구/버튼 한 덩어리 */}
+  <div
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 6,
+      justifySelf: "end", // ✅ 무조건 오른쪽 끝
+      whiteSpace: "nowrap",
+    }}
+  >
+    {/* 이월 배지 */}
+    {isCarryOver && (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: 18,
+          padding: "0 8px",
+          borderRadius: 999,
+          background: "#FEF3C7",
+          border: "1px solid #FCD34D",
+          color: "#92400E",
+          fontWeight: 800,
+          fontSize: 11,
+        }}
+      >
+        이월
+      </span>
+    )}
 
-                          const isSubCarry = !teacherDone && !s.isDone;
+    {/* 학생 완료 문구 */}
+    {studentDone && !teacherDone && (
+      <span
+        style={{
+          fontSize: 11,
+          color: "#F59E0B",
+          fontWeight: 600,
+        }}
+      >
+        학생 완료
+      </span>
+    )}
 
-                          return (
-                            <div
-                              key={subkey}
-                              style={{
-                                marginLeft: 22,
-                                marginTop: 4,
-                                fontSize: 11,
-                                opacity: isSubDone ? 0.6 : 1,
-                                display: "flex",
-                                gap: 6,
-                                alignItems: "center",
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isSubDone}
-                                onChange={() => {
-                                  setLocalSubDoneMap(prev => ({
-                                    ...prev,
-                                    [subkey]: !isSubDone,
-                                  }));
+    {/* 메인 이월 버튼 (이월된 건 숨김) */}
+    {!isCarryOver && (
+      <button
+        type="button"
+        onClick={() => {
+          const baseDate = task.date ?? assignDate;
+          carryOverMainTask(
+            sid,
+            baseDate,
+            task,
+            renderedSubtasks.filter((s) => !s.isDone)
+          );
+        }}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: 20,
+          padding: "0 8px",
+          borderRadius: 999,
+          background: "#FFF7ED",
+          color: "#9A3412",
+          border: "1px solid #FDBA74",
+          fontWeight: 800,
+          fontSize: 11,
+          cursor: "pointer",
+        }}
+      >
+        이
+      </button>
+    )}
+  </div>
+</div>
+    </label>
 
-                                  toggleSubtaskFromDashboard(
-                                    sid,
-                                    dateStr,
-                                    task.subjectKey,
-                                    i,
-                                    j
-                                  );
-                                }}
-                              />
+    {/* 진행바 */}
+    {hasSubtasks && (
+      <div
+        style={{
+          height: 8,
+          background: "#F1F5F9",
+          borderRadius: 999,
+          marginTop: 6,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            height: "100%",
+            width: `${progress}%`,
+            background: "#3B82F6",
+            transition: "width 0.25s ease",
+          }}
+        />
+      </div>
+    )}
 
-                              <span
-                                style={{
-                                  textDecoration: isSubDone ? "line-through" : "none",
-                                }}
-                              >
-                                {s.text}
-                              </span>
+    {/* 서브태스크 */}
+    {renderedSubtasks.map((s, j) => {
+      const subkey = `${task._uiId}_sub_${j}`;
+      const isSubDone = s.isDone;
+
+      return (
+        <div
+          key={subkey}
+          style={{
+            marginLeft: 22,
+            marginTop: 4,
+            fontSize: 11,
+            opacity: isSubDone ? 0.6 : 1,
+            display: "flex",
+            gap: 6,
+            alignItems: "center",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={isSubDone}
+            onChange={() => {
+              setLocalSubDoneMap((prev) => ({
+                ...prev,
+                [subkey]: !isSubDone,
+              }));
+
+              toggleSubtaskFromDashboard(sid, dateStr, task.subjectKey, i, j);
+            }}
+          />
+
+          <span style={{ textDecoration: isSubDone ? "line-through" : "none" }}>
+            {s.text}
+          </span>
 
                               {/* 🔥 서브 이월 버튼 */}
                               {/*
