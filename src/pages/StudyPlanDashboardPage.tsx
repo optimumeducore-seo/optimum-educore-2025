@@ -14,8 +14,6 @@ import { saveAssignmentRules, loadAssignmentRules } from "../services/firestore"
 import { rescheduleDeletedAutoTask } from "../services/firestore";
 import type { MainTask } from "../services/firestore";
 
-
-
 /* -------------------------------------------------- */
 /* 타입 정의 (간단 버전)                              */
 /* -------------------------------------------------- */
@@ -589,67 +587,156 @@ export default function StudyPlanDashboardPage() {
     subjectKey: string,
     taskIndex: number
   ) => {
-    if (!sid) return;
-    if (!window.confirm("해당 과제를 삭제할까요?\n(미완료분은 다음 적절한 날짜로 이월됩니다)"))
-      return;
+    if (!sid || !date) return;
+    
+    const ok = window.confirm("해당 과제를 삭제할까요?\n(확인을 누르면 즉시 삭제됩니다)");
+    if (!ok) return;
 
-    // 기존 데이터 로드
-    const dayRef = doc(db, "studyPlans", sid, "days", date);
-    const snap = await getDoc(dayRef);
-    if (!snap.exists()) return;
+    try {
+      // 1. 정확한 위치(상세 주소) 찾기
+      const dayRef = doc(db, "studyPlans", sid, "days", date);
+      const snap = await getDoc(dayRef);
+      
+      if (!snap.exists()) {
+        alert("데이터를 찾을 수 없습니다.");
+        return;
+      }
 
-    const raw = snap.data() as any;
-    const subj = raw[subjectKey];
-    if (!subj || !Array.isArray(subj.teacherTasks)) return;
+      const raw = snap.data();
+      const subj = raw[subjectKey];
+      
+      if (!subj || !Array.isArray(subj.teacherTasks)) {
+        alert("삭제할 과제가 목록에 없습니다.");
+        return;
+      }
 
-    const tasks = [...subj.teacherTasks];
-    const targetTask = tasks[taskIndex] as MainTask;
+      // 2. 데이터 복사해서 해당 순서(index) 과제만 쏙 빼기
+      const tasks = [...subj.teacherTasks];
+      const targetTask = tasks[taskIndex]; // 삭제될 과제 정보 보관
 
-    // 🔥 1) 현재 날짜에서 해당 과제 삭제
-    tasks.splice(taskIndex, 1);
+      tasks.splice(taskIndex, 1); // 선택한 번호 삭제
 
-    const updatedSubject = {
-      ...subj,
-      teacherTasks: tasks,
-      updatedAt: serverTimestamp(),
-    };
-
-    await setDoc(
-      dayRef,
-      { date, [subjectKey]: updatedSubject },
-      { merge: true }
-    );
-
-    // 🔥 2) 자동 과제(서브태스크 있는 경우)라면 → 자동 이월
-    if (targetTask && Array.isArray(targetTask.subtasks)) {
-      await rescheduleDeletedAutoTask({
-        studentId: sid,
-        subjectKey,
-        fromDate: date,
-        task: targetTask,
-      });
-    }
-
-    // 🔥 3) 대시보드 화면 즉시 반영
-    setDayPlans((prev) => {
-      const day = prev[sid];
-      if (!day) return prev;
-
-      return {
-        ...prev,
-        [sid]: {
-          ...day,
-          subjects: {
-            ...day.subjects,
-            [subjectKey]: updatedSubject,
-          },
-        },
+      const updatedSubject = {
+        ...subj,
+        teacherTasks: tasks,
+        updatedAt: serverTimestamp(),
       };
-    });
+
+      // 3. 파이어베이스에 최종 저장
+      await setDoc(
+        dayRef,
+        { [subjectKey]: updatedSubject },
+        { merge: true }
+      );
+
+      // 4. 화면(대시보드) 즉시 업데이트
+      setDayPlans((prev) => {
+        const day = prev[sid];
+        if (!day) return prev;
+        return {
+          ...prev,
+          [sid]: {
+            ...day,
+            subjects: {
+              ...day.subjects,
+              [subjectKey]: updatedSubject,
+            },
+          },
+        };
+      });
+
+      alert("삭제가 완료되었습니다.");
+
+    } catch (e) {
+      console.error("삭제 실패 원인:", e);
+      alert("삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    }
   };
 
+ const handlePrint = () => {
+  // 1. 이름표 붙인 구역 가져오기
+  const printElement = document.getElementById('print-area');
+  
+  // 📍 안전장치: 혹시라도 구역을 못 찾으면 실행 안 함
+  if (!printElement) {
+    alert("인쇄할 구역을 찾을 수 없어요!");
+    return;
+  }
 
+  const printContents = printElement.innerHTML;
+  const originalContents = document.body.innerHTML;
 
+  // 2. 인쇄용 스타일 (버튼 숨기고, 종이에 꽉 차게!)
+  const printStyle = `
+    <style>
+      @media print {
+        /* 1. 여백 최소화 및 기본 폰트 설정 */
+        body { padding: 5mm !important; background: white !important; font-family: 'Malgun Gothic', sans-serif; }
+        
+        /* 2. 한 페이지 12명 최적화 그리드 (가로 4명 x 세로 3줄 권장) */
+        #print-area { 
+          display: grid !important; 
+          grid-template-columns: repeat(4, 1fr) !important; 
+          gap: 6px !important; 
+          width: 100% !important;
+        }
+
+        /* 3. 카드 디자인: 12명이 들어가야 하므로 높이와 여백을 더 줄임 */
+        div[style*="border"] { 
+          border: 0.5px solid #bbb !important; 
+          padding: 6px !important;
+          margin: 0 !important;
+          border-radius: 4px !important;
+          page-break-inside: avoid !important;
+          background: #fff !important;
+          min-height: 100px; /* 너무 높으면 다음 장으로 넘어가니까 조절 */
+        }
+
+        /* 4. 글자 크기: 12명용 초소형 최적화 */
+        b { 
+          font-size: 9.5px !important; 
+          color: #1e3a8a !important; 
+          display: block; 
+          margin-bottom: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        
+        /* 과제 리스트 텍스트 */
+        div { 
+          font-size: 8.5px !important; 
+          color: #333 !important; 
+          line-height: 1.1; 
+          margin-bottom: 1px;
+        }
+        
+        /* 5. 불필요한 요소 제거 */
+        button, .no-print, input[type="checkbox"], .carried-badge { display: none !important; }
+        
+        /* 제목은 작고 깔끔하게 상단 고정 */
+        h2 { 
+          font-size: 14px; 
+          text-align: center; 
+          color: #1e3a8a; 
+          margin-top: 0;
+          margin-bottom: 10px; 
+          border-bottom: 1px solid #1e3a8a; 
+        }
+      }
+    </style>
+  `;
+
+  // 3. 화면 갈아치우기
+  document.body.innerHTML = printStyle + "<h2>📋 학생별 주간 학습 계획표</h2>" + printContents;
+
+  // 4. 인쇄 실행 후 원래대로 복구
+  window.print();
+  document.body.innerHTML = originalContents;
+  
+  // 📍 중요: 화면 복구 후 버튼들이 다시 잘 눌리게 페이지 새로고침!
+  window.location.reload();
+};
   /* ---------------- 요약 테이블 계산 ---------------- */
 
   const summaryRows = useMemo(() => {
@@ -797,123 +884,70 @@ export default function StudyPlanDashboardPage() {
     task: DashboardTask,
     remainingSubs: { text: string; done: boolean }[],
   ) => {
-    // ===============================
-    // 0️⃣ 필수 검증 (여기서 걸리면 이월 금지)
-    // ===============================
-    if (!baseDate) {
-      alert("기준 날짜가 없어 이월할 수 없습니다");
-      return;
-    }
-
-    if (!task.subjectKey) {
-      alert("과목 정보가 없어 이월할 수 없습니다");
-      return;
-    }
-
-    // 🔥 핵심: Firestore id 없으면 절대 이월 금지
-    const firestoreTaskId = task.id ?? task._uiId;
-    if (!firestoreTaskId) {
-      console.error("❌ Firestore id missing", task);
-      alert("이 과제는 이월할 수 없습니다 (id 없음)");
+    // 0️⃣ 기초 확인
+    if (!baseDate || !sid || !task.subjectKey) {
+      alert("정보가 부족하여 이월할 수 없습니다.");
       return;
     }
 
     const subjectKey = task.subjectKey;
-    const nextDate = getNextDate(baseDate);
+    const nextDate = getNextDate(baseDate); // 내일 날짜 계산
+    const firestoreTaskId = task.id ?? task._uiId;
 
-    // ===============================
-    // 1️⃣ 다음날 문서에 새 과제 생성
-    // ===============================
-    const nextRef = doc(db, "studyPlans", sid, "days", nextDate);
-    const nextSnap = await getDoc(nextRef);
-    const nextData = nextSnap.exists() ? nextSnap.data() : {};
-    const prevTasks = nextData?.[subjectKey]?.teacherTasks || [];
+    try {
+      // 1️⃣ 내일(다음날) 문서에 새 과제 추가하기
+      const nextRef = doc(db, "studyPlans", sid, "days", nextDate);
+      const nextSnap = await getDoc(nextRef);
+      const nextData = nextSnap.exists() ? nextSnap.data() : {};
+      const prevNextTasks = nextData?.[subjectKey]?.teacherTasks || [];
 
-    const newTask = {
-      id: crypto.randomUUID(),          // ✅ 항상 새 id
-      title: task.title,
-      text: task.text,
-      done: false,
-      date: nextDate,
-      subtasks:
-        remainingSubs.length > 0
+      const newTask = {
+        id: crypto.randomUUID(), // 내일은 새 이름표로
+        title: task.title || "",
+        text: task.text || "",
+        done: false,
+        subtasks: remainingSubs.length > 0 
           ? remainingSubs.map(s => ({ text: s.text, done: false }))
-          : Array.isArray(task.subtasks)
-            ? task.subtasks.map(s => ({ text: s.text, done: false }))
-            : [],
-      carriedFrom: baseDate,             // 🔥 출처 명확화
-    };
+          : (task.subtasks || []).map(s => ({ text: s.text, done: false })),
+        carriedFrom: baseDate,
+      };
 
-    await setDoc(
-      nextRef,
-      {
+      await setDoc(nextRef, {
         [subjectKey]: {
           ...(nextData?.[subjectKey] || {}),
-          teacherTasks: [...prevTasks, newTask],
+          teacherTasks: [...prevNextTasks, newTask],
         },
-      },
-      { merge: true }
-    );
+      }, { merge: true });
 
-    // ===============================
-    // 2️⃣ 오늘 문서에서 "원본 과제" 삭제 표시
-    // ===============================
-    const todayRef = doc(db, "studyPlans", sid, "days", baseDate);
-    const todaySnap = await getDoc(todayRef);
+      // 2️⃣ 오늘 문서에서 원본 과제 완전히 삭제하기
+      const todayRef = doc(db, "studyPlans", sid, "days", baseDate);
+      const todaySnap = await getDoc(todayRef);
 
-    if (todaySnap.exists()) {
-      const todayData = todaySnap.data();
-      const todayTasks = todayData?.[subjectKey]?.teacherTasks || [];
+      if (todaySnap.exists()) {
+        const todayData = todaySnap.data();
+        const todayTasks = todayData?.[subjectKey]?.teacherTasks || [];
 
-      const updatedTasks = todayTasks.map((t: any) =>
-        ((t as any).id ?? (t as any)._uiId) === firestoreTaskId
-          ? { ...t, deleted: true }   // 🔥 여기서 완전 고정
-          : t
-      );
+        // 아이디가 같은 놈만 쏙 빼고 나머지만 남깁니다.
+        const filteredTasks = todayTasks.filter((t: any) => 
+          (t.id ?? t._uiId) !== firestoreTaskId
+        );
 
-      await setDoc(
-        todayRef,
-        {
+        await setDoc(todayRef, {
           [subjectKey]: {
-            ...(todayData?.[subjectKey] || {}),
-            teacherTasks: updatedTasks,
+            ...todayData[subjectKey],
+            teacherTasks: filteredTasks,
           },
-        },
-        { merge: true }
-      );
+        }, { merge: true });
+      }
+
+      // 3️⃣ 화면 새로고침
+      alert("✅ 과제가 내일로 성공적으로 넘어갔습니다!");
+      await loadDayPlans();
+
+    } catch (e) {
+      console.error("이월 중 에러:", e);
+      alert("이월에 실패했습니다. 코드를 확인해주세요.");
     }
-
-    // ===============================
-    // 3️⃣ 로컬 상태 즉시 반영 (UI 좀비 방지)
-    // ===============================
-    setDayPlans(prev => {
-      const day = prev[sid];
-      if (!day) return prev;
-
-      const subject = day.subjects[subjectKey];
-      if (!subject) return prev;
-
-      return {
-        ...prev,
-        [sid]: {
-          ...day,
-          subjects: {
-            ...day.subjects,
-            [subjectKey]: {
-              ...subject,
-              teacherTasks: subject.teacherTasks.map(t =>
-                ((t as any).id ?? (t as any)._uiId) === firestoreTaskId
-                  ? { ...t, deleted: true }
-                  : t
-              ),
-            },
-          },
-        },
-      };
-    });
-
-    alert("✅ 과제가 다음 날로 이월되었습니다");
-    await loadDayPlans();
   };
 
   const deleteMainTask = async (
@@ -1200,6 +1234,7 @@ export default function StudyPlanDashboardPage() {
             }}
           >
             <div
+            
               style={{
                 display: "flex",
                 justifyContent: "space-between",
@@ -1616,68 +1651,73 @@ export default function StudyPlanDashboardPage() {
                         {(() => {
                           const teacherTasks = tasks as DashboardTask[];
 
-                          return teacherTasks.map((task, i) => {
-                            const isCarried = task.deleted === true;
-                            return (
-                              <div key={task._uiId} style={{ marginBottom: 10 }}>
-                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                         return teacherTasks.map((task, i) => {
+  // 1️⃣ 이월 보낸 과제인지 확인하는 '스위치' (1일 날 과제에 deleted: true가 박힘)
+  const isSentToNextDay = task.deleted === true; 
 
-                                  {/* ✅ label은 여기까지만 */}
-                                  <label style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={task.done}
-                                      disabled={task.deleted}
-                                      onChange={() =>
-                                        toggleMainFromDashboard(
-                                          sid,
-                                          task.date,        // ✅ task.date 유지
-                                          task.subjectKey,
-                                          i
-                                        )
-                                      }
-                                    />
+  return (
+    <div key={task._uiId} style={{ marginBottom: 10 }}>
+      {/* 2️⃣ 정렬을 위해 justifyContent 추가 */}
+      <div style={{ 
+  display: "flex", 
+  alignItems: "center", 
+  justifyContent: "space-between", // ⭐ 1. 양 끝으로 벌려라!
+  width: "100%",                   // ⭐ 2. 가로 길이를 꽉 채워라!
+  gap: 10                          // 3. 제목이랑 버튼 사이 최소 간격
+}}>
+        
+        <label style={{ display: "flex", gap: 6, alignItems: "center", flex: 1, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={task.done}
+            disabled={isSentToNextDay} // 이월된 건 체크 못하게 막음
+            onChange={() => toggleMainFromDashboard(sid, task.date, task.subjectKey, i)}
+          />
+          
+          {/* 3️⃣ ⭐ 여기가 핵심! 선 긋는 스타일 ⭐ */}
+          <b
+            style={{
+              // isSentToNextDay가 true면 line-through(가로줄), 아니면 none(없음)
+              textDecoration: isSentToNextDay ? "line-through" : "none", 
+              // 이월된 건 회색(#999), 아니면 검정(#000)
+              color: isSentToNextDay ? "#999" : "#000",
+              opacity: isSentToNextDay ? 0.5 : 1,
+              fontSize: 13
+            }}
+          >
+            {task.title || task.text}
+            {/* 4️⃣ 이월됐을 때만 옆에 빨간 글씨로 표시 */}
+            {isSentToNextDay && (
+              <span style={{ marginLeft: 6, fontSize: 11, color: "#EF4444", fontWeight: 700 }}>
+                (이월됨)
+              </span>
+            )}
+          </b>
+        </label>
 
-                                    <b
-                                      style={{
-                                        textDecoration: task.deleted ? "line-through" : "none",
-                                        opacity: task.deleted ? 0.5 : 1,
-                                      }}
-                                    >
-                                      {task.title || task.text}
-                                      {isCarried && (
-                                        <span style={{ marginLeft: 6, fontSize: 11, color: "#999", fontWeight: 500, }}>
-                                          (이월됨)
-                                        </span>
-                                      )}
-                                    </b>
-                                  </label>
-
-                                  {/* ✅ 삭제 버튼은 label 밖 */}
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleDeleteTeacherTask(
-                                        sid,
-                                        dateStr,          // ⭐ 화면 날짜
-                                        selectedSubject,  // ⭐ 현재 과목
-                                        i
-                                      )
-                                    }
-                                    style={{
-                                      fontSize: 11,
-                                      padding: "2px 6px",
-                                      borderRadius: 4,
-                                      border: "1px solid #ddd",
-                                      background: "#fff",
-                                      color: "#c00",
-                                      cursor: "pointer",
-                                      whiteSpace: "nowrap",
-                                    }}
-                                  >
-                                    삭제
-                                  </button>
-                                </div>
+      {/* [오른쪽]: 삭제 버튼 */}
+      <button
+        type="button"
+        onClick={async () => {
+          if (window.confirm("이 과제를 정말 삭제할까요?")) {
+            try {
+              await handleDeleteTeacherTask(sid, dateStr, selectedSubject, i);
+              window.location.reload(); 
+            } catch (e) {
+              alert("삭제 실패");
+            }
+          }
+        }}
+        style={{
+          fontSize: 11, padding: "2px 8px", borderRadius: 4,
+          border: "1px solid #FCA5A5", background: "#fff",
+          color: "#EF4444", fontWeight: 600, cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        삭제
+      </button>
+    </div>
 
                                 {Array.isArray(task.subtasks) &&
                                   task.subtasks.map((s, j) => (
@@ -1871,6 +1911,29 @@ export default function StudyPlanDashboardPage() {
                     />
                     이 과목 오늘 계획 완료
                   </label>
+{/* 🖨️ 인쇄 버튼 추가 */}
+<button
+  onClick={handlePrint}
+  style={{
+    marginTop: 8,
+    width: "100%",
+    padding: "9px 0",
+    borderRadius: 10,
+    border: "1px solid #1E3A8A",
+    background: "#fff",
+    color: "#1E3A8A",
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px"
+  }}
+>
+  <span>🖨️</span> 과제 목록 인쇄하기
+</button>
+
 
                   <button
                     onClick={handleSave}
@@ -1898,6 +1961,7 @@ export default function StudyPlanDashboardPage() {
           {/* 🔥 학생별 과제 카드 · 과목별 이월 */}
           {/* ======================================= */}
           <div
+          id="print-area"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
@@ -1971,7 +2035,7 @@ export default function StudyPlanDashboardPage() {
                       progress
                     );
 
-                    const studentDone =
+ const studentDone =
                       totalSubs > 0 && studentDoneCount === totalSubs;
                     const teacherDone = task.done;
                     const progressColor =
@@ -1984,13 +2048,18 @@ export default function StudyPlanDashboardPage() {
                       (
                         !hasSubtasks ||
                         task.subtasks!.some(s => !s.done)
-                      );
+);
 
                     const partialCarryOverSubtasks =
                       hasSubtasks
                         ? task.subtasks!.filter(s => !s.done)
                         : [];
-
+console.log(`[버튼 체크 - ${task.text}]`, {
+    isDeleted: task.deleted,          // 이게 true면 안 나옴
+    dateMatch: task.date === baseDate, // 이게 false면 안 나옴
+    isTeacherDone: teacherDone,        // 이게 true면 안 나옴 (선생님이 완료하면 이월 불가)
+    hasIncompleteSub: !hasSubtasks || (task.subtasks && task.subtasks.some(s => !s.done))
+  });
 
                     return (
                       <div
@@ -2049,43 +2118,29 @@ export default function StudyPlanDashboardPage() {
                             )}
 
                             {/* 🔥 메인 이월 뱃지 */}
-                            {!isCarried && canCarryOver && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const baseDate = task.date ?? assignDate;
-
-                                  console.log("[CARRYOVER CLICK]", {
-                                    sid,
-                                    baseDate,
-                                    taskId: task.id,
-                                    uiId: task._uiId,
-                                    deleted: task.deleted,
-                                    done: isDone,
-                                    remainingSubs: renderedSubtasks.filter(s => !s.isDone),
-                                  });
-
-                                  carryOverMainTask(
-                                    sid,
-                                    baseDate,
-                                    task,
-                                    renderedSubtasks.filter(s => !s.isDone)
-                                  );
-                                }}
-                                style={{
-                                  fontSize: 10,
-                                  padding: "2px 8px",
-                                  borderRadius: 999,
-                                  background: "#FEF3C7",
-                                  color: "#92400E",
-                                  fontWeight: 700,
-                                  border: "1px solid #FCD34D",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                이월
-                              </button>
-                            )}
+                           {(!isCarried) && ( // 일단 canCarryOver 조건을 빼고 테스트해봐!
+  <button
+    type="button"
+    onClick={() => {
+      const baseDate = task.date ?? assignDate;
+      // 이월 로직 실행
+      carryOverMainTask(sid, baseDate, task, renderedSubtasks.filter(s => !s.isDone));
+    }}
+    style={{
+      fontSize: 10,
+      padding: "2px 8px",
+      borderRadius: 999,
+      background: "#FEF3C7", // 노란색
+      color: "#92400E",
+      fontWeight: 700,
+      border: "1px solid #FCD34D",
+      cursor: "pointer",
+      marginRight: 4, // 삭제 버튼이랑 안 겹치게 간격 주기
+    }}
+  >
+    이
+  </button>
+)}
 
                           </div>
                         </label>
