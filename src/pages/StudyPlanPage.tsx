@@ -1928,7 +1928,7 @@ await setDoc(ref, payload, { merge: true });
                       fontSize: 13,
                     }}
                   >
-                    <div style={{ background: "yellow", padding: 2 }}>어제과제</div>
+                  
                  <input
                       type="checkbox"
                       checked={task.done}

@@ -95,7 +95,14 @@ async function isLocalNetwork() {
 
 export default function StudentPage() {
 
+const formatHM = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
 
+  if (h === 0) return `${m}분`;
+  if (m === 0) return `${h}시간`;
+  return `${h}시간 ${m}분`;
+};
   const isMobile = window.innerWidth <= 480;
 
   const [students, setStudents] = useState<any[]>([]);
@@ -305,8 +312,38 @@ const navigate = useNavigate();
     return { total, days: filtered.length };
   }, [records]);
 
+const yearlyMonthlyTotals = useMemo(() => {
+  if (!records.length) return [];
 
+  const now = new Date();
+  const year = now.getFullYear();
 
+  const result = [];
+
+  for (let m = 1; m <= 12; m++) {
+    const monthStr = `${year}-${String(m).padStart(2, "0")}`;
+
+    const monthRecords = records.filter(r =>
+      r.date?.startsWith(monthStr)
+    );
+
+    let total = 0;
+    monthRecords.forEach(r => {
+      total += calcNetStudyMin_SP(r);
+    });
+
+    result.push({
+      month: m,
+      total,
+    });
+  }
+
+  return result;
+}, [records]);
+
+const entryMonth = selected?.entryDate
+  ? new Date(selected.entryDate).getMonth() + 1
+  : null;
 
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
@@ -1315,84 +1352,145 @@ const navigate = useNavigate();
               gap: isMobile ? 12 : 16,
             }}
           >
-            {/* 학생 기본 정보 카드 */}
+           {/* 학생 기본 정보 카드 */}
+<div
+  style={{
+    padding: "18px 18px",
+    borderRadius: 14,
+    border: "1px solid #e5e7eb",
+    background: "#f9fafb",
+  }}
+>
+  <h3
+    style={{
+      margin: "0 0 6px 0",
+      fontSize: 18,
+      color: "#1e3a8a",
+    }}
+  >
+    {selected.name} 학생
+  </h3>
+
+  <p
+    style={{
+      margin: "0 0 4px 0",
+      fontSize: 14,
+      color: "#374151",
+    }}
+  >
+    학년: {selected.grade || "-"}
+  </p>
+
+  {selected.school && (
+    <p
+      style={{
+        margin: "0 0 4px 0",
+        fontSize: 14,
+        color: "#374151",
+      }}
+    >
+      학교: {selected.school}
+    </p>
+  )}
+
+  {todayInTime && (
+    <p
+      style={{
+        marginTop: 8,
+        fontSize: 13,
+        color: "#1d4ed8",
+      }}
+    >
+      오늘 등원시간:{" "}
+      {new Date(todayInTime).toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}
+    </p>
+  )}
+
+  <p
+    style={{
+      marginTop: 10,
+      fontSize: 13,
+      color: "#6b7280",
+    }}
+  >
+    최근 {summary.days}일 기준 순공 누적:
+  </p>
+
+  <p
+    style={{
+      margin: 0,
+      fontSize: 22,
+      fontWeight: 800,
+      color: "#b91c1c",
+    }}
+  >
+    {summary.total.toFixed(0)}분
+  </p>
+
+  {/* ✅✅✅ 여기! 카드 안에 넣기 */}
+  <div
+    style={{
+      marginTop: 18,
+      padding: "12px",
+      borderRadius: 12,
+      border: "1px solid #e5e7eb",
+      background: "#ffffff",
+    }}
+  >
+    <div
+      style={{
+        fontWeight: 700,
+        marginBottom: 8,
+        color: "#1e3a8a",
+        fontSize: 14,
+      }}
+    >
+      📆 연간 월별 순공 합계
+    </div>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: 8,
+      }}
+    >
+      {yearlyMonthlyTotals.map((m) => {
+        const isBeforeEntry = entryMonth ? m.month < entryMonth : false;
+
+        return (
+          <div
+            key={m.month}
+            style={{
+              padding: "8px 6px",
+              borderRadius: 8,
+              textAlign: "center",
+              background: isBeforeEntry ? "#f3f4f6" : "#eff6ff",
+              color: isBeforeEntry ? "#9ca3af" : "#1e3a8a",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            <div>{m.month}월</div>
             <div
-              style={{
-                padding: "18px 18px",
-                borderRadius: 14,
-                border: "1px solid #e5e7eb",
-                background: "#f9fafb",
-              }}
-            >
-              <h3
-                style={{
-                  margin: "0 0 6px 0",
-                  fontSize: 18,
-                  color: "#1e3a8a",
-                }}
-              >
-                {selected.name} 학생
-              </h3>
-              <p
-                style={{
-                  margin: "0 0 4px 0",
-                  fontSize: 14,
-                  color: "#374151",
-                }}
-              >
-                학년: {selected.grade || "-"}
-              </p>
-              {selected.school && (
-                <p
-                  style={{
-                    margin: "0 0 4px 0",
-                    fontSize: 14,
-                    color: "#374151",
-                  }}
-                >
-                  학교: {selected.school}
-                </p>
-              )}
+  style={{
+    marginTop: 4,
+    color: isBeforeEntry ? "#9ca3af" : "#16a34a", // ✅ 초록
+    fontWeight: isBeforeEntry ? 500 : 800,        // 강조
+  }}
+>
+ {isBeforeEntry ? "-" : formatHM(m.total)}
+</div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+</div>
 
-              {todayInTime && (
-                <p
-                  style={{
-                    marginTop: 8,
-                    fontSize: 13,
-                    color: "#1d4ed8",
-                  }}
-                >
-                  오늘 등원시간:{" "}
-                  {new Date(todayInTime).toLocaleTimeString("ko-KR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
-              )}
-
-              <p
-                style={{
-                  marginTop: 10,
-                  fontSize: 13,
-                  color: "#6b7280",
-                }}
-              >
-                최근 {summary.days}일 기준 순공 누적:
-              </p>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 22,
-                  fontWeight: 800,
-                  color: "#b91c1c",
-                }}
-              >
-                {summary.total.toFixed(0)}분
-              </p>
-            </div>
-
-
-            {/* 등원/하원 버튼 & 요약 */}
             {/* 등원/하원 버튼 & 요약 */}
             <div
               style={{
