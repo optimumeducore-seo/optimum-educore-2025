@@ -31,6 +31,7 @@ type TaskItem = {
   text?: string;
   title?: string;
   done?: boolean;
+  deleted?: boolean;
   subtasks?: {
     text: string;
     done: boolean;
@@ -143,17 +144,18 @@ const normalizeTasks = (v: any): TaskItem[] => {
   if (!Array.isArray(v)) return [];
 
   return v.map((x: any) => ({
+    id: x.id,                       // ✅ 유지
     title: x.title ?? "",
     text: x.text ?? "",
     done: !!x.done,
+    carriedFrom: x.carriedFrom ?? "", // ✅ 유지
     deleted: x.deleted === true ? true : false,
-    carriedFrom: x.carriedFrom ?? "",
     subtasks: Array.isArray(x.subtasks)
       ? x.subtasks.map((s: any) => ({
-        text: s.text ?? "",
-        done: !!s.done,
-      }))
-      : [],
+          text: s.text ?? "",
+          done: !!s.done,
+        }))
+      : undefined,                 // ✅ 수동은 subtasks 자체를 안 둠
   }));
 };
 
@@ -267,21 +269,21 @@ export default function StudyPlanDashboardPage() {
   };
 
   type DashboardTask = {
-    id?: string;        // ⭐⭐⭐ 이 줄 추가 (Firestore id)
-    _uiId: string;      // 화면용
-    sid: string;
-    studentName: string;
-    subjectKey: string;
-    subjectLabel: string;
-    date: string;
-    done: boolean;
-    text?: string;
-    title?: string;
-    subtasks?: DashboardSubTask[];
-
-    deleted?: boolean;
-    carriedFrom?: string;
-  };
+  id?: string;
+  _uiId: string;
+  sid: string;
+  studentName: string;
+  subjectKey: string;
+  subjectLabel: string;
+  date: string;
+  taskIndex: number;          // ✅ 추가
+  done: boolean;
+  text?: string;
+  title?: string;
+  subtasks?: { text: string; done: boolean }[];
+  deleted?: boolean;
+  carriedFrom?: string;
+};
 
   const taskByStudent = useMemo<Record<string, DashboardTask[]>>(() => {
     const map: Record<string, DashboardTask[]> = {};
@@ -291,38 +293,43 @@ export default function StudyPlanDashboardPage() {
       if (!day || !day.subjects) return;
 
       Object.entries(day.subjects).forEach(([subjectKey, subj]: any) => {
-        (subj.teacherTasks || [])
-          .forEach((task: any) => {
-            if (!map[s.id]) map[s.id] = [];
-            const uiId = `${s.id}_${subjectKey}_${task.date}_${map[s.id].length}`;
+  (subj.teacherTasks || []).forEach((task: any, taskIndex: number) => {
+    if (!map[s.id]) map[s.id] = [];
 
-            map[s.id].push({
-              id: task.id,          // ⭐⭐⭐ 이 줄 추가
-              _uiId: uiId,
-              sid: s.id,
-              studentName: s.name,
-              subjectKey,
-              subjectLabel:
-                SUBJECTS.find(x => x.key === subjectKey)?.label || subjectKey,
-              date: task.date,
+    // ✅ task.date 같은 거 쓰지 말고, 이 페이지 문서 날짜(dateStr)로 고정
+    // ✅ id가 있으면 id 기반으로 uiId를 안정화(렌더 재정렬/삭제에도 안전)
+    const uiId = `${s.id}_${subjectKey}_${dateStr}_${task.id ?? taskIndex}`;
 
-              done: !!task.done,
+    map[s.id].push({
+      id: task.id,
+      _uiId: uiId,
 
-              // 🔥🔥 반드시 추가
-              deleted: !!task.deleted,
-              carriedFrom: task.carriedFrom,
+      // ✅ 이거 추가(핵심): Firestore teacherTasks 배열에서의 진짜 인덱스
+      taskIndex,
 
-              text: task.text,
-              title: task.title,
-              subtasks: Array.isArray(task.subtasks)
-                ? task.subtasks.map((s: any) => ({
-                  text: s.text,
-                  done: !!s.done,
-                }))
-                : [],
-            });
-          });
-      });
+      sid: s.id,
+      studentName: s.name,
+      subjectKey,
+      subjectLabel: SUBJECTS.find(x => x.key === subjectKey)?.label || subjectKey,
+
+      // ✅ 문서 날짜
+      date: dateStr,
+
+      done: !!task.done,
+      deleted: !!task.deleted,
+      carriedFrom: task.carriedFrom,
+
+      text: task.text,
+      title: task.title,
+      subtasks: Array.isArray(task.subtasks)
+        ? task.subtasks.map((ss: any) => ({
+            text: ss.text,
+            done: !!ss.done,
+          }))
+        : [],
+    });
+  });
+});
     });
 
     return map;
@@ -834,88 +841,108 @@ const handlePrint = () => {
     }[];
   };
 
-  const toggleMainFromDashboard = async (
-    sid: string,
-    date: string,
-    subjectKey: string,
-    taskIndex: number
-  ) => {
-    const ref = doc(db, "studyPlans", sid, "days", date);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return;
+ const toggleMainFromDashboard = async (
+  sid: string,
+  date: string,
+  subjectKey: string,
+  taskIndex: number
+) => {
+  const ref = doc(db, "studyPlans", sid, "days", date);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
 
-    const subj = snap.data()[subjectKey];
-    if (!subj?.teacherTasks) return;
+  const data = snap.data() as any;
+  const subj = data?.[subjectKey];
+  if (!subj?.teacherTasks) return;
 
-    const tasks = subj.teacherTasks.map((t: any, i: number) => {
-      if (i !== taskIndex) return t;
+  const tasks = subj.teacherTasks.map((t: any, i: number) => {
+    if (i !== taskIndex) return t;
 
-      if (t.carriedFrom) {
-        return { ...t, done: !t.done };
-      }
+    // ✅ 수동 과제(이월이든 뭐든): 그냥 토글
+    if (!Array.isArray(t.subtasks) || t.subtasks.length === 0) {
+      return { ...t, done: !t.done };
+    }
 
-      if (!Array.isArray(t.subtasks)) {
-        return { ...t, done: !t.done };
-      }
+    // ✅ 자동 과제: 메인 토글 -> 서브 전체 토글
+    const shouldComplete = !t.done;
+    return {
+      ...t,
+      done: shouldComplete,
+      subtasks: t.subtasks.map((s: any) => ({ ...s, done: shouldComplete })),
+    };
+  });
 
-      const shouldComplete = !t.done;
-      return {
-        ...t,
-        done: shouldComplete,
-        subtasks: t.subtasks.map((s: any) => ({
-          ...s,
-          done: shouldComplete,
-        })),
-      };
+  await setDoc(ref, { [subjectKey]: { ...subj, teacherTasks: tasks } }, { merge: true });
 
-    });
-
-    await setDoc(
-      ref,
-      { [subjectKey]: { ...subj, teacherTasks: tasks } },
-      { merge: true }
-    );
-  };
+  // ✅✅✅ 여기 추가: 화면 즉시 반영
+  setDayPlans((prev) => ({
+    ...prev,
+    [sid]: {
+      ...(prev[sid] || { date, subjects: {} as any }),
+      date,
+      subjects: {
+        ...(prev[sid]?.subjects || {}),
+        [subjectKey]: {
+          ...(prev[sid]?.subjects?.[subjectKey] || {}),
+          ...subj,
+          teacherTasks: normalizeTasks(tasks), // ✅ 안정화
+        },
+      },
+    },
+  }));
+};
 
 
   const toggleSubtaskFromDashboard = async (
-    sid: string,
-    date: string,
-    subjectKey: string,
-    taskIndex: number,
-    subIndex: number
-  ) => {
-    const ref = doc(db, "studyPlans", sid, "days", date);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return;
+  sid: string,
+  date: string,
+  subjectKey: string,
+  taskIndex: number,
+  subIndex: number
+) => {
+  const ref = doc(db, "studyPlans", sid, "days", date);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
 
-    const data = snap.data();
-    const subject = data[subjectKey];
-    if (!subject) return;
+  const data = snap.data() as any;
+  const subj = data?.[subjectKey];
+  if (!subj?.teacherTasks) return;
 
-    const tasks = subject.teacherTasks ?? [];
-    const task = tasks[taskIndex];
-    if (!task || !Array.isArray(task.subtasks)) return;
+  const tasks = [...subj.teacherTasks];
+  const task = tasks[taskIndex];
+  if (!task || !Array.isArray(task.subtasks)) return;
 
-    const newSubtasks = task.subtasks.map((s: any, i: number) =>
-      i === subIndex ? { ...s, done: !s.done } : s
-    );
+  const newSubtasks = task.subtasks.map((s: any, i: number) =>
+    i === subIndex ? { ...s, done: !s.done } : s
+  );
 
-    const newTasks = tasks.map((t: any, i: number) =>
-      i === taskIndex ? { ...t, subtasks: newSubtasks } : t
-    );
+  const allDone = newSubtasks.every((s: any) => s.done);
 
-    await setDoc(
-      ref,
-      {
+  tasks[taskIndex] = {
+    ...task,
+    subtasks: newSubtasks,
+    done: allDone,
+  };
+
+  await setDoc(ref, { [subjectKey]: { ...subj, teacherTasks: tasks } }, { merge: true });
+
+  // ✅✅✅ 여기 추가: 화면 즉시 반영
+  setDayPlans((prev) => ({
+    ...prev,
+    [sid]: {
+      ...(prev[sid] || { date, subjects: {} as any }),
+      date,
+      subjects: {
+        ...(prev[sid]?.subjects || {}),
         [subjectKey]: {
-          ...subject,
-          teacherTasks: newTasks,
+          ...(prev[sid]?.subjects?.[subjectKey] || {}),
+          ...subj,
+          teacherTasks: normalizeTasks(tasks),
         },
       },
-      { merge: true }
-    );
-  };
+    },
+  }));
+};
 
   const carryOverMainTask = async (
     sid: string,
@@ -941,14 +968,15 @@ const handlePrint = () => {
       const prevNextTasks = nextData?.[subjectKey]?.teacherTasks || [];
 
       const newTask = {
-        id: crypto.randomUUID(), // 내일은 새 이름표로
-        title: task.title || "",
-        text: task.text || "",
-        done: false,
-        subtasks: remainingSubs.length > 0 
-          ? remainingSubs.map(s => ({ text: s.text, done: false }))
-          : (task.subtasks || []).map(s => ({ text: s.text, done: false })),
-        carriedFrom: baseDate,
+  id: crypto.randomUUID(),
+  title: task.title || "",
+  text: task.text || "",
+  done: false,
+  deleted: false,           // ✅ 명시 (안전)
+  subtasks: remainingSubs.length > 0
+    ? remainingSubs.map(s => ({ text: s.text, done: false }))
+    : (task.subtasks || []).map(s => ({ text: s.text, done: false })),
+  carriedFrom: baseDate,  
       };
 
       await setDoc(nextRef, {
@@ -960,25 +988,38 @@ const handlePrint = () => {
 
       // 2️⃣ 오늘 문서에서 원본 과제 완전히 삭제하기
       const todayRef = doc(db, "studyPlans", sid, "days", baseDate);
-      const todaySnap = await getDoc(todayRef);
+const todaySnap = await getDoc(todayRef);
 
-      if (todaySnap.exists()) {
-        const todayData = todaySnap.data();
-        const todayTasks = todayData?.[subjectKey]?.teacherTasks || [];
+if (todaySnap.exists()) {
+  const todayData = todaySnap.data() as any;
+  const todaySubj = todayData?.[subjectKey] || {};
+  const todayTasks = Array.isArray(todaySubj.teacherTasks) ? todaySubj.teacherTasks : [];
 
-        // 아이디가 같은 놈만 쏙 빼고 나머지만 남깁니다.
-        const filteredTasks = todayTasks.filter((t: any) => 
-          (t.id ?? t._uiId) !== firestoreTaskId
-        );
+  const updatedTodayTasks = todayTasks.map((t: any) =>
+    (t.id ?? t._uiId) === firestoreTaskId
+      ? {
+          ...t,
+          deleted: true,          // ✅ 전날 “이월됨” 표시
+          done: false,            // (선택) 전날은 보통 false로 두는게 UX 깔끔
+          carriedTo: nextDate,    // (선택) 나중에 표시/디버깅 편함
+        }
+      : t
+  );
 
-        await setDoc(todayRef, {
-          [subjectKey]: {
-            ...todayData[subjectKey],
-            teacherTasks: filteredTasks,
-          },
-        }, { merge: true });
+  await setDoc(
+    todayRef,
+    {
+      date: baseDate,
+      [subjectKey]: {
+        ...todaySubj,
+        teacherTasks: updatedTodayTasks,
+        updatedAt: serverTimestamp(),
+      },
+    },
+    { merge: true }
+  );
+
       }
-
       // 3️⃣ 화면 새로고침
       alert("✅ 과제가 내일로 성공적으로 넘어갔습니다!");
       await loadDayPlans();
@@ -1692,7 +1733,7 @@ const handlePrint = () => {
 
                          return teacherTasks.map((task, i) => {
   // 1️⃣ 이월 보낸 과제인지 확인하는 '스위치' (1일 날 과제에 deleted: true가 박힘)
-  const isSentToNextDay = task.deleted === true; 
+  const isOldDeleted = task.deleted === true;
 
   return (
     <div key={task._uiId} style={{ marginBottom: 10 }}>
@@ -1707,31 +1748,36 @@ const handlePrint = () => {
         
         <label style={{ display: "flex", gap: 6, alignItems: "center", flex: 1, cursor: "pointer" }}>
           <input
-            type="checkbox"
-            checked={task.done}
-            disabled={isSentToNextDay} // 이월된 건 체크 못하게 막음
-            onChange={() => toggleMainFromDashboard(sid, task.date, task.subjectKey, i)}
-          />
-          
-          {/* 3️⃣ ⭐ 여기가 핵심! 선 긋는 스타일 ⭐ */}
-          <b
-            style={{
-              // isSentToNextDay가 true면 line-through(가로줄), 아니면 none(없음)
-              textDecoration: isSentToNextDay ? "line-through" : "none", 
-              // 이월된 건 회색(#999), 아니면 검정(#000)
-              color: isSentToNextDay ? "#999" : "#000",
-              opacity: isSentToNextDay ? 0.5 : 1,
-              fontSize: 13
-            }}
-          >
-            {task.title || task.text}
-            {/* 4️⃣ 이월됐을 때만 옆에 빨간 글씨로 표시 */}
-            {isSentToNextDay && (
-              <span style={{ marginLeft: 6, fontSize: 11, color: "#EF4444", fontWeight: 700 }}>
-                (이월됨)
-              </span>
-            )}
-          </b>
+  type="checkbox"
+  checked={task.done}
+  disabled={isOldDeleted}
+  onChange={() =>
+    toggleMainFromDashboard(sid, dateStr, task.subjectKey, i)
+  }
+/>
+
+<b
+  style={{
+    textDecoration: isOldDeleted ? "line-through" : "none",
+    color: isOldDeleted ? "#999" : "#000",
+    opacity: isOldDeleted ? 0.5 : 1,
+    fontSize: 13
+  }}
+>
+  {task.title || task.text}
+  {isOldDeleted && (
+    <span
+      style={{
+        marginLeft: 6,
+        fontSize: 11,
+        color: "#EF4444",
+        fontWeight: 700
+      }}
+    >
+      (이월됨)
+    </span>
+  )}
+</b>
         </label>
 
       {/* [오른쪽]: 삭제 버튼 */}
@@ -2080,10 +2126,7 @@ const handlePrint = () => {
 
 
                     const key = task._uiId;
-                    const isDone =
-                      task.carriedFrom
-                        ? false
-                        : (localDoneMap[key] ?? task.done);
+                    const isDone = task.done;
                     const renderedSubtasks = (task.subtasks ?? []).map((s, j) => {
 
                       const subKey = `${task._uiId}_sub_${j}`;
@@ -2178,7 +2221,7 @@ return (
             [key]: !isDone,
           }));
 
-          toggleMainFromDashboard(sid, dateStr, task.subjectKey, i);
+          toggleMainFromDashboard(sid, dateStr, task.subjectKey, task.taskIndex);
         }}
       />
 
@@ -2333,7 +2376,7 @@ return (
                 [subkey]: !isSubDone,
               }));
 
-              toggleSubtaskFromDashboard(sid, dateStr, task.subjectKey, i, j);
+              toggleSubtaskFromDashboard(sid, dateStr, task.subjectKey, task.taskIndex, j);
             }}
           />
 

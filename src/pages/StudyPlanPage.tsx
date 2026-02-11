@@ -25,6 +25,7 @@ type TaskItem = {
   title?: string;     // 자동 메인 과제 제목
   done: boolean;
   carriedOver?: boolean;   // ✅ 이 줄 추가
+  carriedFrom?: string;
   subtasks?: {
     text: string;
     done: boolean;
@@ -39,7 +40,7 @@ type SubjectPlan = {
   updatedAt?: any;
   proofImages?: string[];
   proofMemo?: string;
-  wordTest?: {  correct?: number;   total?: number;   };
+  wordTest?: { correct?: number; total?: number; };
 };
 
 type DayPlan = {
@@ -74,6 +75,21 @@ const cleanForFirestore = (obj: any) => {
     if (v !== undefined) res[k] = v;
   });
   return res;
+};
+
+const stripUndefinedDeep = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(stripUndefinedDeep).filter((v) => v !== undefined);
+  }
+  if (obj && typeof obj === "object") {
+    const out: any = {};
+    Object.entries(obj).forEach(([k, v]) => {
+      const vv = stripUndefinedDeep(v);
+      if (vv !== undefined) out[k] = vv;
+    });
+    return out;
+  }
+  return obj === undefined ? undefined : obj;
 };
 
 const normalizeTasks = (v: any[]): any[] => {
@@ -112,44 +128,46 @@ function getNextDate(ds: string) {
    🔵 과목 데이터 정리 함수
    =============================== */
 const makeCleanSubject = (subj: any = {}) => {
-  const teacher = Array.isArray(subj.teacherTasks)
-    ? subj.teacherTasks.map((t: any) => {
+  const rawTeacher = Array.isArray(subj.teacherTasks) ? subj.teacherTasks : [];
 
-        // 🔵 0) 레거시 자동과제 복구 (null / undefined 모두)
-        if (t.id && t.title && t.subtasks == null) {
-          return {
-            id: t.id,
-            title: t.title,
-            done: !!t.done,
-            subtasks: [], // ✅ 자동과제로 복구
-          };
-        }
+  const teacher: TaskItem[] = rawTeacher
+    .filter(Boolean) // ✅ undefined 제거
+    .map((t: any) => {
+      const base: any = {
+  id: t.id || crypto.randomUUID(),
+  done: !!t.done,
+  carriedOver: !!t.carriedOver,
+};
 
-        // 🔵 1) 자동 과제
-        if (Array.isArray(t.subtasks)) {
-          return {
-            id: t.id || crypto.randomUUID(),
-            title: t.title || t.text || "",
-            done: !!t.done,
-            subtasks: t.subtasks.map((s: any) => ({
-              text: s.text,
-              done: !!s.done,
-            })),
-          };
-        }
+if (t.carriedFrom) {
+  base.carriedFrom = t.carriedFrom;
+}
 
-        // 🔵 2) 일반 과제 (🔥 subtasks 자체를 만들지 않는다)
+      // ✅ 레거시 자동과제 복구(진짜 자동인 경우만)
+      if (t.id && t.title && !t.text && t.subtasks == null) {
+        return { ...base, title: t.title, subtasks: [] };
+      }
+
+      // ✅ 자동과제
+      if (Array.isArray(t.subtasks)) {
         return {
-          id: t.id || crypto.randomUUID(),
-          text: t.text || "",
-          done: !!t.done,
-          // ❌ subtasks 없음
+          ...base,
+          title: t.title || t.text || "",
+          subtasks: t.subtasks
+            .filter(Boolean)
+            .map((s: any) => ({ text: s?.text || "", done: !!s?.done })),
         };
-      })
-    : [];
+      }
+
+      // ✅ 수동과제(이월 포함)
+      return { ...base, text: t.text || t.title || "" };
+    })
+    // ✅ 완전 빈 과제 제거(요약/렌더 터짐 방지)
+   .filter((t: TaskItem) => (Array.isArray(t.subtasks) ? true : !!t.text));
+
 
   const student = Array.isArray(subj.studentPlans)
-    ? normalizeTasks(subj.studentPlans)
+    ? normalizeTasks(subj.studentPlans).filter(Boolean)
     : [];
 
   return {
@@ -162,6 +180,7 @@ const makeCleanSubject = (subj: any = {}) => {
     wordTest: subj.wordTest || { correct: 0, total: 0 },
   };
 };
+
 /* ---------------------------------------------------------- */
 /* 🔥  Legacy 자동 과제 (subtasks: undefined) 데이터 정리용 */
 /* ---------------------------------------------------------- */
@@ -181,18 +200,18 @@ const fixLegacyTasks = async (
     if (!subj?.teacherTasks) continue;
 
     const fixedList = subj.teacherTasks.map((t: any) => {
-  // null 이든 undefined 든 다 잡기
-  if (t.id && t.title && t.subtasks == null) {
-    needFix = true;
-    return {
-      id: t.id,
-      title: t.title,
-      done: !!t.done,
-      subtasks: [], // 자동과제로 인정되도록 복구
-    };
-  }
-  return t;
-});
+      // null 이든 undefined 든 다 잡기
+      if (t.id && t.title && t.subtasks == null) {
+        needFix = true;
+        return {
+          id: t.id,
+          title: t.title,
+          done: !!t.done,
+          subtasks: [], // 자동과제로 인정되도록 복구
+        };
+      }
+      return t;
+    });
 
     if (needFix) {
       payload[key] = {
@@ -223,9 +242,9 @@ const markAsCarriedOver = (t: any) => {
       carriedOver: true,
       done: false,
       subtasks: t.subtasks.map((s: any) => ({
-  ...s,
-  done: false,
-})),
+        ...s,
+        done: false,
+      })),
     };
   }
 
@@ -236,22 +255,21 @@ const markAsCarriedOver = (t: any) => {
   };
 };
 
-const cloneForNextDay = (t: any) => {
+const cloneForNextDay = (t: any, fromDate: string) => {
   if (Array.isArray(t.subtasks)) {
     return {
       ...t,
       carriedOver: false,
+      carriedFrom: fromDate,   // ✅ 추가
       done: false,
-      subtasks: t.subtasks.map((s: any) => ({
-  ...s,
-  done: false,
-})),
+      subtasks: t.subtasks.map((s: any) => ({ ...s, done: false })),
     };
   }
 
   return {
     ...t,
     carriedOver: false,
+    carriedFrom: fromDate,     // ✅ 추가
     done: false,
   };
 };
@@ -266,12 +284,20 @@ export default function StudyPlanPage() {
   const location = useLocation();
 
   // 역할 구분 (?role=teacher / ?role=student / ?role=parent)
-  const searchParams = new URLSearchParams(location.search);
-  const role = searchParams.get("role") || "student";
+  // 역할 구분
+const searchParams = new URLSearchParams(location.search);
+const roleParam = searchParams.get("role");
 
-  const isStudent = role === "student";
-  const isTeacher = role === "teacher";
-  const isParent = role === "parent";
+const role =
+  roleParam === "parent" || roleParam === "teacher"
+    ? roleParam
+    : "student";
+
+const isStudent = role === "student";
+const isTeacher = role === "teacher";
+const isParent = role === "parent";
+const readonly = role === "parent";
+
 
   // 상태들
   const [student, setStudent] = useState<any | null>(null);
@@ -303,7 +329,7 @@ export default function StudyPlanPage() {
   const [testMemo, setTestMemo] = useState("");
   const [zoomImgIndex, setZoomImgIndex] = useState<number | null>(null);
 
-  
+
 
   // 🔹 빠른 기간 선택 (텀 스케줄 출력용)
   const quickRange = (type: string) => {
@@ -342,13 +368,13 @@ export default function StudyPlanPage() {
   };
 
   const deleteTest = async (testId: string) => {
-  if (!id) return;
-  if (!window.confirm("삭제할까요?")) return;
+    if (!id) return;
+    if (!window.confirm("삭제할까요?")) return;
 
-  await deleteDoc(doc(db, "studyPlans", id, "tests", testId));
+    await deleteDoc(doc(db, "studyPlans", id, "tests", testId));
 
-  setTestList(prev => prev.filter(t => t.id !== testId));
-};
+    setTestList(prev => prev.filter(t => t.id !== testId));
+  };
 
   /* ------------------------------------------------------------------ */
   /* 🔹 Firestore 로드 (플랜 + 시험기간) */
@@ -371,16 +397,16 @@ export default function StudyPlanPage() {
         const raw = d.data() as any;
         const subjects: Record<string, SubjectPlan> = {};
 
-       SUBJECTS.forEach(({ key }) => {
-  const sRaw = raw[key];
-  if (!sRaw) return;
+        SUBJECTS.forEach(({ key }) => {
+          const sRaw = raw[key];
+          if (!sRaw) return;
 
-  subjects[key] = makeCleanSubject(sRaw);
+          subjects[key] = makeCleanSubject(sRaw);
 
-// 🔥 타입 안정화 (UI용)
-subjects[key].teacherTasks = subjects[key].teacherTasks || [];
-subjects[key].studentPlans = subjects[key].studentPlans || [];
-});
+          // 🔥 타입 안정화 (UI용)
+          subjects[key].teacherTasks = subjects[key].teacherTasks || [];
+          subjects[key].studentPlans = subjects[key].studentPlans || [];
+        });
 
         map[d.id] = {
           date: d.id,
@@ -407,105 +433,105 @@ subjects[key].studentPlans = subjects[key].studentPlans || [];
 
   /* ------------------------------------------------------------------ */
   /* 🔹 날짜 / 과목 변경 시 입력창 동기화 */
-/* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
 
-const loadProof = async () => {
-  if (!id || !selectedDate) return;
+  const loadProof = async () => {
+    if (!id || !selectedDate) return;
 
-  const ref = doc(db, "studyPlans", id, "days", selectedDate);
-  const snap = await getDoc(ref);
+    const ref = doc(db, "studyPlans", id, "days", selectedDate);
+    const snap = await getDoc(ref);
 
-  if (snap.exists()) {
-    const data = snap.data();
+    if (snap.exists()) {
+      const data = snap.data();
 
-    const imgs = (data.proofImages || [])
-      .map((it: any) => (typeof it === "string" ? it : it?.url))
-      .filter(Boolean);
+      const imgs = (data.proofImages || [])
+        .map((it: any) => (typeof it === "string" ? it : it?.url))
+        .filter(Boolean);
 
-    setProofImages(imgs);
-    setProofMemo(data.memo || "");
-  } else {
-    setProofImages([]);
-    setProofMemo("");
-  }
-};
-
-useEffect(() => {
-  if (!id || !selectedDate) return;
-
-  fixLegacyTasks(id, selectedDate, plans);
-  loadProof();
-}, [id, selectedDate, plans]);
-
-useEffect(() => {
-(window as any).plans = plans;
-}, [plans]);
-
-// -------------------------------------------------------------
-// 🔥 오늘 과제(Subtasks) 자동 로드
-// -------------------------------------------------------------
-useEffect(() => {
-  if (!id || !selectedDate || !selectedSubject) return;
-
-  const loadTodayTasks = async () => {
-  const planRef = doc(db, "studyPlans", id, "days", selectedDate);
-  const snap = await getDoc(planRef);
-
-  if (!snap.exists()) {
-    setTeacherInput("");
-    setStudentInput("");
-    return;
-  }
-
-  const data = snap.data();
-  const cleanSubj = makeCleanSubject(data[selectedSubject]);
-
- setTeacherInput(
-  cleanSubj.teacherTasks
-    .filter((t: any) => !Array.isArray(t.subtasks)) // 수동 과제만
-    .map((t: any) => t.text)
-    .join("\n")
-);
-
-  setStudentInput(
-    cleanSubj.studentPlans.map((t:any)=>t.text).join("\n")
-  );
-};
-  loadTodayTasks();
-  
-}, [id, selectedDate, selectedSubject]);
-
- const [examData, setExamData] = useState<ExamItem[]>([]);
-
-useEffect(() => {
-  if (!student) return;
-
-  const load = async () => {
-    const ref = collection(
-      db,
-      "examManager",
-      `${student.school}_${student.grade}`,
-      "exams"
-    );
-
-    const snap = await getDocs(ref);
-    setExamData(
-  snap.docs.map((d) => ({
-    id: d.id,                          // Firestore 문서 ID
-    examDate: d.data().examDate || "", // YYYY-MM-DD
-    subject: d.data().subject || "",
-    range: d.data().range || "",
-    memo: d.data().memo || "",
-  }))
-);
+      setProofImages(imgs);
+      setProofMemo(data.memo || "");
+    } else {
+      setProofImages([]);
+      setProofMemo("");
+    }
   };
 
-  load();
-}, [student]);
+  useEffect(() => {
+    if (!id || !selectedDate) return;
+
+    fixLegacyTasks(id, selectedDate, plans);
+    loadProof();
+  }, [id, selectedDate, plans]);
+
+  useEffect(() => {
+    (window as any).plans = plans;
+  }, [plans]);
+
+  // -------------------------------------------------------------
+  // 🔥 오늘 과제(Subtasks) 자동 로드
+  // -------------------------------------------------------------
+  useEffect(() => {
+    if (!id || !selectedDate || !selectedSubject) return;
+
+    const loadTodayTasks = async () => {
+      const planRef = doc(db, "studyPlans", id, "days", selectedDate);
+      const snap = await getDoc(planRef);
+
+      if (!snap.exists()) {
+        setTeacherInput("");
+        setStudentInput("");
+        return;
+      }
+
+      const data = snap.data();
+      const cleanSubj = makeCleanSubject(data[selectedSubject]);
+
+      setTeacherInput(
+        cleanSubj.teacherTasks
+          .filter((t: any) => !Array.isArray(t.subtasks)) // 수동 과제만
+          .map((t: any) => t.text)
+          .join("\n")
+      );
+
+      setStudentInput(
+        cleanSubj.studentPlans.map((t: any) => t.text).join("\n")
+      );
+    };
+    loadTodayTasks();
+
+  }, [id, selectedDate, selectedSubject]);
+
+  const [examData, setExamData] = useState<ExamItem[]>([]);
+
+  useEffect(() => {
+    if (!student) return;
+
+    const load = async () => {
+      const ref = collection(
+        db,
+        "examManager",
+        `${student.school}_${student.grade}`,
+        "exams"
+      );
+
+      const snap = await getDocs(ref);
+      setExamData(
+        snap.docs.map((d) => ({
+          id: d.id,                          // Firestore 문서 ID
+          examDate: d.data().examDate || "", // YYYY-MM-DD
+          subject: d.data().subject || "",
+          range: d.data().range || "",
+          memo: d.data().memo || "",
+        }))
+      );
+    };
+
+    load();
+  }, [student]);
 
 
 
-// ✅ 오늘 날짜의 "선생님 과제" 요약 (과목별로 한 번에 보기용)
+  // ✅ 오늘 날짜의 "선생님 과제" 요약 (과목별로 한 번에 보기용)
   const todayTeacherSummary = React.useMemo(() => {
     if (!selectedDate) return [];
 
@@ -531,105 +557,128 @@ useEffect(() => {
 
   /* ------------------------------------------------------------------ */
   /* 🔹 체크박스 토글 (선생님/학생 공통) */
-/* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
 
-  const toggleTask = (
-    field: "teacherTasks" | "studentPlans",
-    index: number
-  ) => {
-    if (!id || !selectedDate || !selectedSubject || isParent) return;
+  const toggleTask = async (
+  field: "teacherTasks" | "studentPlans",
+  index: number
+) => {
+  if (!id || !selectedDate || !selectedSubject || readonly) return;
 
-    setPlans((prev) => {
-      const day = prev[selectedDate];
-      if (!day) return prev;
+  // 1) 현재 상태에서 "업데이트 결과" 먼저 계산
+  const day = plans[selectedDate];
+  if (!day) return;
 
-      const subj = day.subjects?.[selectedSubject];
-      if (!subj) return prev;
+  const subj = day.subjects?.[selectedSubject];
+  if (!subj) return;
 
-      const list = [...(subj[field] || [])];
-      if (!list[index]) return prev;
+  const list = [...(subj[field] || [])];
+  if (!list[index]) return;
 
-      list[index] = { ...list[index], done: !list[index].done };
+  list[index] = { ...list[index], done: !list[index].done };
 
-      const updatedSubject: SubjectPlan = {
-        ...subj,
-        [field]: list,
-      };
-
-      const updatedDay: DayPlan = {
-        ...day,
-        subjects: {
-          ...day.subjects,
-          [selectedSubject]: updatedSubject,
-        },
-      };
-
-      const ref = doc(db, "studyPlans", id, "days", selectedDate);
-      setDoc(
-        ref,
-        cleanForFirestore({
-          date: selectedDate,
-          [selectedSubject]: {
-            ...updatedSubject,
-          },
-        }),
-        { merge: true }
-      );
-
-      return { ...prev, [selectedDate]: updatedDay };
-    });
+  const updatedSubject: SubjectPlan = {
+    ...subj,
+    [field]: list,
   };
 
+  const updatedDay: DayPlan = {
+    ...day,
+    subjects: {
+      ...day.subjects,
+      [selectedSubject]: updatedSubject,
+    },
+  };
 
-/* ------------------------------ */
-/* 🔵 메인 과제 전체 토글 */
-/* ------------------------------ */
-const toggleMain = (taskIndex: number) => {
-  if (!id || !selectedDate || !selectedSubject) return;
+  // 2) 화면은 즉시 반영 (await 없이)
+  setPlans((prev) => ({
+    ...prev,
+    [selectedDate]: updatedDay,
+  }));
 
-  setPlans(prev => {
+  // 3) Firestore 저장 (여기서 await OK)
+  const ref = doc(db, "studyPlans", id, "days", selectedDate);
+
+  const payload = stripUndefinedDeep(
+    cleanForFirestore({
+      date: selectedDate,
+      [selectedSubject]: updatedSubject,
+    })
+  );
+
+  await setDoc(ref, payload, { merge: true });
+};
+
+const stripUndefinedDeep = (v: any): any => {
+  if (v === undefined) return undefined;
+
+  if (Array.isArray(v)) {
+    // 배열 요소에서 undefined 제거
+    return v.map(stripUndefinedDeep).filter((x) => x !== undefined);
+  }
+
+  if (v && typeof v === "object") {
+    const out: any = {};
+    Object.entries(v).forEach(([k, val]) => {
+      const cleaned = stripUndefinedDeep(val);
+      if (cleaned !== undefined) out[k] = cleaned;
+    });
+    return out;
+  }
+
+  return v;
+};
+  /* ------------------------------ */
+  /* 🔵 메인 과제 전체 토글 */
+  /* ------------------------------ */
+ const toggleMain = (taskIndex: number) => {
+  if (!id || !selectedDate || !selectedSubject || readonly) return; // ✅ parent 막기
+
+  setPlans((prev) => {
     const day = prev[selectedDate];
     if (!day) return prev;
 
-    const subj = day.subjects[selectedSubject];
+    const subj = day.subjects?.[selectedSubject];
     if (!subj) return prev;
 
-    const teacherTasks = subj.teacherTasks.map((task, i) => {
+    const teacherTasks = (subj.teacherTasks || []).map((task, i) => {
       if (i !== taskIndex) return task;
 
       // 🔵 일반 과제
-      if (!Array.isArray(task.subtasks)) {
+      if (!Array.isArray(task.subtasks) || task.subtasks.length === 0) {
         return { ...task, done: !task.done };
       }
 
       // 🔵 자동 과제 (메인)
-      // 🔵 자동 과제 (메인)
-const doneCount = task.subtasks.filter(s => s.done).length;
-const total = task.subtasks.length;
+      const doneCount = task.subtasks.filter((s) => s.done).length;
+      const total = task.subtasks.length;
 
-// ✔ or △ → 전체 완료
-// ❌ → 전체 완료
-// ✔ → 전체 해제
-const shouldComplete =
-  doneCount === total ? false : true;
+      const shouldComplete = doneCount === total ? false : true;
 
-return {
-  ...task,
-  done: shouldComplete,
-  subtasks: task.subtasks.map(s => ({
-    ...s,
-    done: shouldComplete,
-  })),
-};
+      return {
+        ...task,
+        done: shouldComplete,
+        subtasks: task.subtasks.map((s) => ({
+          ...s,
+          done: shouldComplete,
+        })),
+      };
     });
 
     const updatedSubject = { ...subj, teacherTasks };
 
-    setDoc(
-      doc(db, "studyPlans", id, "days", selectedDate),
-      { [selectedSubject]: updatedSubject, date: selectedDate },
-      { merge: true }
+    const ref = doc(db, "studyPlans", id, "days", selectedDate);
+
+    // ✅ undefined 제거해서 Firestore 에러 방지
+    const payload = stripUndefinedDeep(
+      cleanForFirestore({
+        date: selectedDate,
+        [selectedSubject]: updatedSubject,
+      })
     );
+
+    // ✅ setPlans 안에서는 await 금지 → 그냥 호출
+    void setDoc(ref, payload, { merge: true });
 
     return {
       ...prev,
@@ -643,29 +692,29 @@ return {
     };
   });
 };
-/* ------------------------------ */
-/* 🔵 서브 과제 개별 토글 */
-/* ------------------------------ */
-const toggleSubtask = (taskIndex: number, subIndex: number) => {
-  if (!id || !selectedDate || !selectedSubject) return;
+  /* ------------------------------ */
+  /* 🔵 서브 과제 개별 토글 */
+  /* ------------------------------ */
+  const toggleSubtask = (taskIndex: number, subIndex: number) => {
+  if (!id || !selectedDate || !selectedSubject || readonly) return; // ✅ parent 막기
 
-  setPlans(prev => {
+  setPlans((prev) => {
     const day = prev[selectedDate];
     if (!day) return prev;
 
-    const subj = day.subjects[selectedSubject];
+    const subj = day.subjects?.[selectedSubject];
     if (!subj) return prev;
 
-    const teacherTasks = subj.teacherTasks.map((task, i) => {
+    const teacherTasks = (subj.teacherTasks || []).map((task, i) => {
       if (i !== taskIndex) return task;
-      if (!Array.isArray(task.subtasks)) return task;
+      if (!Array.isArray(task.subtasks) || task.subtasks.length === 0) return task;
 
       // 🔥 서브 과제 불변 토글
       const newSubtasks = task.subtasks.map((s, j) =>
         j === subIndex ? { ...s, done: !s.done } : s
       );
 
-      const allDone = newSubtasks.every(s => s.done);
+      const allDone = newSubtasks.every((s) => s.done);
 
       return {
         ...task,
@@ -679,12 +728,17 @@ const toggleSubtask = (taskIndex: number, subIndex: number) => {
       teacherTasks,
     };
 
-    // Firestore 저장
-    setDoc(
-      doc(db, "studyPlans", id, "days", selectedDate),
-      { [selectedSubject]: updatedSubject, date: selectedDate },
-      { merge: true }
+    const ref = doc(db, "studyPlans", id, "days", selectedDate);
+
+    // ✅ undefined 제거해서 Firestore 에러 방지
+    const payload = stripUndefinedDeep(
+      cleanForFirestore({
+        date: selectedDate,
+        [selectedSubject]: updatedSubject,
+      })
     );
+
+    void setDoc(ref, payload, { merge: true });
 
     return {
       ...prev,
@@ -699,10 +753,10 @@ const toggleSubtask = (taskIndex: number, subIndex: number) => {
   });
 };
 
-/* ------------------------------ */
-/* 🔁 안 한 과제 다음날로 미루기 */
-/* ------------------------------ */
-const carryOverWithMark = async () => {
+  /* ------------------------------ */
+  /* 🔁 안 한 과제 다음날로 미루기 */
+  /* ------------------------------ */
+ const carryOverWithMark = async () => {
   if (!id || !selectedDate || !selectedSubject) return;
 
   const nextDate = getNextDate(selectedDate);
@@ -717,13 +771,13 @@ const carryOverWithMark = async () => {
     const todayTasks: any[] = [];
     const nextTasks: any[] = [];
 
-    subj.teacherTasks.forEach(t => {
-      // 🔹 서브과제 있는 자동 과제
+      subj.teacherTasks.forEach(t => {
+        // 🔹 서브과제 있는 자동 과제
       if (Array.isArray(t.subtasks)) {
-        const doneSubs = t.subtasks.filter(s => s.done);
-        const undoneSubs = t.subtasks.filter(s => !s.done);
+          const doneSubs = t.subtasks.filter(s => s.done);
+          const undoneSubs = t.subtasks.filter(s => !s.done);
 
-        // 오늘에 남길 과제
+          // 오늘에 남길 과제
         if (doneSubs.length > 0) {
           todayTasks.push({
             ...t,
@@ -732,14 +786,16 @@ const carryOverWithMark = async () => {
           });
         }
 
-        // 내일로 넘길 과제
+          // 내일로 넘길 과제
         if (undoneSubs.length > 0) {
           nextTasks.push({
             ...t,
-            subtasks: undoneSubs.map(s => ({ ...s, done: false })),
+  subtasks: undoneSubs.map(s => ({ ...s, done: false })),
             done: false,
-            carriedOver: true,
+            carriedOver: false,
+  carriedFrom: selectedDate,   // ✅ “어제에서 넘어옴” 표시
           });
+
         }
 
         return;
@@ -749,8 +805,8 @@ const carryOverWithMark = async () => {
       if (t.done) {
         todayTasks.push(t);
       } else {
-        todayTasks.push(markAsCarriedOver(t));
-        nextTasks.push(cloneForNextDay(t));
+          todayTasks.push(markAsCarriedOver(t));
+          nextTasks.push(cloneForNextDay(t,selectedDate));
       }
     });
 
@@ -762,90 +818,90 @@ const carryOverWithMark = async () => {
       studentPlans: [],
     };
 
-    const updatedToday = { ...subj, teacherTasks: todayTasks };
-    const updatedNext = {
+      const updatedToday = { ...subj, teacherTasks: todayTasks };
+      const updatedNext = {
       ...nextSubj,
       teacherTasks: [...nextSubj.teacherTasks, ...nextTasks],
     };
 
-    // Firestore 저장
-    setDoc(
-      doc(db, "studyPlans", id, "days", selectedDate),
-      { date: selectedDate, [selectedSubject]: updatedToday },
-      { merge: true }
-    );
+      // Firestore 저장
+      setDoc(
+        doc(db, "studyPlans", id, "days", selectedDate),
+        { date: selectedDate, [selectedSubject]: updatedToday },
+        { merge: true }
+      );
 
-    setDoc(
-      doc(db, "studyPlans", id, "days", nextDate),
-      { date: nextDate, [selectedSubject]: updatedNext },
-      { merge: true }
-    );
+      setDoc(
+        doc(db, "studyPlans", id, "days", nextDate),
+        { date: nextDate, [selectedSubject]: updatedNext },
+        { merge: true }
+      );
 
     return {
       ...prev,
       [selectedDate]: {
         ...today,
-        subjects: {
-          ...today.subjects,
-          [selectedSubject]: updatedToday,
-        },
+          subjects: {
+            ...today.subjects,
+            [selectedSubject]: updatedToday,
+          },
       },
       [nextDate]: {
         ...nextDay,
-        subjects: {
-          ...nextDay.subjects,
-          [selectedSubject]: updatedNext,
-        },
+          subjects: {
+            ...nextDay.subjects,
+            [selectedSubject]: updatedNext,
+          },
       },
     };
   });
 };
 
-const updateWordTest = async (
-  date: string,
-  subjectKey: string,
-  data: { correct?: number; total?: number }
-) => {
-  if (!id || !date) return;
+  const updateWordTest = async (
+    date: string,
+    subjectKey: string,
+    data: { correct?: number; total?: number }
+  ) => {
+    if (!id || !date) return;
 
-  // 기존 데이터 불러오기
-  const prevDay = plans[date];
-  const prevSubj = prevDay?.subjects?.[subjectKey] || {};
+    // 기존 데이터 불러오기
+    const prevDay = plans[date];
+    const prevSubj = prevDay?.subjects?.[subjectKey] || {};
 
-  const updatedSubject = {
-    ...prevSubj,
-    wordTest: data,
-  };
+    const updatedSubject = {
+      ...prevSubj,
+      wordTest: data,
+    };
 
-  const ref = doc(db, "studyPlans", id, "days", date);
+    const ref = doc(db, "studyPlans", id, "days", date);
 
-  await setDoc(
-  ref,
-  {
-    date,
-    [subjectKey]: {
-      wordTest: data
-    }
-  },
-  { merge: true }
-);
-
-  // React state 업데이트
-  setPlans((prev) => ({
-    ...prev,
-    [date]: {
-      date,
-      subjects: {
-        ...(prev[date]?.subjects || {}),
-        [subjectKey]: updatedSubject,
+    await setDoc(
+      ref,
+      {
+        date,
+        [subjectKey]: {
+          wordTest: data
+        }
       },
-    },
-  }));
-};
+      { merge: true }
+    );
+
+    // React state 업데이트
+    setPlans((prev) => ({
+      ...prev,
+      [date]: {
+        date,
+        subjects: {
+          ...(prev[date]?.subjects || {}),
+          [subjectKey]: updatedSubject,
+        },
+      },
+    }));
+  };
 
   /* ------------------------------------------------------------------ */
   /* 🔹 날짜 선택 */
-/* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
 
   const handleSelectDate = (ds: string) => {
     setSelectedDate(ds);
@@ -853,7 +909,7 @@ const updateWordTest = async (
 
   /* ------------------------------------------------------------------ */
   /* 🔹 문제집 템플릿 (선생님 버튼) */
-/* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
 
   const fillWorkbookTemplate = () => {
     const subjLabel =
@@ -871,7 +927,7 @@ const updateWordTest = async (
 
   /* ------------------------------------------------------------------ */
   /* 🔹 시험기간 저장 */
-/* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
 
   const saveTestPeriod = async () => {
     if (!id) return;
@@ -903,7 +959,7 @@ const updateWordTest = async (
 
   /* ------------------------------------------------------------------ */
   /* 🔹 저장 */
-/* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
 
   const handleSave = async () => {
     if (!id || !selectedDate) return alert("날짜를 먼저 선택하세요.");
@@ -914,131 +970,137 @@ const updateWordTest = async (
 
     const ref = doc(db, "studyPlans", id, "days", selectedDate);
 
-   if (isTeacher) {
-  const prevTeacher = prevSubj?.teacherTasks || [];
+    if (isTeacher) {
+      const prevTeacher = prevSubj?.teacherTasks || [];
 
-  // 🔵 1) 자동 과제는 유지 (subtasks가 배열인 항목만)
-  const autoList = prevTeacher.filter((t: any) =>
-    Array.isArray(t.subtasks)
-  );
+      // 🔵 1) 자동 과제는 유지 (subtasks가 배열인 항목만)
+      const autoList = prevTeacher.filter((t: any) =>
+        Array.isArray(t.subtasks)
+      );
 
-  // 🔵 2) 수동 과제만 입력창으로부터 갱신
-  const manualList = teacherInput
-    .split("\n")
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((text) => ({
-      text,
-      done:
-        prevTeacher.find((x: any) => x.text === text)?.done ?? false,
-    }));
+      // 🔵 2) 수동 과제만 입력창으로부터 갱신
+      const manualList = teacherInput
+        .split("\n")
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((text) => ({
+          text,
+          done:
+            prevTeacher.find((x: any) => x.text === text)?.done ?? false,
+        }));
 
-  // 🔵 최종: 자동 + 수동을 합친 새로운 teacherTasks
-  const teacherTasks = [...autoList, ...manualList];
+      // 🔵 최종: 자동 + 수동을 합친 새로운 teacherTasks
+      const teacherTasks = [...autoList, ...manualList];
 
-  const mergedSubject: SubjectPlan = {
-    teacherTasks,
-    studentPlans: prevSubj?.studentPlans || [],
-    memo: memo.trim(),
-    done,
-    updatedAt: serverTimestamp(),
-    proofImages: prevSubj?.proofImages || [],
-    proofMemo: prevSubj?.proofMemo || "",
-    wordTest: prevSubj?.wordTest || {}, // ⭐ 반드시 유지
-  };
+      const mergedSubject: SubjectPlan = {
+        teacherTasks,
+        studentPlans: prevSubj?.studentPlans || [],
+        memo: memo.trim(),
+        done,
+        updatedAt: serverTimestamp(),
+        proofImages: prevSubj?.proofImages || [],
+        proofMemo: prevSubj?.proofMemo || "",
+        wordTest: prevSubj?.wordTest || {}, // ⭐ 반드시 유지
+      };
 
-  const data = cleanForFirestore({
-    date: selectedDate,
-    [selectedSubject]: mergedSubject,
-  });
+     const data = cleanForFirestore({
+  date: selectedDate,
+  [selectedSubject]: mergedSubject,
+});
 
-  await setDoc(ref, data, { merge: true });
+const payload = stripUndefinedDeep(data);
 
-  setPlans((prev) => ({
-    ...prev,
-    [selectedDate]: {
-      date: selectedDate,
-      subjects: {
-        ...(prev[selectedDate]?.subjects || {}),
-        [selectedSubject]: mergedSubject,
-      },
-    },
-  }));
+await setDoc(ref, payload, { merge: true });
 
-  alert("저장 완료! (선생님 계획)");
-  return;
-}
+      setPlans((prev) => ({
+        ...prev,
+        [selectedDate]: {
+          date: selectedDate,
+          subjects: {
+            ...(prev[selectedDate]?.subjects || {}),
+            [selectedSubject]: mergedSubject,
+          },
+        },
+      }));
+
+      alert("저장 완료! (선생님 계획)");
+      return;
+    }
     if (isStudent) {
-  const prevStudent = prevSubj?.studentPlans || [];
+      const prevStudent = prevSubj?.studentPlans || [];
 
-  const studentPlans = studentInput
-    .split("\n")
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((text) => ({
-      text,
-      done: prevStudent.find((x) => x.text === text)?.done ?? false,
-    }));
+      const studentPlans = studentInput
+        .split("\n")
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((text) => ({
+          text,
+          done: prevStudent.find((x) => x.text === text)?.done ?? false,
+        }));
 
-  const mergedSubject: SubjectPlan = {
-    teacherTasks: prevSubj?.teacherTasks || [],
-    studentPlans,
-    memo: memo.trim(),
-    done,
-    updatedAt: serverTimestamp(),
-    proofImages: prevSubj?.proofImages || [],
-    proofMemo: prevSubj?.proofMemo || "",
-    wordTest: prevSubj?.wordTest || {},   // ⭐⭐ 여기도 반드시 ⭐⭐
+      const mergedSubject: SubjectPlan = {
+        teacherTasks:
+  (plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks) ??
+  (prevSubj?.teacherTasks || []),
+        studentPlans,
+        memo: memo.trim(),
+        done,
+        updatedAt: serverTimestamp(),
+        proofImages: prevSubj?.proofImages || [],
+        proofMemo: prevSubj?.proofMemo || "",
+        wordTest: prevSubj?.wordTest || {},   // ⭐⭐ 여기도 반드시 ⭐⭐
+      };
+
+      const data = cleanForFirestore({
+  date: selectedDate,
+  [selectedSubject]: mergedSubject,
+});
+
+const payload = stripUndefinedDeep(data);
+
+await setDoc(ref, payload, { merge: true });
+
+      setPlans((prev) => ({
+        ...prev,
+        [selectedDate]: {
+          date: selectedDate,
+          subjects: {
+            ...(prev[selectedDate]?.subjects || {}),
+            [selectedSubject]: mergedSubject,
+          },
+        },
+      }));
+
+      alert("저장 완료! (학생 계획)");
+    }
+  };
+  const getLatestTest = (ds: string) => {
+    const d = new Date(ds).getTime();
+
+    // ds 날짜를 포함하는 시험만 찾기
+    const included = testList.filter(t => {
+      const s = new Date(t.start).getTime();
+      const e = new Date(t.end).getTime();
+      return d >= s && d <= e;
+    });
+
+    if (included.length === 0) return null;
+
+    // 시작일이 가장 늦은(최신) 시험을 선택
+    included.sort(
+      (a, b) => new Date(b.start).getTime() - new Date(a.start).getTime()
+    );
+
+    return included[0];
   };
 
-  const data = cleanForFirestore({
-    date: selectedDate,
-    [selectedSubject]: mergedSubject,
-  });
-
-  await setDoc(ref, data, { merge: true });
-  
-  setPlans((prev) => ({
-    ...prev,
-    [selectedDate]: {
-      date: selectedDate,
-      subjects: {
-        ...(prev[selectedDate]?.subjects || {}),
-        [selectedSubject]: mergedSubject,
-      },
-    },
-  }));
-
-  alert("저장 완료! (학생 계획)");
-}
+  const isTestDay = (ds: string) => {
+    return testList.some(t => ds >= t.start && ds <= t.end);
   };
-const getLatestTest = (ds: string) => {
-  const d = new Date(ds).getTime();
-
-  // ds 날짜를 포함하는 시험만 찾기
-  const included = testList.filter(t => {
-    const s = new Date(t.start).getTime();
-    const e = new Date(t.end).getTime();
-    return d >= s && d <= e;
-  });
-
-  if (included.length === 0) return null;
-
-  // 시작일이 가장 늦은(최신) 시험을 선택
-  included.sort(
-    (a, b) => new Date(b.start).getTime() - new Date(a.start).getTime()
-  );
-
-  return included[0];
-};
-
-const isTestDay = (ds: string) => {
-  return testList.some(t => ds >= t.start && ds <= t.end);
-};
 
   /* ------------------------------------------------------------------ */
   /* 📅 달력 렌더링 */
-/* ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------ */
 
   const renderCalendar = () => {
     const firstDay = new Date(year, month, 1).getDay();
@@ -1047,7 +1109,7 @@ const isTestDay = (ds: string) => {
     const blanks = Array(firstDay).fill(null);
     const today = new Date().toISOString().slice(0, 10);
 
-    
+
 
     return (
       <div>
@@ -1127,8 +1189,8 @@ const isTestDay = (ds: string) => {
 
         {/* 요일 */}
         <div
-  className="sp-calendar-weekdays">
-  
+          className="sp-calendar-weekdays">
+
           {["일", "월", "화", "수", "목", "금", "토"].map((d) => (
             <div key={d}>{d}</div>
           ))}
@@ -1136,8 +1198,8 @@ const isTestDay = (ds: string) => {
 
         {/* 날짜 그리드 */}
         <div
-  className="sp-day-grid">
-  
+          className="sp-day-grid">
+
           {blanks.map((_, i) => (
             <div key={i} />
           ))}
@@ -1150,7 +1212,7 @@ const isTestDay = (ds: string) => {
             const p = plans[ds];
             const todayExam = examData.filter(ex => ex.examDate === ds);
 
-  
+
             const isSelected = ds === selectedDate;
             const isToday = ds === today;
             const testDay = isTestDay(ds);
@@ -1161,23 +1223,23 @@ const isTestDay = (ds: string) => {
               studentTotal = 0;
 
             if (p?.subjects) {
-  Object.values(p.subjects).forEach((sub: any) => {
-    const tTasks = sub.teacherTasks ?? [];
-    const sPlans = sub.studentPlans ?? [];
+              Object.values(p.subjects).forEach((sub: any) => {
+                const tTasks = sub.teacherTasks ?? [];
+                const sPlans = sub.studentPlans ?? [];
 
-    teacherDone += tTasks.filter((t: any) => t?.done).length;
-    teacherTotal += tTasks.length;
+                teacherDone += tTasks.filter((t: any) => t?.done).length;
+                teacherTotal += tTasks.length;
 
-    studentDone += sPlans.filter((t: any) => t?.done).length;
-    studentTotal += sPlans.length;
-  });
-}
+                studentDone += sPlans.filter((t: any) => t?.done).length;
+                studentTotal += sPlans.length;
+              });
+            }
 
             const bgClass =
-  isSelected ? "bg-selected" :
-  testDay ? "bg-test" :
-  teacherTotal || studentTotal ? "bg-has-plan" :
-  "bg-default";
+              isSelected ? "bg-selected" :
+                testDay ? "bg-test" :
+                  teacherTotal || studentTotal ? "bg-has-plan" :
+                    "bg-default";
 
             let bg = "#F9FAFB";
             if (teacherTotal || studentTotal) bg = "#E0F2FE";
@@ -1191,46 +1253,46 @@ const isTestDay = (ds: string) => {
             if (testDay) bg = "#FFE4E6";
             if (isSelected) bg = "#FEE2E2";
 
-          return (
-  <button
-    className={`sp-day-box ${isToday ? "is-today" : ""} ${bgClass}`}
-    key={ds}
-    onClick={() => handleSelectDate(ds)}
-  >
-    <div className="sp-day-num">{d}</div>
+            return (
+              <button
+                className={`sp-day-box ${isToday ? "is-today" : ""} ${bgClass}`}
+                key={ds}
+                onClick={() => handleSelectDate(ds)}
+              >
+                <div className="sp-day-num">{d}</div>
 
-    {testDay && (
-      <div className="sp-test-badge">📌 시험기간</div>
-    )}
+                {testDay && (
+                  <div className="sp-test-badge">📌 시험기간</div>
+                )}
 
-    {teacherTotal > 0 && (
-      <div className="badge-blue">
-        선생님 {teacherDone}/{teacherTotal}
-      </div>
-    )}
+                {teacherTotal > 0 && (
+                  <div className="badge-blue">
+                    선생님 {teacherDone}/{teacherTotal}
+                  </div>
+                )}
 
-    {studentTotal > 0 && (
-      <div className="badge-green">
-        내 계획 {studentDone}/{studentTotal}
-      </div>
-    )}
-   {/* 단어 시험 표시 */}
-{p?.subjects?.[selectedSubject]?.wordTest?.total ? (
-  <div
-    style={{
-      fontSize: 10,
-      color: "#DC2626",
-      marginTop: 2,
-      fontWeight: 700,
-    }}
-  >
-    단어{" "}
-    {p?.subjects?.[selectedSubject]?.wordTest?.correct ?? 0}/
-    {p?.subjects?.[selectedSubject]?.wordTest?.total ?? 0}
-  </div>
-) : null}
-  </button>
-);
+                {studentTotal > 0 && (
+                  <div className="badge-green">
+                    내 계획 {studentDone}/{studentTotal}
+                  </div>
+                )}
+                {/* 단어 시험 표시 */}
+                {p?.subjects?.[selectedSubject]?.wordTest?.total ? (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#DC2626",
+                      marginTop: 2,
+                      fontWeight: 700,
+                    }}
+                  >
+                    단어{" "}
+                    {p?.subjects?.[selectedSubject]?.wordTest?.correct ?? 0}/
+                    {p?.subjects?.[selectedSubject]?.wordTest?.total ?? 0}
+                  </div>
+                ) : null}
+              </button>
+            );
           })}
         </div>
       </div>
@@ -1239,14 +1301,14 @@ const isTestDay = (ds: string) => {
 
   /* ------------------------------------------------------------------ */
   /* UI 시작 */
-/* ------------------------------------------------------------------ */
-const selectedDay = selectedDate ? plans[selectedDate] : undefined;
+  /* ------------------------------------------------------------------ */
+  const selectedDay = selectedDate ? plans[selectedDate] : undefined;
 
   const currentRoleLabel = isTeacher
     ? "선생님 모드"
     : isStudent
-    ? "학생 모드"
-    : "학부모 보기 (읽기 전용)";
+      ? "학생 모드"
+      : "학부모 보기 (읽기 전용)";
 
   const currentSubjectLabel =
     SUBJECTS.find((s) => s.key === selectedSubject)?.label || "";
@@ -1255,23 +1317,23 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
   const selectedDateTests =
     selectedDate
       ? testList.filter(
-          (t) => selectedDate >= t.start && selectedDate <= t.end
-        )
+        (t) => selectedDate >= t.start && selectedDate <= t.end
+      )
       : [];
 
   return (
-  <div
-    className="sp-container"
-    style={{
-      maxWidth: 960,
-      margin: "32px auto",
-      padding: "28px 24px",
-      background: "#FFF",
-      borderRadius: 18,
-      boxShadow: "0 8px 22px rgba(15,23,42,0.12)",
-      fontFamily: "Pretendard",
-    }}
-  >
+    <div
+      className="sp-container"
+      style={{
+        maxWidth: 960,
+        margin: "32px auto",
+        padding: "28px 24px",
+        background: "#FFF",
+        borderRadius: 18,
+        boxShadow: "0 8px 22px rgba(15,23,42,0.12)",
+        fontFamily: "Pretendard",
+      }}
+    >
       {/* 상단 헤더 */}
       <div
         style={{
@@ -1315,16 +1377,16 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
             border: "1px solid #DDE3FF",
           }}
         >
-          
+
           <div className="sp-btn-row"
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-  }}
->
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
             <button
               onClick={() => navigate(-1)}
               style={{
@@ -1437,9 +1499,9 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
       )}
 
       {/* ---------------- 2컬럼 레이아웃 ---------------- */}
-<div
-  className="sp-grid">
- 
+      <div
+        className="sp-grid">
+
         {/* 왼쪽: 달력 */}
         <div
           style={{
@@ -1462,80 +1524,84 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
           }}
         >
           {/* 📘 오늘 선생님 과제 요약 (과목 탭 위에 노출) */}
-{selectedDate && todayTeacherSummary.length > 0 && (
-  <div
-    style={{
-      marginBottom: 14,
-      padding: "10px 12px",
-      borderRadius: 10,
-      border: "1px solid #DBEAFE",
-      background: "#EFF6FF",
-    }}
-  >
-    <div
-      style={{
-        fontSize: 12,
-        fontWeight: 800,
-        color: "#1D4ED8",
-        marginBottom: 6,
-      }}
-    >
-      📘 오늘 선생님 과제 한눈에 보기
-    </div>
+          {selectedDate && todayTeacherSummary.length > 0 && (
+            <div
+              style={{
+                marginBottom: 14,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #DBEAFE",
+                background: "#EFF6FF",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: "#1D4ED8",
+                  marginBottom: 6,
+                }}
+              >
+                📘 오늘 선생님 과제 한눈에 보기
+              </div>
 
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        fontSize: 12,
-        color: "#1F2937",
-      }}
-    >
-      {todayTeacherSummary.map((subj) => (
-        <div
-          key={subj.key}
-          style={{
-            padding: "6px 8px",
-            borderRadius: 8,
-            background: "#FFFFFF",
-            border: "1px dashed #BFDBFE",
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 700,
-              fontSize: 12,
-              marginBottom: 3,
-              color: "#1E3A8A",
-            }}
-          >
-            {subj.label}
-          </div>
-          <div
-            style={{
-              whiteSpace: "pre-line",
-              fontSize: 11,
-              lineHeight: 1.4,
-            }}
-          >
-            {subj.tasks.map((t) => t.title ?? t.text).join("\n")}
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  fontSize: 12,
+                  color: "#1F2937",
+                }}
+              >
+                {todayTeacherSummary.map((subj) => (
+                  <div
+                    key={subj.key}
+                    style={{
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      background: "#FFFFFF",
+                      border: "1px dashed #BFDBFE",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: 12,
+                        marginBottom: 3,
+                        color: "#1E3A8A",
+                      }}
+                    >
+                      {subj.label}
+                    </div>
+                    <div
+                      style={{
+                        whiteSpace: "pre-line",
+                        fontSize: 11,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {subj.tasks
+  .map((t: any) => (t?.title ?? t?.text ?? ""))
+  .filter(Boolean)
+  .join("\n")}
+
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* 과목 탭 (5개씩 두 줄) */}
           <div
-  className="sp-subject-grid"
-  style={{
-    display: "grid",
-    gridTemplateColumns: "repeat(5, 1fr)",
-    gap: 8,
-    marginBottom: 12,
-  }}
->
+            className="sp-subject-grid"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(5, 1fr)",
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
             {SUBJECTS.map((s) => {
               const active = s.key === selectedSubject;
               return (
@@ -1634,238 +1700,243 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
             </button>
           )}
 
-      {/* 🔵 단어 시험 기록 */}
-{selectedDate && (
-  <div
-    style={{
-      background: "#F0F9FF",
-      border: "1px solid #93C5FD",
-      padding: 10,
-      borderRadius: 10,
-      marginTop: 12,
-      marginBottom: 12,
-    }}
-  >
-    <div
-      style={{
-        fontSize: 12,
-        fontWeight: 700,
-        color: "#1D4ED8",
-        marginBottom: 6,
-      }}
-    >
-      📘 단어 시험 기록
-    </div>
+          {/* 🔵 단어 시험 기록 */}
+          {selectedDate && (
+            <div
+              style={{
+                background: "#F0F9FF",
+                border: "1px solid #93C5FD",
+                padding: 10,
+                borderRadius: 10,
+                marginTop: 12,
+                marginBottom: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#1D4ED8",
+                  marginBottom: 6,
+                }}
+              >
+                📘 단어 시험 기록
+              </div>
 
-    <div style={{ display: "flex", gap: 10 }}>
-      {/* ✅ 맞은 개수 */}
-      <input
-        type="number"
-        placeholder="맞은 개수"
-        value={
-          selectedDay?.subjects?.[selectedSubject]?.wordTest?.correct ?? ""
-        }
-        onChange={(e) => {
-          if (!selectedDate || !id) return;
+              <div style={{ display: "flex", gap: 10 }}>
+                {/* ✅ 맞은 개수 */}
+                <input
+                  type="number"
+                  placeholder="맞은 개수"
+                  value={
+                    selectedDay?.subjects?.[selectedSubject]?.wordTest?.correct ?? ""
+                  }
+                  onChange={(e) => {
+                    if (!selectedDate || !id) return;
 
-          const num = Number(e.target.value || 0);
+                    const num = Number(e.target.value || 0);
 
-          // 1) 화면 상태 업데이트
-          setPlans((prev) => {
-            const day = prev[selectedDate] || { subjects: {} as any };
-            const subjects = day.subjects || {};
-            const subj = subjects[selectedSubject] || {};
+                    // 1) 화면 상태 업데이트
+                    setPlans((prev) => {
+                      const day = prev[selectedDate] || { subjects: {} as any };
+                      const subjects = day.subjects || {};
+                      const subj = subjects[selectedSubject] || {};
 
-            const newWord = {
-              ...(subj.wordTest || { correct: 0, total: 0 }),
-              correct: num,
-            };
+                      const newWord = {
+                        ...(subj.wordTest || { correct: 0, total: 0 }),
+                        correct: num,
+                      };
 
-            const updatedDay = {
-              ...day,
-              subjects: {
-                ...subjects,
-                [selectedSubject]: {
-                  ...subj,
-                  wordTest: newWord,
-                },
-              },
-            };
+                      const updatedDay = {
+                        ...day,
+                        subjects: {
+                          ...subjects,
+                          [selectedSubject]: {
+                            ...subj,
+                            wordTest: newWord,
+                          },
+                        },
+                      };
 
-            // 🔥 2) Firestore에도 같이 저장
-            const prevSubj =
-              (plans[selectedDate]?.subjects?.[selectedSubject] as any) || {};
-            const fsWord = {
-              ...(prevSubj.wordTest || { correct: 0, total: 0 }),
-              correct: num,
-            };
+                      // 🔥 2) Firestore에도 같이 저장
+                      const prevSubj =
+                        (plans[selectedDate]?.subjects?.[selectedSubject] as any) || {};
+                      const fsWord = {
+                        ...(prevSubj.wordTest || { correct: 0, total: 0 }),
+                        correct: num,
+                      };
 
-            const ref = doc(db, "studyPlans", id, "days", selectedDate);
-            setDoc(
-              ref,
-              cleanForFirestore({
-                date: selectedDate,
-                [selectedSubject]: {
-                  ...prevSubj,
-                  wordTest: fsWord,
-                },
-              }),
-              { merge: true }
-            );
+                      const ref = doc(db, "studyPlans", id, "days", selectedDate);
+                      setDoc(
+                        ref,
+                        cleanForFirestore({
+                          date: selectedDate,
+                          [selectedSubject]: {
+                            ...prevSubj,
+                            wordTest: fsWord,
+                          },
+                        }),
+                        { merge: true }
+                      );
 
-            return {
-              ...prev,
-              [selectedDate]: updatedDay,
-            };
-          });
-        }}
-        style={{
-          width: 100,
-          padding: 6,
-          borderRadius: 6,
-          border: "1px solid #d1d5db",
-        }}
-      />
+                      return {
+                        ...prev,
+                        [selectedDate]: updatedDay,
+                      };
+                    });
+                  }}
+                  style={{
+                    width: 100,
+                    padding: 6,
+                    borderRadius: 6,
+                    border: "1px solid #d1d5db",
+                  }}
+                />
 
-      {/* ✅ 총 문제 수 */}
-      <input
-        type="number"
-        placeholder="총 문제 수"
-        value={
-          selectedDay?.subjects?.[selectedSubject]?.wordTest?.total ?? ""
-        }
-        onChange={(e) => {
-          if (!selectedDate || !id) return;
+                {/* ✅ 총 문제 수 */}
+                <input
+                  type="number"
+                  placeholder="총 문제 수"
+                  value={
+                    selectedDay?.subjects?.[selectedSubject]?.wordTest?.total ?? ""
+                  }
+                  onChange={(e) => {
+                    if (!selectedDate || !id) return;
 
-          const num = Number(e.target.value || 0);
+                    const num = Number(e.target.value || 0);
 
-          // 1) 화면 상태 업데이트
-          setPlans((prev) => {
-            const day = prev[selectedDate] || { subjects: {} as any };
-            const subjects = day.subjects || {};
-            const subj = subjects[selectedSubject] || {};
+                    // 1) 화면 상태 업데이트
+                    setPlans((prev) => {
+                      const day = prev[selectedDate] || { subjects: {} as any };
+                      const subjects = day.subjects || {};
+                      const subj = subjects[selectedSubject] || {};
 
-            const newWord = {
-              ...(subj.wordTest || { correct: 0, total: 0 }),
-              total: num,
-            };
+                      const newWord = {
+                        ...(subj.wordTest || { correct: 0, total: 0 }),
+                        total: num,
+                      };
 
-            const updatedDay = {
-              ...day,
-              subjects: {
-                ...subjects,
-                [selectedSubject]: {
-                  ...subj,
-                  wordTest: newWord,
-                },
-              },
-            };
+                      const updatedDay = {
+                        ...day,
+                        subjects: {
+                          ...subjects,
+                          [selectedSubject]: {
+                            ...subj,
+                            wordTest: newWord,
+                          },
+                        },
+                      };
 
-            // 🔥 2) Firestore에도 같이 저장
-            const prevSubj =
-              (plans[selectedDate]?.subjects?.[selectedSubject] as any) || {};
-            const fsWord = {
-              ...(prevSubj.wordTest || { correct: 0, total: 0 }),
-              total: num,
-            };
+                      // 🔥 2) Firestore에도 같이 저장
+                      const prevSubj =
+                        (plans[selectedDate]?.subjects?.[selectedSubject] as any) || {};
+                      const fsWord = {
+                        ...(prevSubj.wordTest || { correct: 0, total: 0 }),
+                        total: num,
+                      };
 
-            const ref = doc(db, "studyPlans", id, "days", selectedDate);
-            setDoc(
-              ref,
-              cleanForFirestore({
-                date: selectedDate,
-                [selectedSubject]: {
-                  ...prevSubj,
-                  wordTest: fsWord,
-                },
-              }),
-              { merge: true }
-            );
+                      const ref = doc(db, "studyPlans", id, "days", selectedDate);
+                      setDoc(
+                        ref,
+                        cleanForFirestore({
+                          date: selectedDate,
+                          [selectedSubject]: {
+                            ...prevSubj,
+                            wordTest: fsWord,
+                          },
+                        }),
+                        { merge: true }
+                      );
 
-            return {
-              ...prev,
-              [selectedDate]: updatedDay,
-            };
-          });
-        }}
-        style={{
-          width: 100,
-          padding: 6,
-          borderRadius: 6,
-          border: "1px solid #d1d5db",
-        }}
-      />
-    </div>
-  </div>
-)}
+                      return {
+                        ...prev,
+                        [selectedDate]: updatedDay,
+                      };
+                    });
+                  }}
+                  style={{
+                    width: 100,
+                    padding: 6,
+                    borderRadius: 6,
+                    border: "1px solid #d1d5db",
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* 선생님 과제 체크박스 */}
           {/* 🔥 자동 + 수동 과제 렌더링 */}
-{selectedDate &&
-  plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks?.map(
-    (task, i) => {
-      console.log("### CHECK RENDER ###");
-      console.log("isParent:", isParent);
-      console.log("task:", task);
-      // ★ 자동 과제
-      if (Array.isArray(task.subtasks)) {
-        return (
-          <div key={i} style={{ marginBottom: 10 }}>
-            {/* 🟥 메인 박스 */}
-            <label style={{ display: "flex", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={task.done}
-                onChange={() => toggleMain(i)}
-                disabled={isParent}
-              />
-              <b>{task.title}</b>
-            </label>
+          {selectedDate &&
+            plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks?.map(
+              (task, i) => {
+                console.log("### CHECK RENDER ###");
+                console.log("isParent:", isParent);
+                console.log("task:", task);
+                // ★ 자동 과제
+                if (Array.isArray(task.subtasks) && task.subtasks.length > 0) {
 
-            {/* 🟦 서브 과제 */}
-            {task.subtasks.map((sub, subIndex) => (
-              <div
-                key={subIndex}
-                style={{
-                  marginLeft: 24,
-                  display: "flex",
-                  gap: 6,
-                  marginBottom: 4,
-                  fontSize: 12,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={sub.done}
-                  onChange={() => toggleSubtask(i, subIndex)}
-                  disabled={isParent}
-                />
-                <span>{sub.text}</span>
-              </div>
-            ))}
-          </div>
-        );
-      }
+                  return (
+                    <div key={i} style={{ marginBottom: 10 }}>
+                      {/* 🟥 메인 박스 */}
+                      <label style={{ display: "flex", gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!task.done}
 
-      // ★ 수동 과제 (기존 그대로)
-    return (
-  <label
-    key={i}
-    style={{
-      display: "flex",
-      gap: 6,
-      marginBottom: 4,
-      fontSize: 13,
-    }}
-  >
-    <input
-      type="checkbox"
-      checked={task.done}
-      onChange={() => toggleTask("teacherTasks", i)}
-      disabled={isParent || task.carriedOver}
-    />
+                          onChange={() => toggleMain(i)}
+                          disabled={readonly}
 
-    <span
+                        />
+                        <b>{task.title}</b>
+                      </label>
+
+                      {/* 🟦 서브 과제 */}
+                      {task.subtasks.map((sub, subIndex) => (
+                        <div
+                          key={subIndex}
+                          style={{
+                            marginLeft: 24,
+                            display: "flex",
+                            gap: 6,
+                            marginBottom: 4,
+                            fontSize: 12,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={sub.done}
+                            onChange={() => toggleSubtask(i, subIndex)}
+                            disabled={readonly}
+
+                          />
+                          <span>{sub.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+
+                // ★ 수동 과제 (기존 그대로)
+                return (
+                  <label
+                    key={i}
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      marginBottom: 4,
+                      fontSize: 13,
+                    }}
+                  >
+                    <div style={{ background: "yellow", padding: 2 }}>어제과제</div>
+                 <input
+                      type="checkbox"
+                      checked={task.done}
+                      onChange={() => toggleTask("teacherTasks", i)} 
+                      disabled={readonly}
+                    />
+
+                      <span
       style={{
         textDecoration: task.carriedOver ? "line-through" : "none",
         color: task.carriedOver ? "#9CA3AF" : "#111827",
@@ -1874,12 +1945,14 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
       {task.carriedOver && "❌ "}
       {task.title || task.text}
     </span>
-  </label>
-);
-    }
-    )}
-    <button
-  onClick={carryOverWithMark}
+
+
+                  </label>
+                );
+              }
+            )}
+          <button
+  onClick={() => alert("⚠️ 이월 기능 점검중이라 잠시 꺼뒀어요.")}
   style={{
     width: "100%",
     marginTop: 10,
@@ -1894,7 +1967,8 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
 >
   ❌ 안 한 과제 다음날로 미루기
 </button>
-  
+
+
           {/* 내 공부 계획 입력 */}
           <InputSection
             readonly={isParent || isTeacher}
@@ -1927,17 +2001,17 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
                 </label>
               )
             )}
-             {/* 🔥 집공 인증샷 섹션 */}
+          {/* 🔥 집공 인증샷 섹션 */}
           {selectedDate && (
             <ProofSection
-  images={proofImages}
-  setImages={setProofImages}
-  memo={proofMemo}
-  setMemo={setProofMemo}
-  readonly={isParent || isTeacher}
-  studentId={id || ""}           // ← 여기 추가!
-  selectedDate={selectedDate || ""}
-/>
+              images={proofImages}
+              setImages={setProofImages}
+              memo={proofMemo}
+              setMemo={setProofMemo}
+              readonly={isParent || isTeacher}
+              studentId={id || ""}           // ← 여기 추가!
+              selectedDate={selectedDate || ""}
+            />
           )}
 
           {/* 메모 */}
@@ -2150,47 +2224,47 @@ const selectedDay = selectedDate ? plans[selectedDate] : undefined;
               }}
             >
               <div style={{ marginTop: 20 }}>
-  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-    등록된 시험기간
-  </div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+                  등록된 시험기간
+                </div>
 
-  {testList.map(t => (
-    <div
-      key={t.id}
-      style={{
-        padding: "8px 10px",
-        borderRadius: 8,
-        border: "1px solid #E5E7EB",
-        marginBottom: 6,
-        background: "#FAFAFA",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center"
-      }}
-    >
-      <div>
-        <b>{t.title}</b>
-        <div style={{ fontSize: 12, color: "#6B7280" }}>
-          {t.start} ~ {t.end}
-        </div>
-      </div>
+                {testList.map(t => (
+                  <div
+                    key={t.id}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #E5E7EB",
+                      marginBottom: 6,
+                      background: "#FAFAFA",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}
+                  >
+                    <div>
+                      <b>{t.title}</b>
+                      <div style={{ fontSize: 12, color: "#6B7280" }}>
+                        {t.start} ~ {t.end}
+                      </div>
+                    </div>
 
-      <button
-        style={{
-          padding: "4px 8px",
-          borderRadius: 6,
-          border: "1px solid #FCA5A5",
-          background: "#FEF2F2",
-          fontSize: 11,
-          color: "#B91C1C",
-        }}
-        onClick={() => deleteTest(t.id)}
-      >
-        삭제
-      </button>
-    </div>
-  ))}
-</div>
+                    <button
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        border: "1px solid #FCA5A5",
+                        background: "#FEF2F2",
+                        fontSize: 11,
+                        color: "#B91C1C",
+                      }}
+                      onClick={() => deleteTest(t.id)}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ))}
+              </div>
               <button
                 onClick={() => setShowTestModal(false)}
                 style={{
@@ -2310,33 +2384,33 @@ function ProofSection({
 }: ProofSectionProps) {
 
   const [zoomImg, setZoomImg] = useState<string | null>(null);
-const deleteImage = async (url: string, index: number) => {
-  if (!selectedDate) return;
+  const deleteImage = async (url: string, index: number) => {
+    if (!selectedDate) return;
 
-  // 1) 상태에서 삭제
-  const newList = images.filter((_, i) => i !== index);
-  setImages(newList);
+    // 1) 상태에서 삭제
+    const newList = images.filter((_, i) => i !== index);
+    setImages(newList);
 
-  try {
-    // 2) Storage에서 삭제
-    const storage = getStorage();
-    const fileRef = ref(storage, url);
+    try {
+      // 2) Storage에서 삭제
+      const storage = getStorage();
+      const fileRef = ref(storage, url);
 
-    await deleteObject(fileRef);
+      await deleteObject(fileRef);
 
-    // 3) Firestore 업데이트
-    await setDoc(
-  doc(db, "studyPlans", studentId, "days", selectedDate),
-  {
-    proofImages: newList,   // 필드명도 맞춰줘야 함!!
-    updatedAt: serverTimestamp(),
-  },
-  { merge: true }
-);
-  } catch (err) {
-    console.error("삭제 오류:", err);
-  }
-};
+      // 3) Firestore 업데이트
+      await setDoc(
+        doc(db, "studyPlans", studentId, "days", selectedDate),
+        {
+          proofImages: newList,   // 필드명도 맞춰줘야 함!!
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error("삭제 오류:", err);
+    }
+  };
   /** ------------------------------------------------------
    * 🔥 1) 자동 리사이즈 (긴 변 1200px)
    --------------------------------------------------------*/
@@ -2399,15 +2473,15 @@ const deleteImage = async (url: string, index: number) => {
 
     // 날짜별 Firestore 저장
     if (selectedDate) {
-  await setDoc(
-  doc(db, "studyPlans", studentId, "days", selectedDate),
-  {
-    proofImages: [...images, ...urls],
-    updatedAt: serverTimestamp(),
-  },
-  { merge: true }
-);
-}
+      await setDoc(
+        doc(db, "studyPlans", studentId, "days", selectedDate),
+        {
+          proofImages: [...images, ...urls],
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
   };
 
   /** ------------------------------------------------------
@@ -2478,7 +2552,7 @@ const deleteImage = async (url: string, index: number) => {
               {!readonly && (
                 <button
                   type="button"
-                 onClick={() => deleteImage(url, i)}
+                  onClick={() => deleteImage(url, i)}
                   style={{
                     position: "absolute",
                     top: -6,
@@ -2591,18 +2665,18 @@ function WeeklyView({
   tests: any[];
 }) {
   // 🔥 days 배열 안전 생성 (HMR 시 undefined 방지)
-const base = selectedDate ? new Date(selectedDate) : new Date();
-const dayIndex = base.getDay();
-const monday = new Date(base);
-monday.setDate(base.getDate() - dayIndex + 1);
+  const base = selectedDate ? new Date(selectedDate) : new Date();
+  const dayIndex = base.getDay();
+  const monday = new Date(base);
+  monday.setDate(base.getDate() - dayIndex + 1);
 
-const days = Array.from({ length: 7 }, (_, i) => {
-  const d = new Date(monday);
-  d.setDate(monday.getDate() + i);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
-});
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+  });
   if (!selectedDate) {
     return (
       <div
@@ -2656,49 +2730,49 @@ const days = Array.from({ length: 7 }, (_, i) => {
         }}
       >
         {days.map((ds, idx) => {
-  const p = plans[ds];
+          const p = plans[ds];
 
-  // 🔥 기록 없음 early-return (여기가 정확한 위치)
-  if (!p || !p.subjects) {
-    return (
-      <div
-        key={ds}
-        style={{
-          padding: "10px 12px",
-          background: "#FFFFFF",
-          borderRadius: 12,
-          border: "1px solid #E5E7EB",
-          minHeight: 120,
-          boxShadow: "0 3px 8px rgba(0,0,0,0.05)",
-          fontSize: 12,
-          color: "#9CA3AF",
-        }}
-      >
-        기록 없음
-      </div>
-    );
-  }
+          // 🔥 기록 없음 early-return (여기가 정확한 위치)
+          if (!p || !p.subjects) {
+            return (
+              <div
+                key={ds}
+                style={{
+                  padding: "10px 12px",
+                  background: "#FFFFFF",
+                  borderRadius: 12,
+                  border: "1px solid #E5E7EB",
+                  minHeight: 120,
+                  boxShadow: "0 3px 8px rgba(0,0,0,0.05)",
+                  fontSize: 12,
+                  color: "#9CA3AF",
+                }}
+              >
+                기록 없음
+              </div>
+            );
+          }
 
-  let teacherDone = 0,
-    teacherTotal = 0,
-    studentDone = 0,
-    studentTotal = 0;
-  let anyDone = false;
+          let teacherDone = 0,
+            teacherTotal = 0,
+            studentDone = 0,
+            studentTotal = 0;
+          let anyDone = false;
 
-  if (p.subjects) {
-    Object.values(p.subjects).forEach((sub: any) => {
-      const tTasks = sub.teacherTasks ?? [];
-      const sPlans = sub.studentPlans ?? [];
+          if (p.subjects) {
+            Object.values(p.subjects).forEach((sub: any) => {
+              const tTasks = sub.teacherTasks ?? [];
+              const sPlans = sub.studentPlans ?? [];
 
-      teacherDone += tTasks.filter((t: any) => t?.done).length;
-      teacherTotal += tTasks.length;
+              teacherDone += tTasks.filter((t: any) => t?.done).length;
+              teacherTotal += tTasks.length;
 
-      studentDone += sPlans.filter((t: any) => t?.done).length;
-      studentTotal += sPlans.length;
+              studentDone += sPlans.filter((t: any) => t?.done).length;
+              studentTotal += sPlans.length;
 
-      if (sub.done) anyDone = true;
-    });
-  }
+              if (sub.done) anyDone = true;
+            });
+          }
 
           const testDay = isTestDay(ds);
 
