@@ -89,6 +89,39 @@ async function isLocalNetwork() {
 
   return allowedPublicIPs.some(prefix => ip.startsWith(prefix));
 }
+
+type SegmentType =
+  | "MATH"
+  | "ENGLISH"
+  | "KOREAN"
+  | "SCIENCE"
+  | "OTHER_ACADEMY"
+  | "MEAL"
+  | "OUTING";
+
+type Segment = {
+  type: SegmentType;
+  start: string; // "HH:MM"
+  end?: string | null; // 끝나면 "HH:MM"
+  createdAt?: any; // serverTimestamp 넣고 싶으면
+};
+
+const toMin = (hm: string) => {
+  const [h, m] = hm.split(":").map(Number);
+  return h * 60 + m;
+};
+
+const safeHM = (v: string) => {
+  // 혹시 ISO가 섞이면 HH:MM로 변환
+  if (v?.includes?.("T")) {
+    const d = new Date(v);
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+  return v;
+};
+
 // -----------------------------
 // ③ 날짜 기준으로 정렬
 // -----------------------------
@@ -111,12 +144,35 @@ const formatHM = (min: number) => {
   const [verified, setVerified] = useState(false);
   const [records, setRecords] = useState<any[]>([]);
   const [passwordInput, setPasswordInput] = useState("");
+  const [showSegModal, setShowSegModal] = useState(false);
+const [activeSegType, setActiveSegType] = useState<SegmentType>("OTHER_ACADEMY");
+const [segMemo, setSegMemo] = useState("");
+const [dayDetail, setDayDetail] = useState<any | null>(null);
+const [showDayModal, setShowDayModal] = useState(false);
   const [monthStats, setMonthStats] = useState<
     Record<string, { days: number; total: number }>
   >({});
   const [todayInTime, setTodayInTime] = useState<string | null>(null);
   const isTeacher = false;
+const EDU = {
+  modalBg: "linear-gradient(180deg, #F8FBFF 0%, #EEF3FA 100%)",
+  panel: "linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%)",
 
+  line: "rgba(15,23,42,0.08)",
+  text: "#0F172A",
+  sub: "#64748B",
+
+  skySoft: "#DCEBFF",
+  skyBorder: "#9CC3FF",
+
+  primaryGrad: "linear-gradient(135deg, #6D83FF 0%, #7A6CFF 100%)",
+  primaryShadow: "0 10px 22px rgba(109,131,255,0.22)",
+
+  lavender: "#FFE4EC",
+
+  neutralBg: "#F3F6FB",
+  neutralText: "#1F2A44",
+};
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const autoId = params.get("id");
@@ -149,6 +205,27 @@ const navigate = useNavigate();
     });
     setMonthStats(map);
   };
+const segLabelMap: Record<string, string> = {
+  MATH: "수학",
+  ENGLISH: "영어",
+  KOREAN: "국어",
+  SCIENCE: "과학",
+  OTHER_ACADEMY: "기타학원",
+  MEAL: "식사",
+  OUTING: "외출",
+};
+
+// 날짜칸에서 쓰던 HH:MM / ISO 둘 다 안전하게 표시
+const safeHM = (v: any) => {
+  if (!v || typeof v !== "string") return null;
+  if (v.includes("T")) {
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  }
+  if (v.includes(":")) return v.slice(0, 5);
+  return null;
+};
 
   const getMonthSummary = (year: number, month: number) => {
     const ym = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -161,7 +238,11 @@ const navigate = useNavigate();
 
     return { P, L, A, total: list.length };
   };
-
+const isSegTestUser = useMemo(() => {
+  // ✅ 테스트할 학생 id만 넣기 (여기만 바꾸면 됨)
+  const allow = new Set(["jsxmkjqu"]); 
+  return selected?.id ? allow.has(selected.id) : false;
+}, [selected?.id]);
 
   // 🔥 학생 선택 시 Firestore에서 출결 로그 로드 (날짜 기반)
   const handleSelectStudent = async (student: any) => {
@@ -202,49 +283,66 @@ const navigate = useNavigate();
 
   // 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용)
   // 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용 + 학원 외출 시간 차감)
-  const calcNetStudyMin_SP = (rec: any) => {
-    const t1 = rec.time;      // 등원
-    const t2 = rec.outTime;   // 하원
+ const calcNetStudyMin_SP = (rec: any) => {
+  const t1 = rec.time;      // 등원
+  const t2 = rec.outTime;   // 하원
+  if (!t1 || !t2) return 0;
 
-    if (!t1 || !t2) return 0; // 둘 다 있어야 순공 계산
+  const toHM = (v: string) => {
+    if (typeof v !== "string") return "";
+    if (v.includes("T")) {
+      const d = new Date(v);
+      const hh = d.getHours();
+      const mm = d.getMinutes();
+      return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    }
+    return v; // "HH:MM"
+  };
 
-    const toHM = (v: string) => {
-      // ISO 형태 처리 (혹시 남아있을 수도 있어서)
-      if (v.includes("T")) {
-        const d = new Date(v);
-        const hh = d.getHours();
-        const mm = d.getMinutes();
-        return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  const toMin = (hm: string) => {
+    const [h, m] = hm.split(":").map(Number);
+    return h * 60 + m;
+  };
+
+  const safeHM = (v: string) => toHM(v); // 여기선 toHM이 safe 역할까지 함
+
+  const inHM = toHM(t1);
+  const outHM = toHM(t2);
+
+  let total = toMin(outHM) - toMin(inHM);
+  if (total <= 0) return 0;
+
+  // ✅ 외부 활동 시간 빼기 (segments 우선)
+  const segs = Array.isArray(rec.segments) ? rec.segments : null;
+
+  if (segs && segs.length > 0) {
+    let external = 0;
+    for (const s of segs) {
+      if (!s?.start || !s?.end) continue;
+      try {
+        const st = toMin(safeHM(s.start));
+        const en = toMin(safeHM(s.end));
+        if (en > st) external += (en - st);
+      } catch (e) {
+        console.warn("segment time parse error", e, s);
       }
-      return v; // HH:MM
-    };
-
-    const toMin = (hm: string) => {
-      const [h, m] = hm.split(":").map(Number);
-      return h * 60 + m;
-    };
-
-    const inHM = toHM(t1);
-    const outHM = toHM(t2);
-
-    let total = toMin(outHM) - toMin(inHM);
-    if (total <= 0) return 0;
-
-    // 🔹 학원 다녀온 시간(academyIn ~ academyOut) 빼기
+    }
+    total -= external;
+  } else {
+    // ✅ 예전 데이터 호환: academyIn/out만 있으면 기존 방식 유지
     if (rec.academyIn && rec.academyOut) {
       try {
-        const aIn = toMin(toHM(rec.academyIn));
-        const aOut = toMin(toHM(rec.academyOut));
-        if (aOut > aIn) {
-          total -= (aOut - aIn);
-        }
+        const aIn = toMin(safeHM(rec.academyIn));
+        const aOut = toMin(safeHM(rec.academyOut));
+        if (aOut > aIn) total -= (aOut - aIn);
       } catch (e) {
         console.warn("academy time parse error", e);
       }
     }
+  }
 
-    return Math.max(0, total);
-  };
+  return Math.max(0, total);
+};
 
   // 🔹 비밀번호 인증
   const verifyPassword = () => {
@@ -441,7 +539,24 @@ const entryMonth = selected?.entryDate
     );
   }
 
+const startSegment = async (type: SegmentType) => {
+  const ok = await isLocalNetwork();
+  if (!ok) return alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  if (!selected) return;
 
+  const hhmm = new Date().toTimeString().slice(0, 5);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const segs = await toggleSegment(selected.id, type, hhmm);
+
+  setRecords((prev) => {
+    const exists = prev.find((r) => r.date === today) || {};
+    const withoutToday = prev.filter((r) => r.date !== today);
+    return [...withoutToday, { ...exists, date: today, segments: segs }];
+  });
+
+  setShowSegModal(false);
+};
 
   // 🔹 학생용 하원 처리 
   const checkOut = async () => {
@@ -479,143 +594,243 @@ const entryMonth = selected?.entryDate
     alert("👋 하원 처리 완료!");
   };
 
+const endSegment = async () => {
+  const ok = await isLocalNetwork();
+  if (!ok) return alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  if (!selected) return;
 
+  const hhmm = new Date().toTimeString().slice(0, 5);
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);
+
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() as any) : {};
+  const prev = data[selected.id] || {};
+  const segments: any[] = Array.isArray(prev.segments) ? [...prev.segments] : [];
+
+  if (segments.length === 0) {
+    alert("종료할 활동이 없습니다.");
+    return;
+  }
+
+  const last = segments[segments.length - 1];
+  if (!last || last.end) {
+    alert("이미 종료된 상태입니다.");
+    return;
+  }
+
+  if (last.start === hhmm) {
+    alert("너무 빠르게 눌렀어요. 잠시 후 다시 시도해 주세요.");
+    return;
+  }
+
+  segments[segments.length - 1] = { ...last, end: hhmm };
+
+  const ip = await getPublicIP();
+
+  await setDoc(
+    ref,
+    {
+      [selected.id]: {
+        ...prev,
+        segments,
+        segUpdatedAt: new Date().toISOString(),
+        segUpdatedIP: ip || null,
+        segUpdatedDevice: navigator.userAgent,
+      },
+    },
+    { merge: true }
+  );
+
+  // 화면 state 반영
+  const today = date;
+  setRecords((prevState) => {
+    const exists = prevState.find((r) => r.date === today) || {};
+    const withoutToday = prevState.filter((r) => r.date !== today);
+    return [...withoutToday, { ...exists, date: today, segments }];
+  });
+
+  setShowSegModal(false);
+  alert("✅ 활동 종료 기록 완료");
+};
 
   // 🔹 학원등원  (학원 가기)
   const academyIn = async () => {
-    const ok = await isLocalNetwork();
-    if (!ok) {
-      alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
-      return;
-    }
+  const ok = await isLocalNetwork();
+  if (!ok) return alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  if (!selected) return;
 
-    if (!selected) return;
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0, 5);
+  const today = new Date().toISOString().slice(0, 10);
 
-    const now = new Date();
-    const hhmm = now.toTimeString().slice(0, 5);
-    const today = new Date().toISOString().slice(0, 10);
+  // ✅ segments 토글 저장 (이전 활동 자동 종료 + 새 활동 시작)
+  const segs = await toggleSegment(selected.id, "OTHER_ACADEMY", hhmm);
 
-    await saveAcademyIn(selected.id, hhmm);
+  // (선택) 호환용 기존 필드도 남겨두고 싶으면 주석 해제
+  // await saveAcademyIn(selected.id, hhmm);
 
-    setRecords((prev) => {
-      const exists = prev.find((r) => r.date === today);
-      if (!exists) {
-        return [...prev, { date: today, academyIn: hhmm }];
-      }
-      return prev.map((r) =>
-        r.date === today ? { ...r, academyIn: hhmm } : r
-      );
-    });
+  // 화면 state도 segments로 반영
+  setRecords((prev) => {
+    const exists = prev.find((r) => r.date === today) || {};
+    const withoutToday = prev.filter((r) => r.date !== today);
+    return [...withoutToday, { ...exists, date: today, segments: segs }];
+  });
 
-    alert("📚 학원 등원 시간 기록 완료");
-  };
-
+  alert("✅ 활동 시작 기록 완료");
+};
   // 🔹 학원 하원 (학원 끝나고 복귀)
   const academyOut = async () => {
-    const ok = await isLocalNetwork();
-    if (!ok) {
-      alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
-      return;
-    }
+  const ok = await isLocalNetwork();
+  if (!ok) return alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  if (!selected) return;
 
-    if (!selected) return;
+  const now = new Date();
+  const hhmm = now.toTimeString().slice(0, 5);
+  const today = new Date().toISOString().slice(0, 10);
 
-    const now = new Date();
-    const hhmm = now.toTimeString().slice(0, 5);
-    const today = new Date().toISOString().slice(0, 10);
+  // 오늘 등원/세션이 없으면 막기 (원하면 유지)
+  const todayLog = records.find((r) => r.date === today);
+  if (!todayLog || !todayLog.time) {
+    alert("등원 기록이 없습니다.");
+    return;
+  }
 
-    const todayLog = records.find((r) => r.date === today);
-    if (!todayLog || !todayLog.academyIn) {
-      alert("학원 등원 기록이 없습니다.");
-      return;
-    }
+  // ✅ '열려있는 세그먼트'를 hhmm으로 닫기만
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() as any) : {};
+  const prev = data[selected.id] || {};
+  const segments: any[] = Array.isArray(prev.segments) ? [...prev.segments] : [];
 
-    await saveAcademyOut(selected.id, hhmm);
+  if (segments.length === 0) {
+    alert("종료할 활동이 없습니다.");
+    return;
+  }
 
-    setRecords((prev) =>
-      prev.map((r) =>
-        r.date === today ? { ...r, academyOut: hhmm } : r
-      )
-    );
+  const last = segments[segments.length - 1];
+  if (!last || last.end) {
+    alert("이미 종료된 상태입니다.");
+    return;
+  }
 
-    alert("🏫 학원 하원 시간 기록 완료");
-  };
+  if (last.start === hhmm) {
+    alert("너무 빠르게 눌렀어요. 잠시 후 다시 시도해 주세요.");
+    return;
+  }
+
+  segments[segments.length - 1] = { ...last, end: hhmm };
+
+ const ip = await getPublicIP();
+
+await setDoc(
+  ref,
+  {
+    [selected.id]: {
+      ...prev,
+      segments,
+      segUpdatedAt: new Date().toISOString(),
+      segUpdatedIP: ip || null,
+      segUpdatedDevice: navigator.userAgent,
+    },
+  },
+  { merge: true }
+);
+
+  // (선택) 호환용 기존 필드도 저장하려면 주석 해제
+  // await saveAcademyOut(selected.id, hhmm);
+
+  setRecords((prevState) => {
+    const exists = prevState.find((r) => r.date === today) || {};
+    const withoutToday = prevState.filter((r) => r.date !== today);
+    return [...withoutToday, { ...exists, date: today, segments }];
+  });
+
+  alert("✅ 활동 종료 기록 완료");
+};
 
   async function saveAppStyleCheckOut(studentId: string, time: string) {
-    const date = new Date().toISOString().slice(0, 10);
-    const ref = doc(db, "records", date);
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);
 
-    const snap = await getDoc(ref);
-    const data = snap.exists() ? (snap.data() as any) : {};
-    const prev = data[studentId] || {};
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() as any) : {};
+  const prev = data[studentId] || {};
 
-    const ip = await getPublicIP(); // 🔥 IP 가져오기
+  const ip = await getPublicIP();
 
-    await setDoc(
-      ref,
-      {
-        [studentId]: {
-          ...prev,
-          time: prev.time ?? null,
-          outTime: time,
-          outIP: ip || null,              // 🔥 하원할 때 IP 저장
-          outDevice: navigator.userAgent, // 🔥 디바이스 정보도 저장
-        },
-      },
-      { merge: true }
-    );
+  // ✅ 열린 세그먼트가 있으면 하원 시간으로 닫기
+  const segments: Segment[] = Array.isArray(prev.segments) ? [...prev.segments] : [];
+  if (segments.length > 0) {
+    const last = segments[segments.length - 1];
+    if (last && !last.end && last.start !== time) {
+      segments[segments.length - 1] = { ...last, end: time };
+    }
   }
+
+  await setDoc(
+    ref,
+    {
+      [studentId]: {
+        ...prev,
+        time: prev.time ?? null,
+        outTime: time,
+        segments, // ✅ 같이 저장
+        outIP: ip || null,
+        outDevice: navigator.userAgent,
+      },
+    },
+    { merge: true }
+  );
+}
 
 
   // 🔥 학원 등원 저장
-  async function saveAcademyIn(studentId: string, time: string) {
-    const date = new Date().toISOString().slice(0, 10);
-    const ref = doc(db, "records", date);
+  async function toggleSegment(studentId: string, type: SegmentType, nowHM: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", date);
 
-    const snap = await getDoc(ref);
-    const data = snap.exists() ? (snap.data() as any) : {};
-    const prev = data[studentId] || {};
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? (snap.data() as any) : {};
+  const prev = data[studentId] || {};
 
-    const ip = await getPublicIP(); // 🔥 공인 IP 가져오기
+  const segments: Segment[] = Array.isArray(prev.segments) ? [...prev.segments] : [];
 
-    await setDoc(
-      ref,
-      {
-        [studentId]: {
-          ...prev,
-          academyIn: time,
-          academyInIP: ip || null,              // 🔥 IP 저장
-          academyInDevice: navigator.userAgent, // 🔥 기기 정보 저장
-        },
-      },
-      { merge: true }
-    );
+  // 1) 열려있는 세그먼트(끝이 없는 것) 있으면 종료
+  const lastIdx = [...segments].reverse().findIndex((s) => !s.end);
+  if (lastIdx !== -1) {
+    const realIdx = segments.length - 1 - lastIdx;
+    // 같은 시간으로 시작/종료 되면 무시(연타 방지)
+    if (segments[realIdx].start !== nowHM) {
+      segments[realIdx] = { ...segments[realIdx], end: nowHM };
+    }
   }
 
-  // 🔥 학원 하원 저장
-  async function saveAcademyOut(studentId: string, time: string) {
-    const date = new Date().toISOString().slice(0, 10);
-    const ref = doc(db, "records", date);
-
-    const snap = await getDoc(ref);
-    const data = snap.exists() ? (snap.data() as any) : {};
-    const prev = data[studentId] || {};
-
-    const ip = await getPublicIP(); // 🔥 공인 IP
-
-    await setDoc(
-      ref,
-      {
-        [studentId]: {
-          ...prev,
-          academyOut: time,
-          academyOutIP: ip || null,               // 🔥 IP 저장
-          academyOutDevice: navigator.userAgent,  // 🔥 기기 정보 저장
-        },
-      },
-      { merge: true }
-    );
+  // 2) 새 세그먼트 시작 (연타 방지: 마지막이 동일 타입+동일 start면 추가 안함)
+  const last = segments[segments.length - 1];
+  if (!(last && last.type === type && last.start === nowHM)) {
+    segments.push({ type, start: nowHM, end: null });
   }
+
+  const ip = await getPublicIP();
+
+  await setDoc(
+    ref,
+    {
+      [studentId]: {
+        ...prev,
+        segments,
+        segUpdatedAt: new Date().toISOString(),
+        segUpdatedIP: ip || null,
+        segUpdatedDevice: navigator.userAgent,
+      },
+    },
+    { merge: true }
+  );
+
+  return segments;
+}
 
   // 🔹 그래프 데이터
   const chartData = records
@@ -868,27 +1083,60 @@ const entryMonth = selected?.entryDate
             if (log && log.academyIn && log.academyOut) {
               academyLabel = `${log.academyIn}~${log.academyOut}`;
             }
+          
+// ✅ segments 과목+시간 라벨
+let segmentsLabel: string | null = null;
+
+if (log && Array.isArray(log.segments) && log.segments.length > 0) {
+  const labelMap: Record<string, string> = {
+    MATH: "수학",
+    ENGLISH: "영어",
+    KOREAN: "국어",
+    SCIENCE: "과학",
+    OTHER_ACADEMY: "기타",
+    MEAL: "식사",
+    OUTING: "외출",
+  };
+
+  // ✅ 우선순위: 진행중(open) 1개 → 없으면 완료(done) 1개
+  const openOne = log.segments.find((s: any) => s?.start && !s?.end);
+  const doneOne = log.segments.find((s: any) => s?.start && s?.end);
+
+  const pick = openOne ?? doneOne;
+
+  if (pick) {
+    const label = labelMap[pick.type] ?? pick.type;
+    segmentsLabel = label;
+  }
+}
 
 
-            return (
-              <div
-                key={dateStr}
-                style={{
-                  height: "auto",
-                  borderRadius: 10,
-                  background: bg,
-                  color: "#374151",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  paddingTop: 6,
-                  paddingBottom: 8,
-                  transition: "0.2s",
-                }}
-              >
+           return (
+  <div
+    key={dateStr}
+    onClick={() => {
+      if (!log) return;
+      setDayDetail({ date: dateStr, ...log });
+      setShowDayModal(true);
+    }}
+    style={{
+      height: "auto",
+      borderRadius: 10,
+      background: bg,
+      color: "#374151",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+      fontWeight: 600,
+      fontSize: 13,
+      paddingTop: 6,
+      paddingBottom: 8,
+      transition: "0.2s",
+      cursor: log ? "pointer" : "default",
+      opacity: log ? 1 : 0.9,
+    }}
+  >
                 <div>{day}</div>
 
                 {inTimeLabel && (
@@ -938,6 +1186,26 @@ const entryMonth = selected?.entryDate
                     {academyLabel}
                   </div>
                 )}
+               {segmentsLabel && (
+  <div
+    style={{
+      marginTop: 4,
+      fontSize: 10,
+      color: "#0d2350",
+      fontWeight: 800,
+      width: "100%",
+      textAlign: "center",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      background: "rgba(174,214,233,0.55)", // 너 쓰는 톤
+      borderRadius: 6,
+      padding: "2px 4px",
+    }}
+  >
+    {segmentsLabel}
+  </div>
+)}
               </div>
             );
           })}
@@ -951,12 +1219,320 @@ const entryMonth = selected?.entryDate
         maxWidth: isMobile ? "100%" : 860,
         margin: isMobile ? "20px auto" : "40px auto",
         padding: isMobile ? "20px 16px" : "40px 32px",
-        background: "#ffffff",
+        background: "#fff",
         borderRadius: 20,
         boxShadow: "0 8px 22px rgba(15,23,42,0.12)",
         fontFamily: "Pretendard, 'Noto Sans KR', system-ui",
       }}
+      
     >
+        {showSegModal && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(15,23,42,0.28)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+      padding: 16,
+    }}
+    onClick={() => setShowSegModal(false)}
+  >
+    <div
+      style={{
+        width: "min(560px, 100%)",
+        background: EDU.modalBg,
+        borderRadius: 20,
+        border: `1px solid ${EDU.line}`,
+        boxShadow: "0 20px 60px rgba(15,23,42,0.18)",
+        padding: 20,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* 내부 패널 */}
+      <div
+        style={{
+          background: EDU.panel,
+          borderRadius: 18,
+          border: `1px solid ${EDU.line}`,
+          boxShadow: "0 14px 32px rgba(15,23,42,0.10), 0 2px 6px rgba(15,23,42,0.04)",
+          padding: 18,
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 900, color: EDU.text }}>
+          DAILY ROUTINE
+        </div>
+
+        <div style={{ fontSize: 12, color: EDU.sub, marginTop: 6 }}>
+          버튼을 눌러 자신의 루틴을 관리하세요.
+        </div>
+
+        {/* 과목/활동 선택 */}
+        <div
+          style={{
+            marginTop: 16,
+            display: "grid",
+            gridTemplateColumns: "repeat(2, 1fr)",
+            gap: 10,
+          }}
+        >
+          {[
+            ["ENGLISH", "영어"],
+            ["MATH", "수학"],
+            ["KOREAN", "국어"],
+            ["SCIENCE", "과학"],
+            ["OTHER_ACADEMY", "기타"],
+            ["MEAL", "식사"],
+            ["OUTING", "외출"],
+          ].map(([key, label]) => (
+            <button
+  key={key}
+  onClick={() => setActiveSegType(key as SegmentType)}
+  style={{
+    padding: "12px 10px",
+    borderRadius: 16,
+    border: "1px solid rgba(15,23,42,0.06)",
+    background:
+      activeSegType === key
+        ? "#D6E6FF"
+        : "#F7F9FD",
+    color: "#0F172A",
+    fontWeight: 900,
+    cursor: "pointer",
+    boxShadow:
+      activeSegType === key
+        ? "0 10px 22px rgba(92,140,255,0.22)"
+        : "0 4px 10px rgba(15,23,42,0.05)",
+    transition: "all 0.15s ease",
+  }}
+>
+  {label}
+</button>
+          ))}
+        </div>
+
+        {/* 메모 */}
+        <textarea
+          value={segMemo}
+          onChange={(e) => setSegMemo(e.target.value)}
+          placeholder="메모 (선택)"
+          style={{
+            marginTop: 16,
+            width: "100%",
+            minHeight: 70,
+            borderRadius: 14,
+            border: `1px solid ${EDU.line}`,
+            padding: 12,
+            fontSize: 13,
+            outline: "none",
+            background: "#F9FBFF",
+          }}
+        />
+
+        {/* 하단 버튼 */}
+        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+          {/* 학원 가기 = 시작 기록 */}
+          <button
+  onClick={() => startSegment(activeSegType)}
+  style={{
+    flex: 1,
+    height: 46,
+    borderRadius: 16,
+    border: "none",
+    background: "#CFE4FF",
+    color: "#092a56",
+    fontWeight: 900,
+    boxShadow: "0 10px 24px rgba(80,120,255,0.20)",
+    cursor: "pointer",
+  }}
+>
+  학원 출발
+</button>
+
+          {/* 에듀코어 복귀 = 종료 기록 */}
+          <button
+            onClick={academyOut} // ✅ 너 코드에 있는 종료 함수(복귀)
+            style={{
+              flex: 1,
+              height: 46,
+              borderRadius: 16,
+              border: "none",
+              background: EDU.lavender,
+              color: "#7A1D3E",
+              fontWeight: 900,
+              cursor: "pointer",
+              boxShadow: "0 8px 18px rgba(214, 51, 108, 0.18)",
+            }}
+          >
+            에듀코어 복귀
+          </button>
+
+          <button
+  onClick={() => setShowSegModal(false)}
+  style={{
+    flex: 1,
+    height: 46,
+    borderRadius: 16,
+    border: "none",
+    background: "#E3E8F1",
+    color: "#1F2A44",
+    fontWeight: 900,
+    boxShadow: "0 6px 16px rgba(15,23,42,0.08)",
+    cursor: "pointer",
+  }}
+>
+  닫기
+</button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+  {showDayModal && dayDetail && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.35)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 10000, // segModal보다 위/아래는 취향 (지금은 더 위)
+      padding: 16,
+    }}
+    onClick={() => setShowDayModal(false)}
+  >
+    <div
+      style={{
+        width: "min(560px, 100%)",
+        background: "#fff",
+        borderRadius: 16,
+        border: "1px solid #e5e7eb",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+        padding: 16,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>
+            📅 {dayDetail.date}
+          </div>
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            등원/하원 + 활동 기록
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowDayModal(false)}
+          style={{
+            border: "1px solid #e5e7eb",
+            background: "#ccc9c9",
+            borderRadius: 10,
+            padding: "8px 10px",
+            cursor: "pointer",
+            fontWeight: 800,
+          }}
+        >
+          닫기
+        </button>
+      </div>
+
+      {/* 등원/하원 */}
+      <div
+        style={{
+          marginTop: 12,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "#eff6ff",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#1e3a8a", fontWeight: 900 }}>등원</div>
+          <div style={{ fontSize: 14, fontWeight: 900, marginTop: 4 }}>
+            {safeHM(dayDetail.time ?? dayDetail.inTime) ?? "-"}
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "#fff1f2",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 900 }}>하원</div>
+          <div style={{ fontSize: 14, fontWeight: 900, marginTop: 4 }}>
+            {safeHM(dayDetail.outTime) ?? "-"}
+          </div>
+        </div>
+      </div>
+
+      {/* 활동 목록 */}
+      <div
+        style={{
+          marginTop: 12,
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid #e5e7eb",
+          background: "#f9fafb",
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 900, color: "#474541" }}>
+          루틴(학원/식사/외출)
+        </div>
+
+        {Array.isArray(dayDetail.segments) && dayDetail.segments.length > 0 ? (
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            {dayDetail.segments.map((s: any, idx: number) => {
+              const label = segLabelMap[s?.type] ?? (s?.type ?? "활동");
+              const st = safeHM(s?.start);
+              const en = safeHM(s?.end);
+              const isOpen = st && !en;
+
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ fontWeight: 900, color: "#111827" }}>{label}</div>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#5c4712" }}>
+                    {st ? `${st} ~ ${en ?? ""}` : "-"}
+                    {isOpen ? " (진행중)" : ""}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ marginTop: 8, fontSize: 13, color: "#9ca3af" }}>
+            활동 기록 없음
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
+    
       
       {/* ===== 브랜드 헤더 ===== */}
       <div
@@ -1469,7 +2045,7 @@ const entryMonth = selected?.entryDate
               borderRadius: 8,
               textAlign: "center",
               background: isBeforeEntry ? "#f3f4f6" : "#eff6ff",
-              color: isBeforeEntry ? "#9ca3af" : "#1e3a8a",
+              color: isBeforeEntry ? "#9ca3af" : "#2b3d7a",
               fontSize: 12,
               fontWeight: 600,
             }}
@@ -1478,7 +2054,7 @@ const entryMonth = selected?.entryDate
             <div
   style={{
     marginTop: 4,
-    color: isBeforeEntry ? "#9ca3af" : "#16a34a", // ✅ 초록
+    color: isBeforeEntry ? "#9ca3af" : "#9F1239", // ✅ 초록
     fontWeight: isBeforeEntry ? 500 : 800,        // 강조
   }}
 >
@@ -1491,141 +2067,146 @@ const entryMonth = selected?.entryDate
   </div>
 </div>
 
-            {/* 등원/하원 버튼 & 요약 */}
-            <div
-              style={{
-                padding: "18px 18px",
-                borderRadius: 14,
-                border: "1px solid #e5e7eb",
-                background: "#eff6ff", // 파스텔 블루
-              }}
-            >
-              <p
-                style={{
-                  margin: "0 0 8px 0",
-                  fontSize: 13,
-                  color: "#6b7280",
-                }}
-              >
-                오늘 학습 시작할 때 <b>등원</b>, 마칠 때 <b>하원</b>을 눌러 주세요.
-                <br />
-                학원에 다녀올 때는 <b>학원 등원 / 학원 하원</b>으로 기록합니다.
-              </p>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                  marginTop: 10,
-                }}
-              >
-                <button
-                  onClick={checkIn}
-                  style={{
-                    padding: "10px 0",
-                    borderRadius: 10,
-                    border: "none",
-                    background: "#2563eb",
-                    color: "#fff",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontSize: 14,
-                  }}
-                >
-                  등원
-                </button>
-
-                <button
-                  onClick={checkOut}
-                  style={{
-                    padding: "10px 0",
-                    borderRadius: 10,
-                    border: "none",
-                    background: "#ef4444",
-                    color: "#fff",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontSize: 14,
-                  }}
-                >
-                  하원
-                </button>
-
-                <button
-                  onClick={academyIn}
-                  style={{
-                    padding: "10px 0",
-                    borderRadius: 10,
-                    border: "1px solid #22c55e",
-                    background: "#ecfdf5",
-                    color: "#166534",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  학원 등원
-                </button>
-
-                <button
-                  onClick={academyOut}
-                  style={{
-                    padding: "10px 0",
-                    borderRadius: 10,
-                    border: "1px solid #22c55e",
-                    background: "#f0fdf4",
-                    color: "#15803d",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontSize: 13,
-                  }}
-                >
-                  학원 하원
-                </button>
-              </div>
-
-              <div
-                style={{
-                  marginTop: 14,
-                  paddingTop: 10,
-                  borderTop: "1px dashed #e5e7eb",
-                  fontSize: 12,
-                  color: "#6b7280",
-                }}
-              >
-                <div>
-                  출석 일수: <b>{summary.days ? `${summary.days}일` : "기록 없음"}</b>
-                </div>
-                {summary.days > 0 && (
-                  <div style={{ marginTop: 2 }}>
-                    1회 평균 순공: <b>{Math.round(summary.total / summary.days)}분</b>
-                  </div>
-                )}
-              </div>
-
-              {/* ✅ 스터디플랜 바로가기 */}
-<button
-  onClick={goStudyPlan}
+    {/* 등원/하원 버튼 & 요약 */}
+<div
   style={{
-    marginTop: 10,
-    width: "100%",
-    padding: "10px 0",
-    borderRadius: 10,
-    border: "1px solid #059669",
-    background: "#ffffff",
-    color: "#065f46",
-    fontSize: 14,
-    fontWeight: 800,
-    cursor: "pointer",
+    padding: "20px 20px",
+    borderRadius: 16,
+    border: "1px solid #E5E7EB",
+    background: "#F8FAFF",
   }}
 >
-  📘 스터디플랜 바로가기
+
+  {/* 상단 문구 */}
+  <div style={{ textAlign: "center", marginBottom: 14 }}>
+    <div
+      style={{
+        fontSize: 13,
+        color: "#475569",
+        letterSpacing: 0.3,
+      }}
+    >
+      오늘의 시작은 등원, 마무리는 하원입니다.
+    </div>
+  </div>
+
+  {/* 등원 / 하원 버튼 */}
+  <div
+    style={{
+      display: "flex",
+      gap: 12,
+      marginBottom: 18,
+    }}
+  >
+    <button
+      onClick={checkIn}
+      style={{
+        flex: 1,
+        height: 50,
+        borderRadius: 16,
+        border: "1px solid #E8EDFF",
+        background: "#E8EDFF",
+        color: "#1E3A8A",
+        fontWeight: 900,
+        fontSize: 15,
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+      }}
+    >
+      에듀코어등원
+    </button>
+
+    <button
+      onClick={checkOut}
+      style={{
+        flex: 1,
+        height: 50,
+        borderRadius: 16,
+        border: "1px solid #FFE8EA",
+        background: "#FFE8EA",
+        color: "#9F1239",
+        fontWeight: 900,
+        fontSize: 15,
+        cursor: "pointer",
+        transition: "all 0.2s ease",
+      }}
+    >
+      에듀코어하원
+    </button>
+  </div>
+
+  {/* 중간 안내 */}
+  <div style={{ textAlign: "center", marginBottom: 12 }}>
+    <div
+      style={{
+        fontSize: 12,
+        color: "#64748B",
+        letterSpacing: 0.3,
+      }}
+    >
+      학원, 식사, 외출은 ROUTINE으로 기록합니다.
+    </div>
+  </div>
+
+  {/* 루틴 버튼 */}
+  {isSegTestUser && (
+   <button
+  onClick={() => setShowSegModal(true)}
+  style={{
+    width: "100%",
+    height: 50,
+    borderRadius: 16,
+    border: "none",
+    background: "linear-gradient(135deg, #dbeafe 0%, #c7ddff 100%)",
+    color: "#0b1f3a",
+    fontSize: 15,
+    fontWeight: 900,
+    letterSpacing: 0.5,
+    cursor: "pointer",
+    boxShadow: "0 10px 24px rgba(59,130,246,0.18)",
+    marginBottom: 18,
+    transition: "all 0.2s ease",
+  }}
+>
+  나의 루틴 기록
 </button>
-            </div>
-          </div>
+  )}
+{/* 중간 안내 */}
+  <div style={{ textAlign: "center", marginBottom: 12 }}>
+    <div
+      style={{
+        fontSize: 12,
+        color: "#64748B",
+        letterSpacing: 0.3,
+      }}
+    >
+    과제는 STUDY PLAN으로 확인합니다.
+    </div>
+  </div>
+  {/* 데일리 스터디 버튼 */}
+  <button
+    onClick={goStudyPlan}
+    style={{
+      width: "100%",
+      height: 50,
+      borderRadius: 16,
+      border: "1px solid #E8EDFF",
+     background: "linear-gradient(135deg, #f7e9c4 0%, #f1dcaa 100%)",
+      color: "#5c4712",
+      boxShadow: "0 10px 22px rgba(190,160,90,0.18)",
+      fontSize: 15,
+      fontWeight: 900,
+      letterSpacing: 0.5,
+      cursor: "pointer",
+    }}
+  >
+    오늘의 과제
+  </button>
+
+</div>
 
 
+</div>
           {/* 월별 요약 + 달력 */}
           <div
             style={{
@@ -1652,11 +2233,11 @@ const entryMonth = selected?.entryDate
                 style={{
                   margin: "0 0 10px 0",
                   fontSize: 15,
-                  color: "#1e3a8a",
+                   color: "#1E3A8A",
                   fontWeight: 700,
                 }}
               >
-                📊 월별 순공 요약
+                월별 순공 요약
               </h4>
 
 
@@ -1672,13 +2253,13 @@ const entryMonth = selected?.entryDate
                 <div
                   style={{
                     flex: 1,
-                    background: "#e0f2fe",
+                    background: "#E8EDFF",
                     padding: "10px 12px",
                     borderRadius: 10,
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 12, color: "#0369a1" }}>총 누적 순공</div>
+                  <div style={{ fontSize: 14, color: "#1E3A8A" }}>총 누적 순공</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: "#0c4a6e" }}>
                     {summary.total.toFixed(0)}분
                   </div>
@@ -1687,13 +2268,14 @@ const entryMonth = selected?.entryDate
                 <div
                   style={{
                     flex: 1,
-                    background: "#fce7f3",
+                    border: "1px solid #FFE8EA",
+        background: "#FFE8EA",
                     padding: "10px 12px",
                     borderRadius: 10,
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 12, color: "#be185d" }}>이번 달 평균</div>
+                  <div style={{ fontSize: 14, color: "#be185d" }}>이번 달 평균</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: "#831843" }}>
                     {summary.days > 0
                       ? Math.round(summary.total / summary.days)
