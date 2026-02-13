@@ -238,11 +238,7 @@ const safeHM = (v: any) => {
 
     return { P, L, A, total: list.length };
   };
-const isSegTestUser = useMemo(() => {
-  // ✅ 테스트할 학생 id만 넣기 (여기만 바꾸면 됨)
-  const allow = new Set(["jsxmkjqu"]); 
-  return selected?.id ? allow.has(selected.id) : false;
-}, [selected?.id]);
+
 
   // 🔥 학생 선택 시 Firestore에서 출결 로그 로드 (날짜 기반)
   const handleSelectStudent = async (student: any) => {
@@ -1262,7 +1258,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
         }}
       >
         <div style={{ fontSize: 18, fontWeight: 900, color: EDU.text }}>
-          DAILY ROUTINE
+          나의 루틴 기록
         </div>
 
         <div style={{ fontSize: 12, color: EDU.sub, marginTop: 6 }}>
@@ -1534,96 +1530,85 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
 )}
     
       
-      {/* ===== 브랜드 헤더 ===== */}
-      <div
-        style={{
-          textAlign: "center",
-          paddingBottom: isMobile ? 16 : 20,
-          borderBottom: "1px solid #e5e7eb",
-          marginBottom: isMobile ? 20 : 26,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexDirection: isMobile ? "column" : "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: isMobile ? 2 : 4,
-            userSelect: "none",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
-            <span
-              style={{
-                color: "#b71c1c",
-                fontSize: isMobile ? 26 : 40,
-                fontWeight: 900,
-              }}
-            >
-              O
-            </span>
+    {/* ===== PREMIUM BRAND HEADER (Signature Wine Red) ===== */}
+<div
+  style={{
+    textAlign: "center",
+    paddingBottom: isMobile ? 18 : 26,
+    borderBottom: "1px solid rgba(15,23,42,0.08)",
+    marginBottom: isMobile ? 22 : 32,
+  }}
+>
+  {/* 로고 라인 */}
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "baseline",
+      gap: 8,
+      flexWrap: "wrap",
+    }}
+  >
+    <span
+      style={{
+        fontSize: isMobile ? 30 : 44,
+        fontWeight: 900,
+        letterSpacing: 2,
+        color: "#8B1E1E", // 🔥 와인톤 (기존보다 고급)
+      }}
+    >
+      OPTIMUM
+    </span>
 
-            <span
-              style={{
-                color: "#000000",
-                fontSize: isMobile ? 18 : 24,
-                fontWeight: 800,
-              }}
-            >
-              PTIMUM
-            </span>
+    <span
+      style={{
+        fontSize: isMobile ? 30 : 44,
+        fontWeight: 900,
+        letterSpacing: 2,
+        color: "#1d3d86", // 딥네이비
+      }}
+    >
+      EDUCORE
+    </span>
+  </div>
 
-            <span
-              style={{
-                color: "#1e3a8a",
-                fontSize: isMobile ? 26 : 40,
-                fontWeight: 900,
-              }}
-            >
-              E
-            </span>
-
-            <span
-              style={{
-                color: "#000000",
-                fontSize: isMobile ? 18 : 24,
-                fontWeight: 800,
-              }}
-            >
-              DUCORE
-            </span>
-          </div>
-
-          {/* 슬로건 */}
-          <span
-            style={{
-              marginTop: isMobile ? 4 : 0,
-              marginLeft: isMobile ? 0 : 10,
-              color: "#1aa368ff",
-              fontSize: isMobile ? 12 : 20,
-              fontStyle: "italic",
-              fontWeight: 600,
-              textAlign: "center",
-              lineHeight: 1.2,
-            }}
-          >
-            - Design Your Routine · Own the Result -
-          </span>
-        </div>
-
-        {/* 아래 작은 텍스트 */}
-        <div
-          style={{
-            marginTop: isMobile ? 6 : 4,
-            fontSize: isMobile ? 10 : 12,
-            color: "#6b7280",
-            letterSpacing: 1,
-          }}
-        >
-          OPTIMUM EDUCORE STUDENT PORTAL
-        </div>
-      </div>
+  {/* 슬로건 */}
+<span
+  style={{
+    marginTop: isMobile ? 4 : 0,
+    marginLeft: isMobile ? 0 : 10,
+    color: "#B8962E",          // 고급 골드 유지
+    fontSize: isMobile ? 12 : 18,
+    fontStyle: "normal",       // ✅ italic 제거
+    fontWeight: 700,           // 600→700 살짝 힘 주면 고급
+    textAlign: "center",
+    lineHeight: 1.2,
+    letterSpacing: 0.4,        // ✅ 약간만 주면 더 프리미엄
+  }}
+>
+  Design the Routine, Own the Result
+</span>
+<div
+  style={{
+    width: isMobile ? 120 : 240,
+    height: 1,
+    margin: "10px auto 6px",
+    background: "linear-gradient(90deg, rgba(184,150,46,0.1), rgba(184,150,46,0.6), rgba(184,150,46,0.1))",
+  }}
+/>
+  {/* 서브 설명 */}
+  <div
+    style={{
+      marginTop: 12,
+      fontSize: isMobile ? 10 : 12,
+      fontWeight: 600,
+      letterSpacing: 1.8,
+      color: "#64748B",
+    }}
+  >
+    ROUTINE & STUDY MANAGEMENT
+  </div>
+</div>
       {/* ===== 검색 입력 ===== */}
       <input
         type="text"
@@ -2024,7 +2009,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
         fontSize: 14,
       }}
     >
-      📆 연간 월별 순공 합계
+      연간 월별 순공 합계
     </div>
 
     <div
@@ -2081,12 +2066,12 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
   <div style={{ textAlign: "center", marginBottom: 14 }}>
     <div
       style={{
-        fontSize: 13,
-        color: "#475569",
+        fontSize: 14,
+        color: "#4f5257",
         letterSpacing: 0.3,
       }}
     >
-      오늘의 시작은 등원, 마무리는 하원입니다.
+      오늘의 시작은 [등원], 마무리는 [하원]입니다.
     </div>
   </div>
 
@@ -2139,17 +2124,17 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
   <div style={{ textAlign: "center", marginBottom: 12 }}>
     <div
       style={{
-        fontSize: 12,
-        color: "#64748B",
+        fontSize: 13,
+        color: "#4f5257",
         letterSpacing: 0.3,
       }}
     >
-      학원, 식사, 외출은 ROUTINE으로 기록합니다.
+      [나의루틴기록]에서 학원,식사,외출을 기록합니다.
     </div>
   </div>
 
   {/* 루틴 버튼 */}
-  {isSegTestUser && (
+ 
    <button
   onClick={() => setShowSegModal(true)}
   style={{
@@ -2170,17 +2155,17 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
 >
   나의 루틴 기록
 </button>
-  )}
+  
 {/* 중간 안내 */}
   <div style={{ textAlign: "center", marginBottom: 12 }}>
     <div
       style={{
-        fontSize: 12,
-        color: "#64748B",
+        fontSize: 13,
+        color: "#4f5257",
         letterSpacing: 0.3,
       }}
     >
-    과제는 STUDY PLAN으로 확인합니다.
+    [오늘의 과제]에서 선생님의 과제를 확인합니다.
     </div>
   </div>
   {/* 데일리 스터디 버튼 */}
@@ -2372,7 +2357,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
                   color: "#1e3a8a",
                 }}
               >
-                📅 이번 달 출결 현황
+                이번 달 출결 현황
               </h4>
               {renderCalendar()}
             </div>
