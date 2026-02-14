@@ -41,6 +41,12 @@ type DayCell = {
   academyIn?: string;
   academyOut?: string;
   academyBySubject?: Record<string, SubjectEntry>;
+  subjects?: Record<
+    string,
+    {
+      wordTest?: { correct?: number; total?: number };
+    }
+  >;
 };
 
 // 🔥 Student 타입 (EditStudentModal 구조 반영)
@@ -65,16 +71,50 @@ type Summary = {
   rest: number;
   short: number;
   academy: number;
+  academyOuting: number;
 };
+const segLabelMap: Record<string, string> = {
+  MATH: "수학",
+  ENGLISH: "영어",
+  KOREAN: "국어",
+  SCIENCE: "과학",
+  OTHER_ACADEMY: "기타",
+  MEAL: "식사",
+  OUTING: "외출",
+};
+
 
 function hmToMin(hm?: string) {
   if (!hm) return 0;
   const [h, m] = hm.split(":").map(Number);
   return h * 60 + m;
 }
-// ✅ records 컬렉션에서 날짜별 문서를 돌면서
-//    각 날짜 문서 안의 [studentId] 필드만 모아서
-//    { "YYYY-MM-DD": DayCell } 형태로 리턴
+
+function formatHM(min?: number) {
+  if (!min || min <= 0) return "0분";
+
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+
+  if (h === 0) return `${m}분`;
+  if (m === 0) return `${h}시간`;
+  return `${h}시간 ${m}분`;
+}
+
+function safeHM(raw: any): string | null {
+  if (!raw) return null;
+  if (typeof raw !== "string") return null;
+
+  if (raw.includes("T")) {
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  if (raw.includes(":")) return raw.slice(0, 5);
+  return null;
+}
+
 async function loadRecordsForStudent(studentId: string): Promise<Records> {
   const result: Records = {};
 
@@ -121,57 +161,6 @@ function getAcademySummary(records: Records, monthDates: string[]) {
   });
 
   return result;
-}
-
-
-
-function getOutingWarning(summary: Summary) {
-  if (summary.days === 0) return null;
-
-  const avg = summary.short / summary.days; // 하루 평균 생활시간(분)
-
-  if (avg >= 180) {
-    return {
-      level: 3,
-      message: "⚠ 생활시간이 하루 3시간 이상으로 매우 많은 편입니다. 학습 흐름이 자주 끊겼을 가능성이 높습니다.",
-      color: "#B91C1C",
-      bg: "#FEE2E2"
-    };
-  }
-
-  if (avg >= 150) {
-    return {
-      level: 2,
-      message: "⚠ 생활시간이 하루 2시간 30분 이상입니다. 이동·식사 루틴 조정이 필요합니다.",
-      color: "#C2410C",
-      bg: "#FFEDD5"
-    };
-  }
-
-  if (avg >= 120) {
-    return {
-      level: 1,
-      message: "⚠ 생활시간이 하루 2시간 이상입니다. 집중 흐름을 해치지 않도록 주의가 필요합니다.",
-      color: "#92400E",
-      bg: "#FEF3C7"
-    };
-  }
-
-  if (avg >= 90) {
-    return {
-      level: 0,
-      message: "생활시간이 하루 1.5시간 이하로 안정적으로 유지되었습니다.",
-      color: "#166534",
-      bg: "#DCFCE7"
-    };
-  }
-
-  return {
-    level: 0,
-    message: "생활시간이 매우 안정적으로 관리되었습니다.",
-    color: "#166534",
-    bg: "#DCFCE7"
-  };
 }
 
 /* ================================
@@ -443,7 +432,83 @@ async function downloadSchedulePDF(
   pdf.save(`시간표_${studentName || "학생"}.pdf`);
 }
 
+const SUBJECT_LABEL: Record<string, string> = {
+  soc: "사회",
+  hist2: "한국사",
+  sci: "과학",
+  sci1: "과학", // ✅ 추가 (날짜에 따라 sci1로 저장된 케이스 대응)
+  kor: "국어",
+  eng: "영어",
+  his1: "세계사",
+  math: "수학",
+  tech: "기술가정",
+  hanja: "한자",
+  jp: "일본어",
+};
 
+const SUBJECT_KEYS = new Set([
+  "kor",
+  "eng",
+  "math",
+  "soc",
+  "hist2",
+  "his1",
+  "sci",  // ✅ 추가 (실데이터에 sci가 있음)
+  "sci1", // ✅ 유지
+  "tech",
+  "hanja",
+  "jp",
+]);
+
+function extractItemsFromDayPlan(dayPlan: any): { done: boolean }[] {
+  if (!dayPlan) return [];
+  const items: { done: boolean }[] = [];
+
+  // ✅ teacherTasks: 배열/객체 둘 다 처리
+  const tt = dayPlan.teacherTasks;
+
+  const tList = Array.isArray(tt)
+    ? tt
+    : tt && typeof tt === "object"
+      ? Object.values(tt)
+      : [];
+
+  tList.forEach((t: any) => {
+    if (!t) return;
+
+    // subtasks 배열 있으면 그걸로 카운트
+    if (Array.isArray(t.subtasks) && t.subtasks.length) {
+      t.subtasks.forEach((st: any) => items.push({ done: st?.done === true }));
+      return;
+    }
+
+    // text만 있는 과제도 1개로 카운트
+    if (String(t?.text ?? t?.title ?? "").trim() !== "") {
+      items.push({ done: t?.done === true });
+      return;
+    }
+
+    // 그래도 1개로 치고 싶으면 (옵션)
+    items.push({ done: t?.done === true });
+  });
+
+  // ✅ 과목 done (kor/soc/hist2/sci/sci1...)
+  Object.entries(dayPlan).forEach(([k, v]: any) => {
+    if (!SUBJECT_KEYS.has(k)) return;
+    if (!v || typeof v !== "object") return;
+    if ("done" in v) items.push({ done: v.done === true });
+  });
+
+  return items;
+}
+
+function calcTotalStats(dayPlan: any) {
+  const items = extractItemsFromDayPlan(dayPlan);
+  const total = items.length;
+  const done = items.filter((i) => i.done).length;
+  const rate = total ? Math.round((done / total) * 100) : 0;
+  return { total, done, rate };
+}
 
 /* ===============================
    메인 컴포넌트
@@ -457,14 +522,237 @@ export default function ParentMonthlyReport() {
 
   const [student, setStudent] = useState<Student | null>(null);
   const [records, setRecords] = useState<Records>({});
-  const [month, setMonth] = useState(() =>
+    const [month, setMonth] = useState(() =>
   new Date().toISOString().slice(0, 7)
 );
+  const [viewYear, setViewYear] = useState(() => Number(month.split("-")[0]));
+const [viewMonth, setViewMonth] = useState(() => Number(month.split("-")[1]) - 1);
+
+useEffect(() => {
+  setViewYear(Number(month.split("-")[0]));
+  setViewMonth(Number(month.split("-")[1]) - 1);
+}, [month]);
 const [gradeData, setGradeData] = useState<any>(null);
 const [comment, setComment] = useState("");
 const [analysis, setAnalysis] = useState<any>(null);
 const [openTimeline, setOpenTimeline] = useState(false);
 const [open, setOpen] = useState(false);
+const [showDayModal, setShowDayModal] = useState(false);
+const [dayDetail, setDayDetail] = useState<any>(null);
+const [dayPlan, setDayPlan] = useState<any>(null);
+
+const [openSubject, setOpenSubject] = useState<string | null>(null);
+
+const tasksArr = useMemo(() => {
+  if (!dayPlan) return [];
+  const ignore = new Set([
+    "date","createdAt","updatedAt","done","id","memo","comment","name",
+    "teacherTasks","studentPlans","wordTest","proofImages","proofMemo" // ✅ 여기 추가
+  ]);
+
+
+  return Object.entries(dayPlan)
+    .filter(([k, v]) => !ignore.has(k) && v != null)
+    .map(([k, v]) => ({
+      key: k,
+      title: SUBJECT_LABEL[k] || k,
+      raw: v, // ✅ 클릭했을 때 상세로 쓸 수도 있으니 raw만 들고감
+    }));
+}, [dayPlan]);
+
+const totalStats = useMemo(() => calcTotalStats(dayPlan), [dayPlan]);
+
+const [dayPlanLoading, setDayPlanLoading] = useState(false);
+
+async function loadDayPlan(dateStr: string) {
+  console.log("🔥 loadDayPlan called:", dateStr, "id:", id);
+  
+
+  if (!id) return;
+  setDayPlanLoading(true);
+
+  try {
+    const ref = doc(db, "studyPlans", id, "days", dateStr);
+    const snap = await getDoc(ref);
+const data = snap.exists() ? snap.data() : null;
+
+console.log("DAYPLAN RAW:", data);
+console.log("teacherTasks RAW:", data?.teacherTasks);
+console.log("teacherTasks values:", data?.teacherTasks ? Object.values(data.teacherTasks) : null);
+
+console.log("extractItemsFromDayPlan:", extractItemsFromDayPlan(data));
+console.log("calcTotalStats:", calcTotalStats(data));
+
+setDayPlan(data);
+  } catch (e) {
+    console.error("loadDayPlan failed", e);
+    setDayPlan(null);
+  } finally {
+    setDayPlanLoading(false);
+  }
+}
+
+// 부모 페이지 month는 "2026-02" 같은 문자열이 이미 있으니
+
+const recordsList = useMemo(() => {
+  return Object.entries(records || {}).map(([date, cell]: any) => ({
+    date,
+    ...(cell || {}),
+  }));
+}, [records]);
+const renderCalendar = () => {
+  if (!recordsList.length) return <p style={{ color: "#aaa" }}>출결 데이터 없음</p>;
+
+  const year = viewYear;
+  const monthIdx = viewMonth;
+
+  const lastDay = new Date(year, monthIdx + 1, 0).getDate();
+  const firstDayOfWeek = new Date(year, monthIdx, 1).getDay();
+  const blanks = Array(firstDayOfWeek).fill(null);
+
+  return (
+    <div style={{ animation: "fadeIn 0.3s ease" }}>
+      {/* 헤더 */}
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", marginBottom: 14, gap: 16 }}>
+        <button
+          onClick={() => {
+            if (monthIdx === 0) {
+              setViewMonth(11);
+              setViewYear(year - 1);
+            } else setViewMonth(monthIdx - 1);
+          }}
+          style={{ width: 32, height: 32, borderRadius: "50%", background: "#f3f4f6", border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 16 }}
+        >
+          ←
+        </button>
+
+        <h4 style={{ margin: 0, color: "#1e3a8a", fontWeight: 800, fontSize: 16, textAlign: "center", minWidth: 140 }}>
+          📅 {year}-{String(monthIdx + 1).padStart(2, "0")}
+        </h4>
+
+        <button
+          onClick={() => {
+            if (monthIdx === 11) {
+              setViewMonth(0);
+              setViewYear(year + 1);
+            } else setViewMonth(monthIdx + 1);
+          }}
+          style={{ width: 32, height: 32, borderRadius: "50%", background: "#f3f4f6", border: "1px solid #e5e7eb", cursor: "pointer", fontSize: 16 }}
+        >
+          →
+        </button>
+      </div>
+
+      {/* 요일 */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", marginBottom: 8, color: "#555", fontWeight: 700, fontSize: 12 }}>
+        {["일", "월", "화", "수", "목", "금", "토"].map((d) => <div key={d}>{d}</div>)}
+      </div>
+
+      {/* 날짜 */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+        {blanks.map((_, i) => <div key={"blank" + i} />)}
+
+        {[...Array(lastDay)].map((_, i) => {
+          const day = i + 1;
+          const dateStr = `${year}-${String(monthIdx + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+          const dow = new Date(dateStr).getDay();
+          const log = recordsList.find((r: any) => r.date === dateStr);
+         // if (log) console.log("LOG RAW:", dateStr, log);
+
+          let bg = "#f3f4f6";
+          if (dow === 6) bg = "#dbeafe";
+          if (dow === 0) bg = "#ffe4e6";
+
+          if (log) {
+            if (log.time || log.inTime) bg = "#dcfce7";
+            else bg = "#fee2e2";
+          }
+
+          // 간단 라벨(등/하원)
+          const inTimeLabel = safeHM(log?.time ?? log?.inTime);
+          const outTimeLabel = safeHM(log?.outTime);
+
+          // 과목/활동(segments에서 1개 pick)
+          const segLabelMap: Record<string, string> = {
+            MATH: "수학",
+            ENGLISH: "영어",
+            KOREAN: "국어",
+            SCIENCE: "과학",
+            OTHER_ACADEMY: "기타",
+            MEAL: "식사",
+            OUTING: "외출",
+          };
+
+          let segmentsLabel: string | null = null;
+          if (log && Array.isArray(log.segments) && log.segments.length > 0) {
+            const openOne = log.segments.find((s: any) => s?.start && !s?.end);
+            const doneOne = log.segments.find((s: any) => s?.start && s?.end);
+            const pick = openOne ?? doneOne;
+            if (pick) segmentsLabel = segLabelMap[pick.type] ?? pick.type;
+          }
+
+         return (
+  <div
+    key={dateStr}
+    onClick={async () => {
+      if (!id) return;
+console.log("🔥 CLICKED:", dateStr, "id:", id);
+      console.log("🔥 CLICKED:", dateStr);
+
+      setDayDetail({ date: dateStr, ...(log ?? {}) });
+      setShowDayModal(true);
+
+      await loadDayPlan(dateStr);
+    }}
+    style={{
+      borderRadius: 10,
+      background: bg,
+      color: "#374151",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+      fontWeight: 600,
+      fontSize: 13,
+      paddingTop: 6,
+      paddingBottom: 8,
+      cursor: log ? "pointer" : "default",
+      opacity: log ? 1 : 0.9,
+    }}
+  >
+              <div>{day}</div>
+
+              {inTimeLabel && <div style={{ marginTop: 2, fontSize: 10, color: "#1d4ed8", fontWeight: 700 }}>{inTimeLabel}</div>}
+              {outTimeLabel && <div style={{ marginTop: 1, fontSize: 10, color: "#b91c1c", fontWeight: 700 }}>{outTimeLabel}</div>}
+
+              {segmentsLabel && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 10,
+                    color: "#0d2350",
+                    fontWeight: 800,
+                    width: "90%",
+                    textAlign: "center",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    background: "rgba(174,214,233,0.55)",
+                    borderRadius: 6,
+                    padding: "2px 4px",
+                  }}
+                >
+                  {segmentsLabel}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 function changeMonth(offset: number) {
   const current = new Date(month + "-01");
@@ -550,6 +838,8 @@ if (list.scores && list.scores["브랜치"]) {
   })();
 }, [id]);
 
+
+
 /* ---------------------------------
     gradeData 변화 시 분석 업데이트 (중복 방지)
 ----------------------------------*/
@@ -575,6 +865,7 @@ useEffect(() => {
     // 🔥 날짜 기준 records에서 이 학생 기록만 모아오기
     const rec = await loadRecordsForStudent(id);
     setRecords(rec);
+    console.log("ALL RECORDS:", rec);
   })();
 }, [id]);
 
@@ -750,7 +1041,7 @@ function getEnglishMonth(ym: string) {
     );
   }
 
-  const outingWarning = getOutingWarning(summary);
+ 
 
   /* ===============================
         UI + 프린트 스타일
@@ -767,6 +1058,266 @@ function getEnglishMonth(ym: string) {
     }}
   >
 
+
+{showDayModal && dayDetail && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.35)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 10000,
+      padding: 16,
+    }}
+   onClick={() => {
+  setShowDayModal(false);
+  setDayDetail(null);
+  setDayPlan(null);
+}}
+  >
+    <div
+      style={{
+        width: "min(560px, 100%)",
+        background: "#fff",
+        borderRadius: 16,
+        border: "1px solid #e5e7eb",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+        padding: 16,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>
+            📅 {dayDetail.date}
+          </div>
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            등원/하원 + 루틴 + 단어시험
+          </div>
+        </div>
+
+        <button
+          onClick={() => setShowDayModal(false)}
+          style={{
+            border: "1px solid #e5e7eb",
+            background: "#f3f4f6",
+            borderRadius: 10,
+            padding: "8px 10px",
+            cursor: "pointer",
+            fontWeight: 800,
+          }}
+        >
+          닫기
+        </button>
+      </div>
+{/* ✅ 등원/하원 */}
+<div
+  style={{
+    marginTop: 12,
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 8,
+  }}
+>
+  <div
+    style={{
+      padding: 10,
+      borderRadius: 12,
+      border: "1px solid #e5e7eb",
+      background: "#eff6ff",
+    }}
+  >
+    <div style={{ fontSize: 12, color: "#1e3a8a", fontWeight: 900 }}>등원</div>
+    <div style={{ fontSize: 14, fontWeight: 900, marginTop: 4 }}>
+      {safeHM(dayDetail.time ?? dayDetail.inTime) ?? "-"}
+    </div>
+  </div>
+
+  <div
+    style={{
+      padding: 10,
+      borderRadius: 12,
+      border: "1px solid #e5e7eb",
+      background: "#fff1f2",
+    }}
+  >
+    <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 900 }}>하원</div>
+    <div style={{ fontSize: 14, fontWeight: 900, marginTop: 4 }}>
+      {safeHM(dayDetail.outTime) ?? "-"}
+    </div>
+  </div>
+</div>
+
+{/* ✅ 루틴(segments) */}
+<div
+  style={{
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    background: "#f9fafb",
+  }}
+>
+  <div style={{ fontSize: 13, fontWeight: 900, color: "#474541" }}>
+    루틴(학원/식사/외출)
+  </div>
+
+  {Array.isArray(dayDetail.segments) && dayDetail.segments.length > 0 ? (
+    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      {dayDetail.segments.map((s: any, idx: number) => {
+        const label = segLabelMap[s?.type] ?? (s?.type ?? "활동");
+        const st = safeHM(s?.start);
+        const en = safeHM(s?.end);
+        const isOpen = st && !en;
+
+        return (
+          <div
+            key={idx}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 12,
+              border: "1px solid #e5e7eb",
+              background: "#fff",
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+              alignItems: "center",
+            }}
+          >
+            <div style={{ fontWeight: 900, color: "#111827" }}>{label}</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: "#5c4712" }}>
+              {st ? `${st} ~ ${en ?? ""}` : "-"}
+              {isOpen ? " (진행중)" : ""}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div style={{ marginTop: 8, fontSize: 13, color: "#9ca3af" }}>
+      활동 기록 없음
+    </div>
+  )}
+</div>
+
+{/* ✅ 단어시험 (있는 경우만) */}
+{dayDetail.wordTest && dayDetail.wordTest.total > 0 && (
+  <div
+    style={{
+      marginTop: 12,
+      padding: 12,
+      borderRadius: 12,
+      border: "1px solid #e5e7eb",
+      background: "#f0f9ff",
+    }}
+  >
+    <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>
+      📘 영어 단어 시험
+    </div>
+    <div style={{ fontSize: 14, fontWeight: 900 }}>
+      {dayDetail.wordTest.correct}/{dayDetail.wordTest.total} (
+      {Math.round((dayDetail.wordTest.correct / dayDetail.wordTest.total) * 100)}%)
+    </div>
+  </div>
+)}
+
+{/* ✅ 오늘 과제 (studyPlans/dayPlan.teacherTasks) 
+<div
+  style={{
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    border: "1px solid #e5e7eb",
+    background: "#fffdf4",
+  }}
+>
+  <div style={{ fontSize: 13, fontWeight: 900, color: "#7c5c12" }}>
+    📌 오늘 과제
+  </div>
+
+  <div
+  style={{
+    marginTop: 8,
+    padding: "10px 12px",
+    borderRadius: 12,
+    background: "#f9fafb",
+    border: "1px solid #e5e7eb",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  }}
+>
+  <div style={{ fontWeight: 800 }}>
+    전체 수행률
+  </div>
+
+ <div style={{ fontWeight: 900 }}>
+  {totalStats.total
+    ? `${totalStats.done}/${totalStats.total} (${totalStats.rate}%)`
+    : "과제 없음"}
+</div>
+</div>
+
+{tasksArr.length > 0 ? (
+  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+    {tasksArr.map((t: any) => {
+      const items =
+        Array.isArray(t.items) ? t.items :
+        Array.isArray(t.tasks) ? t.tasks :
+        Array.isArray(t.subtasks) ? t.subtasks :
+        [];
+
+      const doneCount = items.filter((x: any) => x?.done === true).length;
+      const totalCount = items.length;
+      const rate = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
+
+      return (
+        <div
+          key={t.key}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "#f9fafb",
+            display: "grid",
+            gridTemplateColumns: "1fr auto auto",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontWeight: 900 }}>{t.title}</div>
+
+          <div style={{ fontWeight: 700, color: "#374151" }}>
+            {totalCount ? `${doneCount}/${totalCount}` : "-"}
+          </div>
+
+          <div
+            style={{
+              fontWeight: 900,
+              padding: "4px 8px",
+              borderRadius: 999,
+              border: "1px solid #e5e7eb",
+              background: rate >= 80 ? "#ecfdf5" : rate >= 50 ? "#fffbeb" : "#fef2f2",
+            }}
+          >
+            {totalCount ? `${rate}%` : "0%"}
+          </div>
+        </div>
+      );
+    })}
+  </div>
+) : (
+  <div style={{ marginTop: 8, fontSize: 12, color: "#9ca3af" }}>내용 없음</div>
+)}
+</div>
+*/}
+      {/* 여기 아래에: 등원/하원 / segments / 단어시험 결과 */}
+      {/* (너가 원한 “영단어 시험 결과”도 여기 추가하면 됨) */}
+    </div>
+  </div>
+)}
     <style>{`
       .watermark,
       .watermark-sub {
@@ -980,14 +1531,24 @@ function getEnglishMonth(ym: string) {
          {/* 섹션들 */}
 <DoughnutSection summary={summary} />
 
-<MessageSection
-  lifestyle={getLifestyleMessage(summary)}
-  academy={getAcademyRatioMessage(summary)}
-  growth={getGrowthMessage(prevSummary, summary)}
-  outingWarning={outingWarning}
-/>
 
-<TimelineSection
+
+<div
+  style={{
+    padding: "16px 16px",
+    borderRadius: 14,
+    border: "1px solid #e5e7eb",
+    background: "#ffffff",
+    marginTop: 18,
+  }}
+>
+  <h4 style={{ margin: "0 0 10px 0", fontSize: 18, color: "#2b3f8e" }}>
+    에듀코어 데일리 루틴
+  </h4>
+  {renderCalendar()}
+</div>
+
+{/*<TimelineSection
   monthDates={monthDates}
   records={records}
   open={open}
@@ -1107,7 +1668,9 @@ function DoughnutSection({ summary }: { summary: any }) {
                   />
                   <span style={{ fontWeight: 700 }}>{item.label}</span>
                   <span style={{ marginLeft: "auto" }}>
-                    {item.value}분
+                    <span style={{ marginLeft: "auto" }}>
+  {formatHM(item.value)}
+</span>
                   </span>
                 </div>
               )
@@ -1127,91 +1690,21 @@ function DoughnutSection({ summary }: { summary: any }) {
     </div>
   );
 }
+//function MessageSection() {
+  //return (
+    //<div style={{ marginTop: 30 }}>
+      //<h2>월간 분석 리포트</h2>
+    //</div>
+  //);
+//}
 
-function MessageSection({
-  lifestyle,
-  academy,
-  growth,
-  outingWarning,
-}: {
-  lifestyle: string;
-  academy: string;
-  growth: string;
-  outingWarning: any;
-}) {
-  return (
-    <div
-      style={{
-        marginTop: 30,
-        padding: "20px 22px",
-        background: "#FFFDF8",
-        borderRadius: 16,
-        border: "1px solid #E7DCC9",
-        boxShadow: "0 6px 12px rgba(0,0,0,0.05)",
-        fontSize: 14,
-        lineHeight: 1.6,
-        color: "#333",
-      }}
-    >
-      <h2
-        style={{
-          fontSize: 18,
-          fontWeight: 900,
-          marginBottom: 14,
-          borderLeft: "4px solid #D4A65A",
-          paddingLeft: 10,
-        }}
-      >
-        월간 분석 리포트
-      </h2>
 
-      {/* 🟦 생활 패턴 분석 */}
-      <div style={{ marginBottom: 10 }}>
-        <b>🟦 생활 패턴 분석</b>
-        <br />
-        {lifestyle}
-      </div>
-
-      {/* 🟨 학원 학습 비율 */}
-      <div style={{ marginBottom: 10 }}>
-        <b>🟨 학원 학습 비율</b>
-        <br />
-        {academy}
-      </div>
-
-      {/* 🟩 성장 변화 */}
-      <div style={{ marginBottom: 14 }}>
-        <b>🟩 성장 변화(전월 대비)</b>
-        <br />
-        {growth}
-      </div>
-
-      {/* 🔥 생활시간 경고 박스 */}
-      {outingWarning && (
-        <div
-          style={{
-            marginTop: 16,
-            padding: "12px 14px",
-            borderRadius: 12,
-            background: outingWarning.bg,
-            color: outingWarning.color,
-            fontWeight: 700,
-            fontSize: 13,
-            lineHeight: 1.55,
-          }}
-        >
-          {outingWarning.message}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* =================================================================== */
 /* 타임라인 섹션 */
 /* =================================================================== */
 
-function TimelineSection({
+{/*function TimelineSection({
   monthDates,
   records,
   open,
@@ -1226,7 +1719,7 @@ function TimelineSection({
 }) {
   return (
     <div style={{ marginTop: 32 }}>
-      {/* 제목 */}
+      
       <div
   style={{
     fontSize: 14,
@@ -1240,7 +1733,7 @@ function TimelineSection({
   DAILY TIMELINE
 </div>
 
-      {/* 3/4 + 1/4 레이아웃 */}
+      
       <div
         className="no-print"
         style={{
@@ -1250,7 +1743,7 @@ function TimelineSection({
           marginBottom: open ? 16 : 12,
         }}
       >
-        {/* 펼치기 버튼 */}
+       
         <button
   onClick={() => setOpen(!open)}
   style={{
@@ -1276,7 +1769,7 @@ function TimelineSection({
   <span>{open ? "▲" : "▼"}</span>
 </button>
 
-        {/* 학습 과제 이동 버튼 */}
+       
         <NavLink
   to={`/study-plan/${id}?role=parent`}
   style={{
@@ -1294,7 +1787,7 @@ function TimelineSection({
         </NavLink>
       </div>
 
-      {/* 펼쳐지는 타임라인 영역 */}
+      
       <div
         style={{
           maxHeight: open ? "3000px" : "0px",
@@ -1310,8 +1803,19 @@ function TimelineSection({
 
         {monthDates.map((date) => {
           const cell = records[date];
-          if (!cell) return null;
+if (!cell) return null;
 
+const subjects = cell.subjects || {};   // 👈 이 줄 추가
+
+const totalWord = Object.values(subjects).reduce(
+  (acc: any, sub: any) => {
+    return {
+      correct: acc.correct + (sub.wordTest?.correct ?? 0),
+      total: acc.total + (sub.wordTest?.total ?? 0),
+    };
+  },
+  { correct: 0, total: 0 }
+);
           const outing =
             (cell.commuteMin ?? 0) +
             (cell.mealMin ?? 0) +
@@ -1329,31 +1833,17 @@ function TimelineSection({
                 boxShadow: "0 3px 8px rgba(0,0,0,0.04)",
               }}
             >
-      {/* 날짜 */}
+     
       <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>
         {date}
       </div>
 
-      {/* 등원, 하원 */}
+    
 <TimelineItem label="등원" time={cell.time} />
 <TimelineItem label="하원" time={cell.outTime} />
 
-      {/* ⭐ 생활시간 총합 강조 박스 */}
-      <div
-        style={{
-          marginTop: 8,
-          padding: "6px 10px",
-          background: "#FFE5E5",       // 연핑크 배경
-          borderRadius: 8,
-          fontSize: 13,
-          fontWeight: 700,
-          color: "#B91C1C",            // 진한 레드 텍스트
-        }}
-      >
-        생활시간 총합: {outing}분
-      </div>
 
-      {/* 순공 */}
+      
       <TimelineItem
         label="순공"
         time={
@@ -1362,22 +1852,16 @@ function TimelineSection({
             : undefined
         }
       />
+      {totalWord.total > 0 && (
+  <TimelineItem
+    label="단어 테스트"
+    time={`${totalWord.correct}/${totalWord.total} (${Math.round(
+      (totalWord.correct / totalWord.total) * 100
+    )}%)`}
+  />
+)}
 
-      {/* 세부 생활시간 */}
-      {typeof cell.restroomMin === "number" && (
-        <TimelineItem label="화장실" time={`${cell.restroomMin}분`} />
-      )}
-
-      {typeof cell.commuteMin === "number" && (
-        <TimelineItem label="이동" time={`${cell.commuteMin}분`} />
-      )}
-
-      {typeof cell.mealMin === "number" && (
-        <TimelineItem label="식사" time={`${cell.mealMin}분`} />
-      )}
-
-      {/* 학원 */}
-      {/* 학원 */}
+     
 {cell.academyBySubject && (
   <>
     <div
@@ -1401,7 +1885,7 @@ function TimelineSection({
     )}
   </>
 )}
-{/* 🔥 실제 학원 다녀온 시간 표시 */}
+
 {(cell.academyIn || cell.academyOut) && (
   <>
     <div style={{ marginTop: 8, fontWeight: 700, fontSize: 13 }}>
@@ -1416,7 +1900,7 @@ function TimelineSection({
       <TimelineItem label=" - 학원 하원" time={cell.academyOut} />
     )}
 
-    {/* 🔥 총 학원 외출 시간 */}
+
     {cell.academyIn && cell.academyOut && (
       <TimelineItem
         label=" - 학원 외출 총합"
@@ -1435,7 +1919,7 @@ function TimelineSection({
   </>
 )}
 
-      {/* 메모 */}
+     
       {cell.memo && (
         <TimelineItem label="메모" time={cell.memo} />
       )}
@@ -1445,7 +1929,7 @@ function TimelineSection({
       </div>
     </div>
   );
-}
+}*/}
 
 function AcademySection({ academy }: { academy: Record<string, number> }) {
   const total = Object.values(academy).reduce((a, b) => a + b, 0);

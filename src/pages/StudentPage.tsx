@@ -405,7 +405,11 @@ const safeHM = (v: any) => {
 
     return { total, days: filtered.length };
   }, [records]);
-
+const avgPerDay =
+  summary.days > 0
+    ? Math.round(summary.total / summary.days)
+    : 0;
+    
 const yearlyMonthlyTotals = useMemo(() => {
   if (!records.length) return [];
 
@@ -1985,10 +1989,10 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
       margin: 0,
       fontSize: 22,
       fontWeight: 800,
-      color: "#b91c1c",
+      color: "#1e3a8a",
     }}
   >
-    {summary.total.toFixed(0)}분
+    {formatHM(summary.total)}
   </p>
 
   {/* ✅✅✅ 여기! 카드 안에 넣기 */}
@@ -2030,7 +2034,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
               borderRadius: 8,
               textAlign: "center",
               background: isBeforeEntry ? "#f3f4f6" : "#eff6ff",
-              color: isBeforeEntry ? "#9ca3af" : "#2b3d7a",
+              color: isBeforeEntry ? "#9ca3af" : "#15255f",
               fontSize: 12,
               fontWeight: 600,
             }}
@@ -2039,7 +2043,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
             <div
   style={{
     marginTop: 4,
-    color: isBeforeEntry ? "#9ca3af" : "#9F1239", // ✅ 초록
+    color: isBeforeEntry ? "#9ca3af" : "#8e2a2a",
     fontWeight: isBeforeEntry ? 500 : 800,        // 강조
   }}
 >
@@ -2246,7 +2250,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
                 >
                   <div style={{ fontSize: 14, color: "#1E3A8A" }}>총 누적 순공</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: "#0c4a6e" }}>
-                    {summary.total.toFixed(0)}분
+                    {formatHM(summary.total)}
                   </div>
                 </div>
 
@@ -2260,13 +2264,13 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 14, color: "#be185d" }}>이번 달 평균</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#831843" }}>
-                    {summary.days > 0
-                      ? Math.round(summary.total / summary.days)
-                      : 0}
-                    분
-                  </div>
+                  <div style={{ fontSize: 14, color: "#be185d" }}>
+  이번 달 평균
+</div>
+
+<div style={{ fontSize: 18, fontWeight: 700, color: "#831843" }}>
+  {formatHM(avgPerDay)}
+</div>
                 </div>
               </div>
 
@@ -2291,9 +2295,12 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
                   평균 순공:{" "}
                   <b>
                     {summary.days > 0
-                      ? Math.round(summary.total / summary.days)
+                      ? formatHM(summary.days > 0 
+  ? Math.round(summary.total / summary.days) 
+  : 0
+)
                       : 0}
-                    분
+                    
                   </b>
                 </div>
               </div>
