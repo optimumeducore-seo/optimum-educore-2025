@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { db } from "../firebase";
 import { collection, doc, getDocs, getDoc, setDoc } from "firebase/firestore";
 import { useLocation, useNavigate } from "react-router-dom";
-
+import { calcNetStudyMin } from "../utils/studyCalc";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -121,7 +121,25 @@ const safeHM = (v: string) => {
   }
   return v;
 };
+function toDateKey(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
 
+function getMonthStartKeyByEntry(
+  viewYear: number,
+  viewMonth: number,
+  entryDate?: string | null
+) {
+  const monthStart = new Date(viewYear, viewMonth, 1);
+  const entry = entryDate ? new Date(entryDate) : null;
+
+  if (!entry || isNaN(entry.getTime())) {
+    return toDateKey(monthStart);
+  }
+
+  const start = entry > monthStart ? entry : monthStart;
+  return toDateKey(start);
+}
 // -----------------------------
 // ③ 날짜 기준으로 정렬
 // -----------------------------
@@ -198,7 +216,7 @@ const navigate = useNavigate();
     logs.forEach((r) => {
       if (!r.date) return;
       const month = r.date.slice(0, 7);
-      const study = calcNetStudyMin_SP(r);
+      const study = calcNetStudyMin(r);
       if (!map[month]) map[month] = { days: 0, total: 0 };
       map[month].days += 1;
       map[month].total += study;
@@ -279,9 +297,11 @@ const safeHM = (v: any) => {
 
   // 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용)
   // 🔥 StudentPage 전용 순공 계산 (HH:MM만 사용 + 학원 외출 시간 차감)
- const calcNetStudyMin_SP = (rec: any) => {
-  const t1 = rec.time;      // 등원
-  const t2 = rec.outTime;   // 하원
+ 
+/*
+const calcNetStudyMin_SP = (rec: any) => {
+  const t1 = rec.time;
+  const t2 = rec.outTime;
   if (!t1 || !t2) return 0;
 
   const toHM = (v: string) => {
@@ -292,7 +312,7 @@ const safeHM = (v: any) => {
       const mm = d.getMinutes();
       return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
     }
-    return v; // "HH:MM"
+    return v;
   };
 
   const toMin = (hm: string) => {
@@ -300,7 +320,7 @@ const safeHM = (v: any) => {
     return h * 60 + m;
   };
 
-  const safeHM = (v: string) => toHM(v); // 여기선 toHM이 safe 역할까지 함
+  const safeHM = (v: string) => toHM(v);
 
   const inHM = toHM(t1);
   const outHM = toHM(t2);
@@ -308,7 +328,6 @@ const safeHM = (v: any) => {
   let total = toMin(outHM) - toMin(inHM);
   if (total <= 0) return 0;
 
-  // ✅ 외부 활동 시간 빼기 (segments 우선)
   const segs = Array.isArray(rec.segments) ? rec.segments : null;
 
   if (segs && segs.length > 0) {
@@ -325,7 +344,6 @@ const safeHM = (v: any) => {
     }
     total -= external;
   } else {
-    // ✅ 예전 데이터 호환: academyIn/out만 있으면 기존 방식 유지
     if (rec.academyIn && rec.academyOut) {
       try {
         const aIn = toMin(safeHM(rec.academyIn));
@@ -339,6 +357,7 @@ const safeHM = (v: any) => {
 
   return Math.max(0, total);
 };
+*/
 
   // 🔹 비밀번호 인증
   const verifyPassword = () => {
@@ -382,69 +401,75 @@ const safeHM = (v: any) => {
   const year = new Date().getFullYear();
   const month = new Date().getMonth();
   const lastDay = new Date(year, month + 1, 0).getDate();
+  const [viewYear, setViewYear] = useState(new Date().getFullYear());
+const [viewMonth, setViewMonth] = useState(new Date().getMonth());
 
-  // 🔹 순공 요약
-  // 🔹 순공 요약 (11월은 15일부터만 계산)
-  const summary = useMemo(() => {
-    if (!records.length) return { total: 0, days: 0 };
+const monthStr = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`;
 
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth() + 1;
-    const monthStr = `${y}-${String(m).padStart(2, "0")}`;
+const monthStartKey = getMonthStartKeyByEntry(
+  viewYear,
+  viewMonth,
+  selected?.entryDate
+);
 
-    // 이번 달 전체
-    const filtered = records.filter((r) =>
-      r.date?.startsWith(monthStr)
-    );
+const monthRecords = useMemo(() => {
+  return records.filter((r) => {
+    if (!r.date?.startsWith(monthStr)) return false;
+    return r.date >= monthStartKey;
+  });
+}, [records, monthStr, monthStartKey]);
 
-    let total = 0;
-    filtered.forEach((r) => {
-      total += calcNetStudyMin_SP(r);
-    });
+  
+const summary = useMemo(() => {
+  let total = 0;
+  monthRecords.forEach((r) => {
+    total += calcNetStudyMin(r);
+  });
+  return { total, days: monthRecords.length };
+}, [monthRecords]);
 
-    return { total, days: filtered.length };
-  }, [records]);
 const avgPerDay =
-  summary.days > 0
-    ? Math.round(summary.total / summary.days)
-    : 0;
-    
+  summary.days > 0 ? Math.round(summary.total / summary.days) : 0;
+
+
 const yearlyMonthlyTotals = useMemo(() => {
   if (!records.length) return [];
 
-  const now = new Date();
-  const year = now.getFullYear();
+  const year = viewYear; // ✅ 보고있는 연도 기준(원하면 now.getFullYear()로 바꿔도 됨)
+  const entryKey = selected?.entryDate || null;
 
-  const result = [];
+  const result: { month: number; total: number }[] = [];
 
   for (let m = 1; m <= 12; m++) {
-    const monthStr = `${year}-${String(m).padStart(2, "0")}`;
+    const mStr = `${year}-${String(m).padStart(2, "0")}`;
+    const startKey = getMonthStartKeyByEntry(year, m - 1, entryKey);
 
-    const monthRecords = records.filter(r =>
-      r.date?.startsWith(monthStr)
-    );
+    const list = records.filter((r) => {
+      if (!r.date?.startsWith(mStr)) return false;
+      return r.date >= startKey;
+    });
 
     let total = 0;
-    monthRecords.forEach(r => {
-      total += calcNetStudyMin_SP(r);
+    list.forEach((r) => {
+      total += calcNetStudyMin(r);
+    
     });
 
-    result.push({
-      month: m,
-      total,
-    });
+    result.push({ month: m, total });
   }
 
   return result;
-}, [records]);
+}, [records, selected?.entryDate, viewYear]);
 
 const entryMonth = selected?.entryDate
   ? new Date(selected.entryDate).getMonth() + 1
   : null;
 
-  const [viewYear, setViewYear] = useState(new Date().getFullYear());
-  const [viewMonth, setViewMonth] = useState(new Date().getMonth());
+
+
+// ✅ 여기(바로 아래) 붙여넣어
+
+
   const [showTestModal, setShowTestModal] = useState(false);
   const [testTitle, setTestTitle] = useState("");
   const [testStart, setTestStart] = useState("");
@@ -838,7 +863,7 @@ await setDoc(
     .reverse()
     .map((r) => ({
       date: r.date,
-      study: Math.round(calcNetStudyMin_SP(r))
+      study: Math.round(calcNetStudyMin(r))
     }));
 
   const avgStudy =
@@ -877,18 +902,7 @@ await setDoc(
   })();
 
 
-  const filteredRecordsThisMonth = (() => {
-    const y = viewYear;
-    const m = viewMonth + 1;
-
-    const monthStr = `${y}-${String(m).padStart(2, "0")}`;
-
-    return records.filter((r) => {
-      if (!r.date.startsWith(monthStr)) return false;
-      const dd = Number(r.date.slice(8, 10));
-      return dd >= 14; // 🔥 이번 달 14일부터만
-    });
-  })();
+  const filteredRecordsThisMonth = monthRecords;
   const calendarRef = useRef<HTMLDivElement | null>(null);
 
   // 📅 프리미엄 달력 컴포넌트 (전체 교체)
@@ -1027,15 +1041,22 @@ await setDoc(
               (t) => dateStr >= t.start && dateStr <= t.end
             );
 
-            let bg = "#f3f4f6"; // 기본
+            let bg = "#F3F4F6"; // 기본 회색
 
-            if (dow === 6) bg = "#dbeafe";   // 토요일
-            if (dow === 0) bg = "#ffe4e6";   // 일요일
+// 토요일
+if (dow === 6) bg = "#EEF2FF"; // 은은한 블루그레이
 
-            if (log) {
-              if (log.time || log.inTime) bg = "#dcfce7";  // 출석
-              else bg = "#fee2e2";                         // 결석
-            }
+// 일요일
+if (dow === 0) bg = "#FDECEC"; // 연한 와인톤
+
+// 출석 로그가 있을 경우
+if (log) {
+  if (log.time || log.inTime) {
+    bg = "#efebdd"; // ✨ 고급 베이지골드
+  } else {
+    bg = "#FDECEC"; // 결석은 은은한 레드
+  }
+}
 
 
             // 날짜 박스 안 inTime 표시
@@ -2329,7 +2350,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
                   filteredRecordsThisMonth
                     .map((r) => ({
                       date: r.date,
-                      study: Math.round(calcNetStudyMin_SP(r))
+                      study: Math.round(calcNetStudyMin(r))
                     }))
                     .sort((a, b) => b.study - a.study)
                     .slice(0, 3)

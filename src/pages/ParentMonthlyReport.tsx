@@ -4,16 +4,31 @@ import React, {
   useMemo,
   useState,
   useRef,
-
 } from "react";
-import { useParams, useNavigate,NavLink } from "react-router-dom";
+
+import { useParams, useNavigate, NavLink } from "react-router-dom";
+
 import { db } from "../firebase";
 import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
+
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+
 import { loadGrade } from "../services/firestore";
 import { loadMockExams } from "../services/firestore";
+
 import BridgeMockExamSection from "../components/BridgeMockExamSection";
+
+/* 🔥 studyCalc는 한 번만 */
+import {
+  calcNetStudyMin,
+  calcNetStudyMin_SP,
+  calcBreakdown,
+  calcByType,
+  type Segment,
+  type SegmentType,
+} from "../utils/studyCalc";
+
 
 /* ===============================
    타입 정의
@@ -67,12 +82,12 @@ type Records = Record<string, DayCell>;
 
 type Summary = {
   days: number;
-  study: number;
-  rest: number;
-  short: number;
-  academy: number;
-  academyOuting: number;
+  study: number;   // 에듀코어
+  academy: number; // 학원(기타학원 포함)
+  meal: number;    // 식사
+  outing: number;  // 외출
 };
+
 const segLabelMap: Record<string, string> = {
   MATH: "수학",
   ENGLISH: "영어",
@@ -113,6 +128,52 @@ function safeHM(raw: any): string | null {
 
   if (raw.includes(":")) return raw.slice(0, 5);
   return null;
+}
+
+function getWordTestTotal(source: any) {
+  if (!source) return { correct: 0, total: 0 };
+
+  let correct = 0;
+  let total = 0;
+
+  // 0) 루트에 wordTest가 바로 있는 경우
+  if (source.wordTest?.total > 0) {
+    correct += Number(source.wordTest.correct ?? 0);
+    total += Number(source.wordTest.total ?? 0);
+  }
+
+  // 1) records 형태: subjects 안에 있는 경우
+  const subjectsObj = source.subjects && typeof source.subjects === "object" ? source.subjects : null;
+  if (subjectsObj) {
+    Object.values(subjectsObj).forEach((sub: any) => {
+      if (sub?.wordTest?.total > 0) {
+        correct += Number(sub.wordTest.correct ?? 0);
+        total += Number(sub.wordTest.total ?? 0);
+      }
+    });
+  }
+
+  // 2) dayPlan 형태: kor/eng/math 같은 과목키가 루트에 있는 경우
+  const subjectKeys = ["kor", "eng", "math", "soc", "hist2", "his1", "sci", "sci1", "tech", "hanja", "jp"];
+  subjectKeys.forEach((k) => {
+    const v = source?.[k];
+    if (v?.wordTest?.total > 0) {
+      correct += Number(v.wordTest.correct ?? 0);
+      total += Number(v.wordTest.total ?? 0);
+    }
+  });
+
+  // 3) teacherTasks 안에 wordTest가 섞여있는 경우(혹시 몰라서)
+  const tt = source.teacherTasks;
+  const tList = Array.isArray(tt) ? tt : tt && typeof tt === "object" ? Object.values(tt) : [];
+  tList.forEach((t: any) => {
+    if (t?.wordTest?.total > 0) {
+      correct += Number(t.wordTest.correct ?? 0);
+      total += Number(t.wordTest.total ?? 0);
+    }
+  });
+
+  return { correct, total };
 }
 
 async function loadRecordsForStudent(studentId: string): Promise<Records> {
@@ -167,9 +228,9 @@ function getAcademySummary(records: Records, monthDates: string[]) {
    🔵 모의고사 요약 계산
  
 ================================ */
-
+{/*
 function getLifestyleMessage(summary: Summary) {
-  const { study, short } = summary;
+  const { study, academy, meal, outing } = summary;
 
   if (short > study * 0.6) {
     return "생활시간이 학습시간 대비 높았던 날이 많습니다. 이동·식사·휴식 시간을 줄일 수 있는 루틴 점검이 필요합니다.";
@@ -200,6 +261,7 @@ function getAcademyRatioMessage(summary: Summary) {
 
   return `학원 학습 비중이 ${ratio}%로 낮습니다. 자율 학습 비중이 높았던 달입니다.`;
 }
+  */}
 
 /* ===============================
    ⭐ 모의고사 자동 분석 함수
@@ -627,7 +689,7 @@ const renderCalendar = () => {
         </button>
 
         <h4 style={{ margin: 0, color: "#1e3a8a", fontWeight: 800, fontSize: 16, textAlign: "center", minWidth: 140 }}>
-          📅 {year}-{String(monthIdx + 1).padStart(2, "0")}
+           {year}-{String(monthIdx + 1).padStart(2, "0")}
         </h4>
 
         <button
@@ -660,13 +722,22 @@ const renderCalendar = () => {
           const log = recordsList.find((r: any) => r.date === dateStr);
          // if (log) console.log("LOG RAW:", dateStr, log);
 
-          let bg = "#f3f4f6";
-          if (dow === 6) bg = "#dbeafe";
-          if (dow === 0) bg = "#ffe4e6";
+          let bg = "#F3F4F6"; // 기본 회색
 
-          if (log) {
-            if (log.time || log.inTime) bg = "#dcfce7";
-            else bg = "#fee2e2";
+// 토요일
+if (dow === 6) bg = "#EEF2FF"; // 은은한 블루그레이
+
+// 일요일
+if (dow === 0) bg = "#FDECEC"; // 연한 와인톤
+
+// 출석 로그가 있을 경우
+if (log) {
+  if (log.time || log.inTime) {
+    bg = "#efebdd"; // ✨ 고급 베이지골드
+  } else {
+    bg = "#FDECEC"; // 결석은 은은한 레드
+  }
+
           }
 
           // 간단 라벨(등/하원)
@@ -894,13 +965,12 @@ function getEnglishMonth(ym: string) {
   /* ===============================
         월 요약
   ================================= */
-  const summary: Summary = useMemo(() => {
-  let study = 0;
-  let rest = 0;
-  let short = 0;
+ const summary: Summary = useMemo(() => {
   let days = 0;
+  let study = 0;
   let academy = 0;
-  let academyOuting = 0;   // 🔥 추가
+  let meal = 0;
+  let outing = 0;
 
   monthDates.forEach((date) => {
     const cell = records[date];
@@ -908,57 +978,45 @@ function getEnglishMonth(ym: string) {
 
     days++;
 
-    const start = cell.time ? hmToMin(cell.time) : 0;
-    const end = cell.outTime ? hmToMin(cell.outTime) : start;
-    const gross = Math.max(0, end - start);
+    const rec = {
+      time: cell.time,
+      inTime: cell.inTime,
+      outTime: cell.outTime,
+      segments: (cell as any).segments,
+      academyIn: cell.academyIn,
+      academyOut: cell.academyOut,
+    };
 
-    const outing =
-      (cell.commuteMin ?? 0) +
-      (cell.restroomMin ?? 0) +
-      (cell.mealMin ?? 0);
+    const byType = calcByType(rec);
 
-    const net =
-      typeof cell.studyMin === "number"
-        ? cell.studyMin
-        : Math.max(0, gross - outing);
+    study += calcNetStudyMin(rec);     // ✅ 에듀코어(순공)
+    const academyMin =
+  (byType.OTHER_ACADEMY ?? 0) +
+  (byType.MATH ?? 0) +
+  (byType.ENGLISH ?? 0) +
+  (byType.KOREAN ?? 0) +
+  (byType.SCIENCE ?? 0);
 
-    study += net;
-    short += outing;
-
-    // 📌 학원 수업시간 합산 (기존)
-    if (cell.academyBySubject) {
-      Object.values(cell.academyBySubject).forEach((data: any) => {
-        const academyTotal =
-          data.slots?.reduce((sum: number, slot: any) => {
-            if (!slot.from || !slot.to) return sum;
-            const [fh, fm] = slot.from.split(":").map(Number);
-            const [th, tm] = slot.to.split(":").map(Number);
-            return sum + ((th * 60 + tm) - (fh * 60 + fm));
-          }, 0) || 0;
-
-        academy += academyTotal;
-      });
-    }
-
-    // 🔥 학원 외출 실제 시간(academyIn/academyOut)
-    if (cell.academyIn && cell.academyOut) {
-      const toMin = (hm: string) => {
-        const [h, m] = hm.split(":").map(Number);
-        return h * 60 + m;
-      };
-      academyOuting += toMin(cell.academyOut) - toMin(cell.academyIn);
-    }
+academy += academyMin;   // ✅ 학원
+   meal += byType.MEAL ?? 0;
+outing += byType.OUTING ?? 0;        // ✅ 외출
   });
 
-  return { days, study, rest, short, academy, academyOuting };  // 🔥 추가
+  return { days, study, academy, meal, outing };
 }, [monthDates, records]);
  
+const donutData = [
+  { label: "에듀코어", value: summary.study },
+  { label: "학원", value: summary.academy },
+  { label: "식사", value: summary.meal },
+  { label: "외출", value: summary.outing },
+];
 
-
- const prevSummary = useMemo(() => {
-  const prevMonth = new Date();
-  prevMonth.setMonth(prevMonth.getMonth() - 1);
-  const prevMonthKey = prevMonth.toISOString().slice(0, 7);
+const prevSummary = useMemo(() => {
+  // ✅ “현재 보고있는 month” 기준으로 지난달 계산 (중요!)
+  const cur = new Date(month + "-01");
+  cur.setMonth(cur.getMonth() - 1);
+  const prevMonthKey = cur.toISOString().slice(0, 7);
 
   const prevMonthDates = sortDates(
     Object.keys(records).filter((d) => d.startsWith(prevMonthKey))
@@ -966,12 +1024,13 @@ function getEnglishMonth(ym: string) {
 
   if (prevMonthDates.length === 0) return null;
 
-  let study = 0;
-  let rest = 0;
-  let short = 0;
   let days = 0;
-  let academy = 0;
-  let academyOuting = 0;   // 🔥 추가
+  let study = 0;        // 에듀코어(순공)
+  let academy = 0;      // 학원(segments 기반)
+  let meal = 0;         // 식사
+  let outing = 0;       // 외출
+  let short = 0;        // 생활시간(식사+외출)
+  let academyOuting = 0; // (옵션) OTHER_ACADEMY 합
 
   prevMonthDates.forEach((date) => {
     const cell = records[date];
@@ -979,50 +1038,49 @@ function getEnglishMonth(ym: string) {
 
     days++;
 
-    const start = cell.time ? hmToMin(cell.time) : 0;
-    const end = cell.outTime ? hmToMin(cell.outTime) : start;
-    const gross = Math.max(0, end - start);
+    const rec = {
+      time: cell.time,
+      inTime: cell.inTime,
+      outTime: cell.outTime,
+      segments: (cell as any).segments,
+      academyIn: cell.academyIn,
+      academyOut: cell.academyOut,
+    };
 
-    const outing =
-      (cell.commuteMin ?? 0) +
-      (cell.restroomMin ?? 0) +
-      (cell.mealMin ?? 0);
+    const byType = calcByType(rec);
 
-    const net =
-      typeof cell.studyMin === "number"
-        ? cell.studyMin
-        : Math.max(0, gross - outing);
+    // ✅ 순공(에듀코어)
+    study += calcNetStudyMin(rec);
 
-    study += net;
-    short += outing;
+    // ✅ 학원시간: OTHER_ACADEMY + (과목타입이 학원으로 찍힌 경우까지) 합산
+    academy +=
+      (byType.OTHER_ACADEMY ?? 0) +
+      (byType.MATH ?? 0) +
+      (byType.ENGLISH ?? 0) +
+      (byType.KOREAN ?? 0) +
+      (byType.SCIENCE ?? 0);
 
-    // 기존 학원 수업 계산
-    if (cell.academyBySubject) {
-      Object.values(cell.academyBySubject).forEach((data: any) => {
-        const academyTotal =
-          data.slots?.reduce((sum: number, slot: any) => {
-            if (!slot.from || !slot.to) return sum;
-            const [fh, fm] = slot.from.split(":").map(Number);
-            const [th, tm] = slot.to.split(":").map(Number);
-            return sum + ((th * 60 + tm) - (fh * 60 + fm));
-          }, 0) || 0;
+    // ✅ 식사/외출
+    meal += byType.MEAL ?? 0;
+    outing += byType.OUTING ?? 0;
 
-        academy += academyTotal;
-      });
-    }
+    // ✅ 생활시간(원하면 정의 바꿔도 됨)
+    short += (byType.MEAL ?? 0) + (byType.OUTING ?? 0);
 
-    // 🔥 학원 외출 실제 시간
-    if (cell.academyIn && cell.academyOut) {
-      const toMin = (hm: string) => {
-        const [h, m] = hm.split(":").map(Number);
-        return h * 60 + m;
-      };
-      academyOuting += toMin(cell.academyOut) - toMin(cell.academyIn);
-    }
+    // ✅ (옵션) “학원 외출”을 OTHER_ACADEMY로 잡고 싶으면 유지
+    academyOuting += byType.OTHER_ACADEMY ?? 0;
   });
 
-  return { days, study, rest, short, academy, academyOuting };  // 🔥 추가
-}, [records]);
+  return {
+    days,
+    study,
+    academy,
+    meal,
+    outing,
+    short,
+    academyOuting,
+  };
+}, [records, month]);
   const attendanceDays = monthDates.filter(date => !!records[date]?.time).length;
    /* ===============================
         로딩 처리
@@ -1071,11 +1129,11 @@ function getEnglishMonth(ym: string) {
       zIndex: 10000,
       padding: 16,
     }}
-   onClick={() => {
-  setShowDayModal(false);
-  setDayDetail(null);
-  setDayPlan(null);
-}}
+    onClick={() => {
+      setShowDayModal(false);
+      setDayDetail(null);
+      setDayPlan(null);
+    }}
   >
     <div
       style={{
@@ -1088,18 +1146,23 @@ function getEnglishMonth(ym: string) {
       }}
       onClick={(e) => e.stopPropagation()}
     >
+      {/* 헤더 */}
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>
-            📅 {dayDetail.date}
+            {dayDetail.date}
           </div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-            등원/하원 + 루틴 + 단어시험
+          <div style={{ fontSize: 14, color: "#218282", marginTop: 4 }}>
+            데일리 루틴
           </div>
         </div>
 
         <button
-          onClick={() => setShowDayModal(false)}
+          onClick={() => {
+            setShowDayModal(false);
+            setDayDetail(null);
+            setDayPlan(null);
+          }}
           style={{
             border: "1px solid #e5e7eb",
             background: "#f3f4f6",
@@ -1112,98 +1175,121 @@ function getEnglishMonth(ym: string) {
           닫기
         </button>
       </div>
-{/* ✅ 등원/하원 */}
-<div
-  style={{
-    marginTop: 12,
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 8,
-  }}
->
-  <div
-    style={{
-      padding: 10,
-      borderRadius: 12,
-      border: "1px solid #e5e7eb",
-      background: "#eff6ff",
-    }}
-  >
-    <div style={{ fontSize: 12, color: "#1e3a8a", fontWeight: 900 }}>등원</div>
-    <div style={{ fontSize: 14, fontWeight: 900, marginTop: 4 }}>
-      {safeHM(dayDetail.time ?? dayDetail.inTime) ?? "-"}
-    </div>
-  </div>
 
-  <div
-    style={{
-      padding: 10,
-      borderRadius: 12,
-      border: "1px solid #e5e7eb",
-      background: "#fff1f2",
-    }}
-  >
-    <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 900 }}>하원</div>
-    <div style={{ fontSize: 14, fontWeight: 900, marginTop: 4 }}>
-      {safeHM(dayDetail.outTime) ?? "-"}
-    </div>
-  </div>
-</div>
+      {/* ✅ 등원/하원 */}
+      <div
+        style={{
+          marginTop: 12,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "#eff6ff",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#1e3a8a", fontWeight: 900 }}>
+            등원
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 900, marginTop: 4 }}>
+            {safeHM(dayDetail.time ?? dayDetail.inTime) ?? "-"}
+          </div>
+        </div>
 
-{/* ✅ 루틴(segments) */}
-<div
-  style={{
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 12,
-    border: "1px solid #e5e7eb",
-    background: "#f9fafb",
-  }}
->
-  <div style={{ fontSize: 13, fontWeight: 900, color: "#474541" }}>
-    루틴(학원/식사/외출)
-  </div>
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "#fff1f2",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 900 }}>
+            하원
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 900, marginTop: 4 }}>
+            {safeHM(dayDetail.outTime) ?? "-"}
+          </div>
+        </div>
+      </div>
 
-  {Array.isArray(dayDetail.segments) && dayDetail.segments.length > 0 ? (
-    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-      {dayDetail.segments.map((s: any, idx: number) => {
-        const label = segLabelMap[s?.type] ?? (s?.type ?? "활동");
-        const st = safeHM(s?.start);
-        const en = safeHM(s?.end);
-        const isOpen = st && !en;
+      {/* ✅ 루틴(segments) */}
+      <div
+        style={{
+          marginTop: 12,
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid #e5e7eb",
+          background: "#f9fafb",
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 900, color: "#474541" }}>
+          루틴(학원/식사/외출)
+        </div>
 
-        return (
+        {Array.isArray(dayDetail.segments) && dayDetail.segments.length > 0 ? (
           <div
-            key={idx}
             style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              background: "#fff",
+              marginTop: 10,
               display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              alignItems: "center",
+              flexDirection: "column",
+              gap: 8,
             }}
           >
-            <div style={{ fontWeight: 900, color: "#111827" }}>{label}</div>
-            <div style={{ fontSize: 13, fontWeight: 900, color: "#5c4712" }}>
-              {st ? `${st} ~ ${en ?? ""}` : "-"}
-              {isOpen ? " (진행중)" : ""}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  ) : (
-    <div style={{ marginTop: 8, fontSize: 13, color: "#9ca3af" }}>
-      활동 기록 없음
-    </div>
-  )}
-</div>
+            {dayDetail.segments.map((s: any, idx: number) => {
+              const label = segLabelMap[s?.type] ?? (s?.type ?? "활동");
+              const st = safeHM(s?.start);
+              const en = safeHM(s?.end);
+              const isOpen = st && !en;
 
-{/* ✅ 단어시험 (있는 경우만) */}
-{dayDetail.wordTest && dayDetail.wordTest.total > 0 && (
+              return (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
+                  }}
+                >
+                  <div style={{ fontWeight: 900, color: "#111827" }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#5c4712" }}>
+                    {st ? `${st} ~ ${en ?? ""}` : "-"}
+                    {isOpen ? " (진행중)" : ""}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ marginTop: 8, fontSize: 13, color: "#9ca3af" }}>
+            활동 기록 없음
+          </div>
+        )}
+      </div>
+
+      {/* ✅ 단어시험 (과목 전체 합산) */}
+     {/* ✅ 단어시험 (어디에 있든 합산) */}
+{(() => {
+  // dayPlan이 있으면 우선, 없으면 dayDetail(=records)에서
+  const wt = getWordTestTotal(dayPlan ?? dayDetail);
+
+if (wt.total === 0) return null;
+
+const score = Math.round((wt.correct / wt.total) * 100);
+
+return (
   <div
     style={{
       marginTop: 12,
@@ -1216,12 +1302,12 @@ function getEnglishMonth(ym: string) {
     <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>
       📘 영어 단어 시험
     </div>
-    <div style={{ fontSize: 14, fontWeight: 900 }}>
-      {dayDetail.wordTest.correct}/{dayDetail.wordTest.total} (
-      {Math.round((dayDetail.wordTest.correct / dayDetail.wordTest.total) * 100)}%)
+    <div style={{ fontSize: 16, fontWeight: 900 }}>
+      {score}점 ({wt.correct}/{wt.total})
     </div>
   </div>
-)}
+);
+})()}
 
 {/* ✅ 오늘 과제 (studyPlans/dayPlan.teacherTasks) 
 <div
@@ -1607,11 +1693,11 @@ function getEnglishMonth(ym: string) {
 
 function DoughnutSection({ summary }: { summary: any }) {
   const items = [
-  { label: "순공", value: summary.study, color: "#1E3A8A" },
-  { label: "생활시간", value: summary.short, color: "#b4d149ff" },
-  { label: "학원학습", value: summary.academy, color: "#C8A76A" },
-  { label: "학원외출", value: summary.academyOuting, color: "#9b59b6" },
-];
+    { label: "에듀코어", value: summary.study, color: "#1E3A8A" },
+    { label: "학원", value: summary.academy, color: "#F59E0B" },
+    { label: "식사", value: summary.meal, color: " #0EA5E9"},
+    { label: "외출", value: summary.outing, color: "#EF4444" },
+  ];
 
   return (
     <div style={{ marginBottom: 28 }}>
@@ -1637,12 +1723,12 @@ function DoughnutSection({ summary }: { summary: any }) {
         }}
       >
         {/* 도넛 */}
-<DoughnutChart
-  study={summary.study}
-  short={summary.short}
-  academy={summary.academy}
-  academyOuting={summary.academyOuting}
-/>
+<DoughnutChart data={[
+  { label: "에듀코어", value: summary.study },
+  { label: "학원(기타학원 포함)", value: summary.academy },
+  { label: "식사", value: summary.meal },
+  { label: "외출", value: summary.outing },
+]} />
 
         {/* 범례 */}
         <div style={{ fontSize: 14, color: "#333", minWidth: 180 }}>
@@ -3221,88 +3307,80 @@ function TimelineItem({ label, time }: { label: string; time?: string }) {
 /* 도넛 그래프 */
 /* =================================================================== */
 
+/* =================================================================== */
+/* 도넛 그래프 (data 배열 버전) */
+/* =================================================================== */
+
 function DoughnutChart({
-  study,
-  short,
-  academy,
-  academyOuting,   // 🔥 추가
+  data,
 }: {
-  study: number;
-  short: number;
-  academy: number;
-  academyOuting: number;
+  data: Array<{ label: string; value: number }>;
 }) {
-  const total = study + academy + short + academyOuting;
-  const totalLearning = study + academy;
+  const safe = (data || []).map(d => ({
+    ...d,
+    value: Math.max(0, Number(d.value || 0)),
+  }));
 
-  const OFFSET = 25;
+  const total = safe.reduce((sum, d) => sum + d.value, 0);
 
-  if (total === 0) {
+  if (total <= 0) {
     return (
       <div style={{ marginTop: 8, fontSize: 12, color: "#9ca3af" }}>
-        아직 집계된 학습 시간이 없습니다.
+        아직 집계된 시간이 없습니다.
       </div>
     );
   }
 
+  const colors: Record<string, string> = {
+    "에듀코어": "#1E3A8A",
+    "학원(기타학원 포함)": "#C8A76A",
+    "학원": "#C8A76A",
+    "식사": "#0EA5E9",
+    "외출": "#EF4444",
+  };
+
   const pct = (v: number) => (v / total) * 100;
+
+  // strokeDashoffset 누적 계산
+  const OFFSET = 25;
+  let acc = 0;
 
   return (
     <div style={{ position: "relative", width: "180px", height: "180px" }}>
       <svg viewBox="0 0 36 36" style={{ transform: "rotate(-90deg)" }}>
-        <circle cx="18" cy="18" r="16" stroke="#E5E7EB" strokeWidth="4" fill="none" />
-
-        {/* 순공 */}
         <circle
           cx="18"
           cy="18"
           r="16"
-          stroke="#1E3A8A"
+          stroke="#E5E7EB"
           strokeWidth="4"
-          strokeDasharray={`${pct(study)} ${100 - pct(study)}`}
-          strokeDashoffset={OFFSET}
           fill="none"
         />
 
-        {/* 학원 학습 */}
-        <circle
-          cx="18"
-          cy="18"
-          r="16"
-          stroke="#C8A76A"
-          strokeWidth="4"
-          strokeDasharray={`${pct(academy)} ${100 - pct(academy)}`}
-          strokeDashoffset={OFFSET - pct(study)}
-          fill="none"
-        />
+        {safe
+          .filter(d => d.value > 0)
+          .map((d, idx) => {
+            const p = pct(d.value);
+            const dashoffset = OFFSET - acc;
+            acc += p;
 
-        {/* 생활시간 */}
-        <circle
-          cx="18"
-          cy="18"
-          r="16"
-          stroke="#b4d149ff"
-          strokeWidth="4"
-          strokeDasharray={`${pct(short)} ${100 - pct(short)}`}
-          strokeDashoffset={OFFSET - pct(study) - pct(academy)}
-          fill="none"
-        />
-
-        {/* 🔥 학원 외출 */}
-        <circle
-          cx="18"
-          cy="18"
-          r="16"
-          stroke="#9b59b6"  // 보라색
-          strokeWidth="4"
-          strokeDasharray={`${pct(academyOuting)} ${100 - pct(academyOuting)}`}
-          strokeDashoffset={OFFSET - pct(study) - pct(academy) - pct(short)}
-          fill="none"
-        />
-
+            return (
+              <circle
+                key={d.label + idx}
+                cx="18"
+                cy="18"
+                r="16"
+                stroke={colors[d.label] ?? "#9CA3AF"}
+                strokeWidth="4"
+                strokeDasharray={`${p} ${100 - p}`}
+                strokeDashoffset={dashoffset}
+                fill="none"
+              />
+            );
+          })}
       </svg>
 
-      {/* 중앙 숫자 */}
+      {/* 중앙 텍스트 */}
       <div
         style={{
           position: "absolute",
@@ -3316,9 +3394,9 @@ function DoughnutChart({
         }}
       >
         <div style={{ fontSize: 18, color: "#1E293B" }}>
-          {totalLearning}분
+          {formatHM(total)}
         </div>
-        <div style={{ fontSize: 10, color: "#6B7280" }}>총 학습</div>
+        <div style={{ fontSize: 10, color: "#6B7280" }}>총 합계</div>
       </div>
     </div>
   );
