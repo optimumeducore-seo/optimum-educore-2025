@@ -17,6 +17,7 @@ import {
 import { arrayUnion } from "firebase/firestore";
 
 
+
 // 🔥 학생 기록을 두 구조(records + students/logs)에서 모두 읽어서 합치기
 async function loadStudentRecords(studentId: string) {
   const results: any[] = [];
@@ -171,7 +172,7 @@ const [showDayModal, setShowDayModal] = useState(false);
     Record<string, { days: number; total: number }>
   >({});
   const [todayInTime, setTodayInTime] = useState<string | null>(null);
-  const isTeacher = false;
+  const isTeacher = verified;
 const EDU = {
   modalBg: "linear-gradient(180deg, #F8FBFF 0%, #EEF3FA 100%)",
   panel: "linear-gradient(180deg, #FFFFFF 0%, #F8FBFF 100%)",
@@ -1865,41 +1866,6 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
               초기화
             </button>
 
-            {/* 학습계획 */}
-            <button
-              onClick={() => window.open(`/study-plan/${selected.id}`, "_blank")}
-              style={{
-                flex: 1.3,
-                padding: "10px 0",
-                borderRadius: 8,
-                border: "1px solid #059669",
-                background: "#ffffff",
-                color: "#065f46",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Study-plan
-            </button>
-
-            {/* 부모리포트 */}
-            <button
-              onClick={() => window.open(`/parent-report/${selected.id}`, "_blank")}
-              style={{
-                flex: 1.3,
-                padding: "10px 0",
-                borderRadius: 8,
-                border: "1px solid #6366f1",
-                background: "#ffffff",
-                color: "#3730a3",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Parents Report
-            </button>
           </div>
         </div>
       )}
@@ -1907,7 +1873,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
       {/* ===== 인증 후 메인 대시보드 ===== */}
       {selected && verified && (
         <>
-          {isTeacher && (
+         {/*} {isTeacher && (
             <button
               onClick={() => setShowTestModal(true)}
               style={{
@@ -1926,7 +1892,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
             >
               📘 시험기간 추가
             </button>
-          )}
+          )} /*}
           {/* 상단: 학생 정보 + 오늘 등원 정보 + 등/하원 버튼 */}
           <div
             style={{
@@ -1934,19 +1900,21 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
               display: "grid",
               gridTemplateColumns: isMobile
                 ? "1fr"
-                : "minmax(0, 1.4fr) minmax(0, 1fr)",
+                : "minmax(0, 1fr) minmax(0, 1fr)",
               gap: isMobile ? 12 : 16,
+              alignItems: "stretch",
             }}
           >
            {/* 학생 기본 정보 카드 */}
-<div
-  style={{
-    padding: "18px 18px",
-    borderRadius: 14,
-    border: "1px solid #e5e7eb",
-    background: "#f9fafb",
-  }}
->
+ <div
+              style={{
+                padding: "16px 16px",
+                borderRadius: 14,
+                border: "1px solid #e5e7eb",
+                background: "#f9fafb",
+                height: "100%",
+              }}
+            >
   <h3
     style={{
       margin: "0 0 6px 0",
@@ -1979,120 +1947,13 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
     </p>
   )}
 
-  {todayInTime && (
-    <p
-      style={{
-        marginTop: 8,
-        fontSize: 13,
-        color: "#1d4ed8",
-      }}
-    >
-      오늘 등원시간:{" "}
-      {new Date(todayInTime).toLocaleTimeString("ko-KR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })}
-    </p>
-  )}
-
-  <p
-    style={{
-      marginTop: 10,
-      fontSize: 13,
-      color: "#6b7280",
-    }}
-  >
-    최근 {summary.days}일 기준 순공 누적:
-  </p>
-
-  <p
-    style={{
-      margin: 0,
-      fontSize: 22,
-      fontWeight: 800,
-      color: "#1e3a8a",
-    }}
-  >
-    {formatHM(summary.total)}
-  </p>
-
-  {/* ✅✅✅ 여기! 카드 안에 넣기 */}
-  <div
-    style={{
-      marginTop: 18,
-      padding: "12px",
-      borderRadius: 12,
-      border: "1px solid #e5e7eb",
-      background: "#ffffff",
-    }}
-  >
-    <div
-      style={{
-        fontWeight: 700,
-        marginBottom: 8,
-        color: "#1e3a8a",
-        fontSize: 14,
-      }}
-    >
-      연간 월별 순공 합계
-    </div>
-
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 8,
-      }}
-    >
-      {yearlyMonthlyTotals.map((m) => {
-        const isBeforeEntry = entryMonth ? m.month < entryMonth : false;
-
-        return (
-          <div
-            key={m.month}
-            style={{
-              padding: "8px 6px",
-              borderRadius: 8,
-              textAlign: "center",
-              background: isBeforeEntry ? "#f3f4f6" : "#eff6ff",
-              color: isBeforeEntry ? "#9ca3af" : "#15255f",
-              fontSize: 12,
-              fontWeight: 600,
-            }}
-          >
-            <div>{m.month}월</div>
-            <div
-  style={{
-    marginTop: 4,
-    color: isBeforeEntry ? "#9ca3af" : "#8e2a2a",
-    fontWeight: isBeforeEntry ? 500 : 800,        // 강조
-  }}
->
- {isBeforeEntry ? "-" : formatHM(m.total)}
-</div>
-          </div>
-        );
-      })}
-    </div>
-  </div>
-</div>
-
-    {/* 등원/하원 버튼 & 요약 */}
-<div
-  style={{
-    padding: "20px 20px",
-    borderRadius: 16,
-    border: "1px solid #E5E7EB",
-    background: "#F8FAFF",
-  }}
->
-
-  {/* 상단 문구 */}
+  
+ {/* 상단 문구 */}
   <div style={{ textAlign: "center", marginBottom: 14 }}>
     <div
       style={{
         fontSize: 14,
-        color: "#4f5257",
+        color: "#505156",
         letterSpacing: 0.3,
       }}
     >
@@ -2150,7 +2011,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
     <div
       style={{
         fontSize: 13,
-        color: "#4f5257",
+        color: "#505156",
         letterSpacing: 0.3,
       }}
     >
@@ -2186,7 +2047,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
     <div
       style={{
         fontSize: 13,
-        color: "#4f5257",
+        color: "#505156",
         letterSpacing: 0.3,
       }}
     >
@@ -2213,6 +2074,95 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
     오늘의 과제
   </button>
 
+
+</div>
+
+    {/* 등원/하원 버튼 & 요약 */}
+ <div
+              style={{
+                padding: "16px 16px",
+                borderRadius: 14,
+                border: "1px solid #e5e7eb",
+                background: "#f9fafb",
+                height: "100%",
+              }}
+            >
+ 
+ {/* ✅✅✅ 여기! 카드 안에 넣기 */}
+  <div
+    style={{
+      marginTop: 18,
+      padding: "12px",
+      borderRadius: 12,
+      border: "1px solid #e5e7eb",
+      background: "#ffffff",
+    }}
+  >
+       <p
+    style={{
+      margin: 0,
+      fontSize: 15,
+      fontWeight: 800,
+      color: "#3d3f44",
+      textAlign: "center",
+    }}
+  >
+    OPTIMUM EDUCORE
+  </p>
+    <div
+      style={{
+        fontWeight: 700,
+        marginBottom: 8,
+        color: "#51a4db",
+        fontSize: 14,
+         textAlign: "center",
+      }}
+    >
+      2026년 학습 누적 현황
+    </div>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, 1fr)",
+        gap: 8,
+      }}
+    >
+      {yearlyMonthlyTotals.map((m) => {
+        const isBeforeEntry = entryMonth ? m.month < entryMonth : false;
+
+        return (
+          <div
+            key={m.month}
+            style={{
+              padding: "8px 6px",
+              borderRadius: 8,
+              textAlign: "center",
+              background: isBeforeEntry ? "#f3f4f6" : "#eff6ff",
+              color: isBeforeEntry ? "#9ca3af" : "#15255f",
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          >
+            <div>{m.month}월</div>
+            <div
+  style={{
+    marginTop: 4,
+    color: isBeforeEntry ? "#9ca3af" : "#8e2a2a",
+    fontWeight: isBeforeEntry ? 500 : 800,        // 강조
+  }}
+>
+  
+ {isBeforeEntry ? "-" : formatHM(m.total)}
+</div>
+
+          </div>
+          
+        );
+      })}
+    </div>
+  </div>
+ 
 </div>
 
 
@@ -2308,7 +2258,7 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
                 }}
               >
                 <div style={{ fontWeight: 700, marginBottom: 6, color: "#1e3a8a" }}>
-                  이번 달 출석 요약
+                  이번 달 루틴 현황
                 </div>
                 <div>출석: {summary.days}회</div>
                 <div>결석: {realAbsences}회</div>

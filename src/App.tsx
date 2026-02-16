@@ -2886,6 +2886,13 @@ const updateDayCell = (
                             <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
                               {/* 수정 */}
                               <button style={btn} onClick={() => setEditStudent(s.id)}>✏️ 정보 </button>
+                               {/* 학부모 리포트 */}
+    <button
+      style={btn}
+      onClick={() => window.open(`/parent-report/${s.id}`, "_blank")}
+    >
+      학부모
+    </button>
                               
                               {/* 숨김 / 복원 */}
                               {!s.removed ? (

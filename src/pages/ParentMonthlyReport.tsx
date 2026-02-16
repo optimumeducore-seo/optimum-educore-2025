@@ -1578,24 +1578,7 @@ return (
     ▶
   </button>
 
-  {/* Print */}
-  <button
-    onClick={() => window.print()}
-    style={{
-      marginLeft: 12,
-      padding: "6px 18px",
-      background: "#C8A76A",
-      color: "#4A3A25",
-      fontWeight: 700,
-      fontSize: 12,
-      borderRadius: 8,
-      border: "1px solid #B89A5A",
-      cursor: "pointer",
-      whiteSpace: "nowrap",
-    }}
-  >
-    🖨 PRINT
-  </button>
+ 
 </div>
 
           {/* 제목 영역 */}
@@ -1628,9 +1611,38 @@ return (
     marginTop: 18,
   }}
 >
-  <h4 style={{ margin: "0 0 10px 0", fontSize: 18, color: "#2b3f8e" }}>
-    에듀코어 데일리 루틴
-  </h4>
+  {/* ✅ 헤더 라인: 제목(왼쪽) + 프린트(오른쪽) */}
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 10,
+      gap: 12,
+    }}
+  >
+    <h3 style={{ margin: 0, fontSize: 18, color: "#2b3f8e" }}>
+      에듀코어 데일리 루틴
+    </h3>
+
+    <button
+      onClick={() => window.print()}
+      style={{
+        padding: "6px 18px",
+        background: "#C8A76A",
+        color: "#4A3A25",
+        fontWeight: 800,
+        fontSize: 12,
+        borderRadius: 8,
+        border: "1px solid #B89A5A",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      🖨 PRINT
+    </button>
+  </div>
+
   {renderCalendar()}
 </div>
 
