@@ -653,7 +653,22 @@ async function handleCheckOut(studentId: string, inputtime: string) {
       console.error("❌ Firestore 학생 저장 실패:", e);
     }
   }
+const dropdownRef = useRef<HTMLDivElement | null>(null);
+useEffect(() => {
+  const handleClickOutside = (e: MouseEvent) => {
+    if (
+      dropdownRef.current &&
+      !dropdownRef.current.contains(e.target as Node)
+    ) {
+      setStatusPickerFor(null);
+    }
+  };
 
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+  };
+}, []);
   const timeBox: React.CSSProperties = {
   width: 70,
   textAlign: "center",
@@ -820,9 +835,9 @@ useEffect(() => {
           // ✅ 그룹별 학생 매칭
           const groups = baseGroups.map((g) => ({
             ...g,
-            students: list.filter(
-              (s) => (s.groupId || "default") === g.id && !s.removed
-            ),
+           students: list.filter(
+  (s) => (s.groupId || "default") === g.id
+),
           }));
 
           const currentGroupId = prev.currentGroupId ?? groups[0].id;
@@ -1104,22 +1119,26 @@ useEffect(() => {
 
 
   // ✅ 현재 그룹 학생 목록
- const students = useMemo(() => {
-  const list = currentGroup?.students
-    ? currentGroup.students.filter(s => !s.removed)
-    : [];
-
-    return list.sort((a, b) => {
-      const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
-      const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
-
-      if (g1 !== g2) return g2 - g1; // 고학년 → 저학년
-      return (a.name || "").localeCompare(b.name || "", "ko"); // 가나다순
-    });
-  }, [currentGroup]);
-
+const students = useMemo(() => {
+  const list = currentGroup?.students ? currentGroup.students : [];
+  return list.sort((a, b) => {
+    const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
+    const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
+    if (g1 !== g2) return g2 - g1;
+    return (a.name || "").localeCompare(b.name || "", "ko");
+  });
+}, [currentGroup]);
   // =====================================
   // 🔥 Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조)
+// ✅ 1) (추가) students/currentGroup 상태 찍는 용도 — 독립 useEffect
+useEffect(() => {
+  console.log("ALL currentGroup.students:", currentGroup?.students?.length ?? 0);
+  console.log("ALL students (after useMemo):", students?.length ?? 0);
+  console.log("removed count:", (students || []).filter((s: any) => s?.removed).length);
+  console.log("showRemoved:", showRemoved);
+}, [students, currentGroup, showRemoved]);
+
+// ✅ 2) Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조) — 기존 useEffect 유지
 useEffect(() => {
   if (!students.length) return;
 
@@ -1133,7 +1152,7 @@ useEffect(() => {
       const emptyInMap: Record<string, string | null> = {};
       const emptyOutMap: Record<string, string | null> = {};
 
-      students.forEach((st) => {
+      students.forEach((st: any) => {
         emptyInMap[st.id] = null;
         emptyOutMap[st.id] = null;
       });
@@ -1148,8 +1167,8 @@ useEffect(() => {
     const inMap: Record<string, string | null> = {};
     const outMap: Record<string, string | null> = {};
 
-    students.forEach((st) => {
-      const rec = data[st.id];
+    students.forEach((st: any) => {
+      const rec = data?.[st.id];
       inMap[st.id] = rec?.inTime || null;
       outMap[st.id] = rec?.outTime || null;
     });
@@ -1886,6 +1905,14 @@ const updateDayCell = (
     }
   };
 
+const restoreStudent = async (sid: string) => {
+  try {
+    await setDoc(doc(db, "students", sid), { removed: false }, { merge: true });
+    console.log("✅ restored in Firestore", sid);
+  } catch (e) {
+    console.error("❌ restore failed", e);
+  }
+};
 
   const reloadStudents = async () => {
     const groupId = store.currentGroupId || "default";
@@ -2392,150 +2419,143 @@ const updateDayCell = (
 
 
 
-        {/* 학생 추가 */}
-        <div style={{ marginTop: 20 }}>
+{/* 학생 추가 */}
+<div style={{ marginTop: 16 }}>
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "8px 10px",
+      background: "#f9fafb",
+      border: "1px solid #e5e7eb",
+      borderRadius: 10,
+      boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+      flexWrap: "nowrap",     // ✅ 무조건 한 줄
+    }}
+  >
+    {/* 입력들 */}
+    <input
+        style={{ ...inp, height: 30, width: 120, fontSize: 12, padding: "0 6px" }}
+      placeholder="이름"
+      value={newStu.name || ""}
+      onChange={(e) => setNewStu(s => ({ ...s, name: e.target.value }))}
+    />
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "10px 14px",
-              background: "#f9fafb",
-              border: "1px solid #e5e7eb",
-              borderRadius: 12,
-              boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-              flexWrap: "nowrap"
-            }}
-          >
+    <select
+      style={{ ...inp, height: 30, width: 80, fontSize: 12, padding: "0 6px" }}
+      value={newStu.grade || ""}
+      onChange={(e) => setNewStu(s => ({ ...s, grade: e.target.value }))}
+    >
+      <option value="">학년</option>
+      <option value="중1">중1</option>
+      <option value="중2">중2</option>
+      <option value="중3">중3</option>
+      <option value="고1">고1</option>
+      <option value="고2">고2</option>
+      <option value="고3">고3</option>
+    </select>
 
-            {/* ▶ 왼쪽: 입력창 + 추가 */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <input
-                style={{ ...inp, width: 120, height: 38 }}
-                placeholder="이름"
-                value={newStu.name || ""}
-                onChange={(e) => setNewStu(s => ({ ...s, name: e.target.value }))}
-              />
+    <input
+      style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
+      placeholder="학교"
+      value={newStu.school || ""}
+      onChange={(e) => setNewStu(s => ({ ...s, school: e.target.value }))}
+    />
 
-              <select
-                style={{ ...inp, width: 90, height: 38 }}
-                value={newStu.grade || ""}
-                onChange={(e) => setNewStu(s => ({ ...s, grade: e.target.value }))}
-              >
-                <option value="">학년</option>
-                <option value="중1">중1</option><option value="중2">중2</option><option value="중3">중3</option>
-                <option value="고1">고1</option><option value="고2">고2</option><option value="고3">고3</option>
-              </select>
+    <input
+      style={{ ...inp, height: 30, width: 120, fontSize: 12 }}
+      placeholder="학생연락처"
+      value={newStu.studentPhone || ""}
+      onChange={(e) => setNewStu(s => ({ ...s, studentPhone: e.target.value }))}
+    />
 
-              <input
-                style={{ ...inp, width: 150, height: 38 }}
-                placeholder="학교"
-                value={newStu.school || ""}
-                onChange={(e) => setNewStu(s => ({ ...s, school: e.target.value }))}
-              />
+    <input
+     style={{ ...inp, height: 30, width: 120, fontSize: 12 }}
+      placeholder="부모님연락처"
+      value={newStu.parentPhone || ""}
+      onChange={(e) => setNewStu(s => ({ ...s, parentPhone: e.target.value }))}
+    />
 
-              <input
-                style={{ ...inp, width: 140, height: 38 }}
-                placeholder="학생 연락처"
-                value={newStu.studentPhone || ""}
-                onChange={(e) => setNewStu(s => ({ ...s, studentPhone: e.target.value }))}
-              />
+    <select
+      style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
+      value={(newStu as any).hall || ""}
+      onChange={(e) => {
+        const value = e.target.value;
+        setNewStu(s => ({
+          ...s,
+          hall: value === "중등관" || value === "고등관" ? value : undefined,
+        }));
+      }}
+    >
+      <option value="">관</option>
+      <option value="중등관">중등관</option>
+      <option value="고등관">고등관</option>
+    </select>
 
-              <input
-                style={{ ...inp, width: 140, height: 38 }}
-                placeholder="부모님 연락처"
-                value={newStu.parentPhone || ""}
-                onChange={(e) => setNewStu(s => ({ ...s, parentPhone: e.target.value }))}
-              />
-             <select
-  style={{ ...inp, width: 90, height: 38 }}
-  value={(newStu as any).hall || ""}
-  onChange={(e) => {
-    const value = e.target.value;
-    setNewStu(s => ({
-      ...s,
-      hall: value === "중등관" || value === "고등관" ? value : undefined,
-    }));
-  }}
->
-  <option value="">선택</option>
-  <option value="중등관">중등관</option>
-  <option value="고등관">고등관</option>
-</select>
-            <input
-  type="number"
-  style={{ ...inp, width: 90, height: 38 }}
-  placeholder="좌석"
-  value={(newStu as any).seatNo ?? ""}
-  min={1}
-  max={(newStu as any).hall === "중등관" ? 16 : (newStu as any).hall === "고등관" ? 43 : undefined}
-  onChange={(e) =>
-    setNewStu(s => ({
-      ...s,
-      seatNo: e.target.value === "" ? null : Number(e.target.value),
-    }))
-  }
-/>
-           <input
-  type="date"
-  value={newStu.entryDate || ""}
-  onChange={(e) =>
-    setNewStu((prev) => ({ ...prev, entryDate: e.target.value }))
-  }
-  style={{ ...inp, width: 140, height: 38 }}  // ✅ 이 줄 추가
-  placeholder="입학일"
-/>
-              
+    <input
+      type="number"
+    style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
+      placeholder="좌석"
+      value={(newStu as any).seatNo ?? ""}
+      onChange={(e) =>
+        setNewStu(s => ({
+          ...s,
+          seatNo: e.target.value === "" ? null : Number(e.target.value),
+        }))
+      }
+    />
 
-              <button
-                style={{
-                  ...btnD,
-                  height: 38,
-                  padding: "0 13px",
-                  fontWeight: 500,
-                  borderRadius: 7,
-                }}
-                onClick={addStudent}
-              >
-                추가
-              </button>
-            </div>
+    <input
+      type="date"
+      value={newStu.entryDate || ""}
+      onChange={(e) => setNewStu((prev) => ({ ...prev, entryDate: e.target.value }))}
+      style={{ ...inp, height: 30, width: 120, fontSize: 11 }}
+    />
 
-            {/* ▶ 오른쪽: 새로고침 + 숨김학생보기 */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <button
-                style={{
-                  ...btn,
-                  height: 38,
-                  borderRadius: 8,
-                  background: "#dbeafe",
-                  color: "#1e3a8a",
-                  fontWeight: 700,
-                  padding: "0 14px",
-                }}
-                onClick={reloadStudents}
-              >
-               고침
-              </button>
+    <button
+      style={{
+        ...btnD,
+        height: 30,
+       width: 70,
+        fontSize: 12,
+        borderRadius: 8,
+      }}
+      onClick={addStudent}
+    >
+      추가
+    </button>
 
-              <button
-                style={{
-                  ...btn,
-                  height: 38,
-                  borderRadius: 8,
-                  background: showRemoved ? "#b91c1c" : "#e5e7eb",
-                  color: showRemoved ? "#fff" : "#111",
-                  fontWeight: 700,
-                  padding: "0 14px",
-                }}
-                onClick={() => setShowRemoved(!showRemoved)}
-              >
-                {showRemoved ? "숨김 해제" : "숨김보기"}
-              </button>
-            </div>
+    <button
+      style={{
+        ...btnD,
+        height: 30,
+      width: 70,
+        fontSize: 12,
+        borderRadius: 8,
+      }}
+      onClick={reloadStudents}
+    >
+      고침
+    </button>
 
-          </div>
+    <button
+      style={{
+        ...btnD,
+        height: 30,
+       width: 70,
+        fontSize: 11,
+        borderRadius: 8,
+      }}
+      onClick={() => setShowRemoved(!showRemoved)}
+    >
+      {showRemoved ? "해제" : "숨김"}
+    </button>
+  </div>
+
+
+
+       
 
           <div style={{
             padding: "20px",
@@ -2860,31 +2880,40 @@ const updateDayCell = (
                                 paddingLeft: 20,            // ←← 오른쪽으로 밀기!
                               }}
                             >
-                              <button
-                                style={{
-                                  padding: "4px 10px",
-                                  borderRadius: 10,
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  height: 32,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  background: style.status[cell.status].background,
-                                  color: style.status[cell.status].color,
-                                  border: `1px solid ${style.status[cell.status].color}`,
-                                  cursor: "pointer",
-                                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-                                }}
-                                onClick={() =>
-                                  setStatusPickerFor(prev => (prev === s.id ? null : s.id))
-                                }
-                              >
-                                {STATUS[cell.status].label}
-                              </button>
+                            
+
+                             {(() => {
+  const statusStyle = style.status[cell.status] || style.status["L"];
+  const statusLabel = STATUS[cell.status]?.label || STATUS["L"].label;
+
+  return (
+    <button
+      style={{
+        padding: "4px 10px",
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 700,
+        height: 32,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: statusStyle.background,
+        color: statusStyle.color,
+        border: `1px solid ${statusStyle.color}`,
+        cursor: "pointer",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+      }}
+      onClick={() =>
+        setStatusPickerFor((prev) => (prev === s.id ? null : s.id))
+      }
+    >
+      {statusLabel}
+    </button>
+  );
+})()}
                             </div>
-                            {statusPickerFor === s.id && (
-                              <div style={statusMenuStyle} onMouseLeave={() => setStatusPickerFor(null)}>
+                           {statusPickerFor === s.id && (
+  <div ref={dropdownRef} style={statusMenuStyle}>
                                 {(["P", "L", "A", "E"] as StatusKey[]).map(k => (
                                   <div
                                     key={k}
@@ -2965,26 +2994,30 @@ const updateDayCell = (
                                 숨기다
                                 </button>
                               ) : (
-                                <button
-                                  style={{ ...btn, background: "#16a34a", color: "#fff", border: "1px solid #16a34a" }}
-                                  onClick={() => {
-                                    setStore(prev => {
-                                      const groups = prev.groups.map(g =>
-                                        g.id === currentGroup.id
-                                          ? {
-                                            ...g,
-                                            students: g.students.map(x =>
-                                              x.id === s.id ? { ...x, removed: false } : x
-                                            ),
-                                          }
-                                          : g
-                                      );
-                                      return { ...prev, groups };
-                                    });
-                                  }}
-                                >
-                                  복원
-                                </button>
+                               <button
+  style={{ ...btn, background: "#16a34a", color: "#fff", border: "1px solid #16a34a" }}
+  onClick={async () => {
+    // 1) 화면 즉시 반영(로컬)
+    setStore(prev => {
+      const groups = prev.groups.map(g =>
+        g.id === currentGroup.id
+          ? {
+              ...g,
+              students: g.students.map(x =>
+                x.id === s.id ? { ...x, removed: false } : x
+              ),
+            }
+          : g
+      );
+      return { ...prev, groups };
+    });
+
+    // 2) 새로고침해도 유지(파이어스토어)
+    await restoreStudent(s.id);
+  }}
+>
+  복원
+</button>
                               )}
 
                               {/* 영구삭제 (작은 회색 버튼) */}
@@ -4513,6 +4546,7 @@ const c: DayCell | undefined = raw
                     const isLate = status === "L";
                     const isAbs = status === "A";
                     const isEarly = status === "E";
+                    
 
                     // 캘린더 셀 배경색 (상태가 우선, 그다음 휴일/주말)
                     // 상태에 따른 배경색 (토·일·공휴일은 흰색 유지)

@@ -1,6 +1,6 @@
 // src/components/admin/OpsModal.tsx
 import React, { useEffect, useState } from "react";
-import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore"; 
 import { db } from "../../firebase";
 
 import TimeTable from "../TimeTable";
@@ -8,6 +8,7 @@ import { convertPersonalScheduleToBlocks } from "../../utils/convertSchedule";
 import type { StudentLite } from "../../utils/scheduleEngine";
 import { fillStudyHallGaps } from "../../utils/scheduleEngine";
 import BrandHeader from "../BrandHeader";
+import { setDoc } from "firebase/firestore";
 
 
 type Props = {
@@ -44,80 +45,102 @@ export default function OpsModal({ open, onClose }: Props) {
   const [hall, setHall] = useState<"ms" | "hs">("ms");
   const [vacationMode, setVacationMode] = useState(true);
 
-  useEffect(() => {
-    if (!open) return;
+ useEffect(() => {
+  if (!open) return;
 
-    const unsubStudents = onSnapshot(collection(db, "students"), (snap: any) => {
-      const openStart = vacationMode ? "13:00" : "15:30";
-      const openEnd = "22:00";
+  // ✅ 여기서 한 번만 계산 (중복 제거)
+  const openStart = vacationMode ? "13:00" : "15:30";
+  const openEnd = "22:00";
 
+  const unsubStudents = onSnapshot(collection(db, "students"), (snap: any) => {
     const list2 = snap.docs
-  .filter((docSnap: any) => !docSnap.data()?.removed)
-  .map((docSnap: any) => {
-    const d = docSnap.data();
+      .filter((docSnap: any) => !docSnap.data()?.removed)
+      .map((docSnap: any) => {
+        const d = docSnap.data();
 
-    const openStart = vacationMode ? "13:00" : "15:30";
-    const openEnd = "22:00";
+        const academyBlocks = convertPersonalScheduleToBlocks(d?.personalSchedule);
+        const blocks = fillStudyHallGaps(academyBlocks, openStart, openEnd);
 
-    const academyBlocks = convertPersonalScheduleToBlocks(d?.personalSchedule);
-    const blocks = fillStudyHallGaps(academyBlocks, openStart, openEnd);
+        const seatNoRaw = d?.seatNo;
+        const seatNo =
+          typeof seatNoRaw === "number"
+            ? seatNoRaw
+            : typeof seatNoRaw === "string" && seatNoRaw.trim() !== ""
+            ? Number(seatNoRaw)
+            : null;
 
-    // ✅ seatNo는 number로
-    const seatNoRaw = d?.seatNo;
-    const seatNo =
-      typeof seatNoRaw === "number"
-        ? seatNoRaw
-        : typeof seatNoRaw === "string" && seatNoRaw.trim() !== ""
-        ? Number(seatNoRaw)
-        : null;
+        return {
+          id: docSnap.id,
+          name: d?.name ?? "",
+          blocks,
+          academyBlocks,
 
-   return {
-  id: docSnap.id,
-  name: d?.name ?? "",
-  blocks,
+          school: d?.school ?? "",
+          gradeLevel: d?.gradeLevel ?? "",
+          hall: d?.hall ?? "",
 
-  school: d?.school ?? "",
-  gradeLevel: d?.gradeLevel ?? "",
+          seatNo: Number.isFinite(seatNo as any) ? seatNo : null,
+        } as any;
+      });
 
-  // ✅ 이거 추가
-  hall: d?.hall ?? "",
+    setStudents(list2);
 
-  seatNo: Number.isFinite(seatNo as any) ? seatNo : null,
-} as any;
+    console.log(
+      "HALL CHECK",
+      list2.slice(0, 20).map((s: any) => ({
+        name: s.name,
+        hall: s.hall,
+        gradeLevel: s.gradeLevel,
+        school: s.school,
+      }))
+    );
   });
 
-setStudents(list2);
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  const dateStr = `${yyyy}-${mm}-${dd}`;
 
-console.log(
-  "HALL CHECK",
-  list2.slice(0, 20).map((s: any) => ({
-    name: s.name,
-    hall: s.hall,
-    gradeLevel: s.gradeLevel,
-    school: s.school,
-  }))
-);
+  const unsubRecords = onSnapshot(doc(db, "records", dateStr), (snap: any) => {
+    if (!snap.exists()) {
+      setRecords({});
+      return;
+    }
+    setRecords(snap.data() || {});
+  });
+
+  return () => {
+    unsubStudents();
+    unsubRecords();
+  };
+}, [open, vacationMode]);
+
+  useEffect(() => {
+  const interval = setInterval(() => {
+    students.forEach(async (s) => {
+      const rec = records?.[s.id] || {};
+    const actual =
+  rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
+
+      if (actual) return; // 이미 체크인했으면 skip
+
+      const expected = getLastAcademyEnd(s);
+      const expectedMin = toMin(expected || "");
+      if (!expectedMin) return;
+
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    if (!actual && nowMin - expectedMin > 15 && rec?.status !== "late") {
+  await setStatus(s.id, "late");
+}
     });
+  }, 60000); // 1분마다 검사
 
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const dd = String(today.getDate()).padStart(2, "0");
-    const dateStr = `${yyyy}-${mm}-${dd}`;
+  return () => clearInterval(interval);
+}, [students, records]);
 
-    const unsubRecords = onSnapshot(doc(db, "records", dateStr), (snap: any) => {
-      if (!snap.exists()) {
-        setRecords({});
-        return;
-      }
-      setRecords(snap.data() || {});
-    });
-
-    return () => {
-      unsubStudents();
-      unsubRecords();
-    };
-  }, [open, vacationMode]);
 // "HH:MM" -> minutes
 const toMin = (hhmm?: string) => {
   if (!hhmm || typeof hhmm !== "string") return null;
@@ -182,6 +205,11 @@ const setSeatNo = async (studentId: string, seatNo: number | null) => {
   const dateStr = `${yyyy}-${mm}-${dd}`;
 
   const ref = doc(db, "records", dateStr);
+
+  // 문서 없으면 생성
+  await setDoc(ref, {}, { merge: true });
+
+  // ✅ studentId 전체를 덮지 말고 seatNo만 수정
   await updateDoc(ref, {
     [`${studentId}.seatNo`]: seatNo,
   });
@@ -424,18 +452,8 @@ const hallStudents = hall === "ms" ? ms : hs;
     const seatMap: Record<number, any> = {};
 
 for (const s of hallStudents as any[]) {
-  const rec = records?.[s.id] || {};
-
-  const seatNo =
-    typeof rec?.seatNo === "number"
-      ? rec.seatNo
-      : typeof (s as any).seatNo === "number"
-      ? (s as any).seatNo
-      : null;
-
-  if (typeof seatNo === "number") {
-    seatMap[seatNo] = s;
-  }
+  const seatNo = typeof (s as any).seatNo === "number" ? (s as any).seatNo : null;
+  if (typeof seatNo === "number") seatMap[seatNo] = s;
 }
 
       const SeatGrid = () => (
@@ -455,26 +473,48 @@ for (const s of hallStudents as any[]) {
             const no = i + 1;
             const s = seatMap[no];
             const rec = s ? (records?.[s.id] || {}) : null;
-            const actual = rec?.checkInTime || rec?.inTime || rec?.in || "";
-           const expected = s ? (getLastAcademyEnd(s) || expectedHHMM) : null;
+            if (s) {
+            console.log("REC", s.id, rec);
+            }
+     const inTime =
+  rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
 
+const outTime =
+  rec?.outTime || rec?.out || "";
+const segs = Array.isArray(rec?.segments) ? rec.segments : [];
+const currentSeg = segs.find((x: any) => !x?.end);
+const subjectMap: Record<string, string> = {
+  MATH: "수학",
+  ENG: "영어",
+  KOR: "국어",
+  SCI: "과학",
+  SOC: "사회",
+};
+
+const currentSubject = currentSeg?.type
+  ? subjectMap[currentSeg.type] || currentSeg.type
+  : null;
+
+  const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
+const lastAcad = acadArr.at(-1) ?? null;
+
+const expected =  expectedHHMM; // 학원 끝시간 없으면 기본 기대시간
+const acadName = lastAcad?.label || lastAcad?.title || lastAcad?.name || "";
+const acadEnd = lastAcad?.endHHMM || lastAcad?.end || ""; // ✅ 표시용
 const expectedMin = toMin(expected || "");
 const now = new Date();
 const nowMin = now.getHours() * 60 + now.getMinutes();
 
+const isAbsent = rec?.status === "absent";
+
 const lateByNoShow =
-  !!s &&
-  !actual &&
-  expectedMin != null &&
-  nowMin > expectedMin + 15;
+  !!s && !inTime && expectedMin != null && nowMin > expectedMin + 15;
 
 const lateByCheckin =
-  !!s &&
-  !!actual &&
-  isLate15(expected || "", actual);
+  !!s && !!inTime && isLate15(expected || "", inTime);
 
-const late = lateByNoShow || lateByCheckin || rec?.status === "late";
-const isAbsent = rec?.status === "absent";
+const late = !isAbsent && (lateByNoShow || lateByCheckin);
+
 const weeklyLate = s ? getWeeklyLateCount(s.id) : 0;
 
             return (
@@ -493,32 +533,64 @@ border: isAbsent ? "1px solid #60a5fa" : late ? "1px solid #fb7185" : "1px solid
                 <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.8 }}>
                   {no}번
                 </div>
+              <div style={{ fontSize: 11, marginTop: 2 }}>
+ {inTime ? (
+  <span style={{ color: "#2563eb", fontWeight: 600 }}>
+    등원 {inTime}
+  </span>
+) : (
+  <span style={{ color: "#9ca3af" }}>
+    미체크인
+  </span>
+)}
 
-                {s ? (
-                  <>
-                   <div
-  style={{
-    fontSize: 12,
-    fontWeight: late ? 900 : 700,
-    marginTop: 2,
-    color: isAbsent ? "#2563eb" : late ? "#f97316" : "#111",
-  }}
->
-  {(s as any).name}
+{outTime && (
+  <span style={{ color: "#16a34a", fontWeight: 600 }}>
+    {" · "}하원 {outTime}
+  </span>
+)}
+
+  {late && (
+    <span style={{ color: "#ef4444", fontWeight: 700 }}>
+      {" "}· 지각
+    </span>
+  )}
+  {currentSeg && (
+  <div style={{ fontSize: 10, marginTop: 2, color: "#7c3aed", fontWeight: 600 }}>
+    📚 {currentSeg.type} 진행중
+  </div>
+  )}
 </div>
-<div style={{ fontSize: 10, opacity: 0.7 }}>
-  {getLastAcademyName(s) || ""} {expected ? `· ${expected}` : ""}
+
+               {s ? (
+  <>
+    {/* 이름 */}
+    <div
+      style={{
+        fontSize: 12,
+        fontWeight: late ? 900 : 700,
+        marginTop: 2,
+        color: isAbsent ? "#2563eb" : late ? "#f97316" : "#111",
+      }}
+    >
+      {(s as any).name}
+    </div>
+
+    {/* ✅ 학원 + 끝시간 (여기 추가) */}
+  
+  <div style={{ fontSize: 10, opacity: 0.7 }}>
+  {acadName || "-"}
+  {acadEnd ? ` · ${acadEnd}` : ""}
 </div>
-                    <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>
-                      {actual ? `체크인 ${actual}` : "미체크인"}
-                      {late ? " · 지각" : ""}
-                    </div>
+   
+
+ 
                     
                     <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
                       <button
                         style={{ ...btn, padding: "4px 6px", fontSize: 11 }}
-                        onClick={() => setSeatNo(s.id, null)}
-                        title="좌석 비우기"
+                       onClick={() => setStatus(s.id, "")}
+title="지각 해제"
                       >
                         해제
                       </button>
@@ -526,7 +598,7 @@ border: isAbsent ? "1px solid #60a5fa" : late ? "1px solid #fb7185" : "1px solid
                       <button
                         style={{ ...btn, padding: "4px 6px", fontSize: 11 }}
                         onClick={() => setStatus(s.id, "late")}
-                        disabled={!late && !!actual}
+                      disabled={!late && !!inTime}
                         title="15분 초과면 지각 처리"
                       >
                         지각
@@ -551,9 +623,10 @@ border: isAbsent ? "1px solid #60a5fa" : late ? "1px solid #fb7185" : "1px solid
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
             {list.map((s) => {
               const rec = records?.[s.id] || {};
-              const actual = rec?.checkInTime || rec?.inTime || rec?.in || "";
+            const actual =
+  rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
               const seatNo = rec?.seatNo;
-              const late = isLate15(expectedHHMM, actual) || rec?.status === "late";
+              const late = isLate15(expectedHHMM, actual) 
 
               return (
                 <div
