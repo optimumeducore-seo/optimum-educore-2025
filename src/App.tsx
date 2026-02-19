@@ -172,7 +172,7 @@ export type Student = {
   grade?: string;
   school?: string;
   gradeLevel?: string;
-  groupId?: string; // ✅ 추가 — 그룹 ID
+  groupId?: string;
   studentPhone?: string;
   parentPhone?: string;
   removed?: boolean;
@@ -188,6 +188,8 @@ export type Student = {
   mathScore?: number;
   scienceScore?: number;
   entryDate?: string;
+hall?: "중등관" | "고등관";   // ✅ 관
+seatNo?: number | null;        // ✅ 좌석번호
 };
 
 export type Records = Record<string, Record<string, DayCell>>;
@@ -698,7 +700,18 @@ const defaultDayCell: DayCell = {
   // 스케줄
   scheduleAppliedDate: "",
 };
+const [allStudents, setAllStudents] = useState<any[]>([]);
+useEffect(() => {
+  const unsub = onSnapshot(collection(db, "students"), snap => {
+    const list = snap.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
+    setAllStudents(list);
+  });
 
+  return unsub;
+}, []);
   // 새 과제 생성(아이디가 이미 있으면 upsert로 동작)
   async function upsertAssignmentFS(a: AssignmentFS) {
     const payload = sanitize({ ...a, createdAt: a.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
@@ -786,6 +799,7 @@ const defaultDayCell: DayCell = {
             id: d.id,
             name: data.name || "",
             grade: data.grade || "",
+            seatNo: data.seatNo ?? null,
             school: data.school || "",
             studentPhone: data.studentPhone || "",
             parentPhone: data.parentPhone || "",
@@ -831,18 +845,19 @@ const defaultDayCell: DayCell = {
 
   // 학생 추가 함수 (공유용)
   const addStudent = async () => {
-    const student: Student = {
-      id: uid(),
-      name: (newStu.name || "").trim(),
-      grade: (newStu.grade || "").trim(),
-      school: (newStu.school || "").trim(),
-      studentPhone: (newStu.studentPhone || "").trim(),
-      parentPhone: (newStu.parentPhone || "").trim(),
-      groupId: store.currentGroupId || "default",
+   const student: Student = {
+  id: uid(),
+  name: (newStu.name || "").trim(),
+  grade: (newStu.grade || "").trim(),
+  school: (newStu.school || "").trim(),
+  studentPhone: (newStu.studentPhone || "").trim(),
+  parentPhone: (newStu.parentPhone || "").trim(),
+  groupId: store.currentGroupId || "default",
+  removed: false,
 
-      // ✅ ← 여기 중요!!
-      removed: false, // ✅ 기본값
-    };
+  hall: (newStu as any).hall || "",                 // ✅ 추가
+  seatNo: (newStu as any).seatNo ?? null,           // ✅ 추가
+};
 
     try {
       const groupId = store.currentGroupId || "default"; // ✅ 미리 변수 저장
@@ -858,6 +873,7 @@ const defaultDayCell: DayCell = {
   doc(db, "students", student.id),
   {
     ...student,
+    seatNo: student.seatNo ?? null,
     entryDate: student.entryDate ?? null,   // ⭐ 여기 추가
     groupId: store.currentGroupId || "default",
     createdAt: serverTimestamp(),
@@ -931,6 +947,8 @@ const defaultDayCell: DayCell = {
       const enabled = new Set(cell.enabledSubjects || []);
 
       // 🎯 개인시간표 기준 병합 (요일 필터 + 중복 제거)
+
+
       (Object.keys(personal) as AcademyType[]).forEach((sub) => {
         const wt = personal[sub];
         if (!wt) return;
@@ -1086,8 +1104,10 @@ useEffect(() => {
 
 
   // ✅ 현재 그룹 학생 목록
-  const students = useMemo(() => {
-    const list = currentGroup?.students ? [...currentGroup.students] : [];
+ const students = useMemo(() => {
+  const list = currentGroup?.students
+    ? currentGroup.students.filter(s => !s.removed)
+    : [];
 
     return list.sort((a, b) => {
       const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
@@ -2428,6 +2448,35 @@ const updateDayCell = (
                 value={newStu.parentPhone || ""}
                 onChange={(e) => setNewStu(s => ({ ...s, parentPhone: e.target.value }))}
               />
+             <select
+  style={{ ...inp, width: 90, height: 38 }}
+  value={(newStu as any).hall || ""}
+  onChange={(e) => {
+    const value = e.target.value;
+    setNewStu(s => ({
+      ...s,
+      hall: value === "중등관" || value === "고등관" ? value : undefined,
+    }));
+  }}
+>
+  <option value="">선택</option>
+  <option value="중등관">중등관</option>
+  <option value="고등관">고등관</option>
+</select>
+            <input
+  type="number"
+  style={{ ...inp, width: 90, height: 38 }}
+  placeholder="좌석"
+  value={(newStu as any).seatNo ?? ""}
+  min={1}
+  max={(newStu as any).hall === "중등관" ? 16 : (newStu as any).hall === "고등관" ? 43 : undefined}
+  onChange={(e) =>
+    setNewStu(s => ({
+      ...s,
+      seatNo: e.target.value === "" ? null : Number(e.target.value),
+    }))
+  }
+/>
            <input
   type="date"
   value={newStu.entryDate || ""}
@@ -2443,9 +2492,9 @@ const updateDayCell = (
                 style={{
                   ...btnD,
                   height: 38,
-                  padding: "0 20px",
-                  fontWeight: 800,
-                  borderRadius: 8,
+                  padding: "0 13px",
+                  fontWeight: 500,
+                  borderRadius: 7,
                 }}
                 onClick={addStudent}
               >
@@ -2467,7 +2516,7 @@ const updateDayCell = (
                 }}
                 onClick={reloadStudents}
               >
-                🔄 고침
+               고침
               </button>
 
               <button
@@ -2482,7 +2531,7 @@ const updateDayCell = (
                 }}
                 onClick={() => setShowRemoved(!showRemoved)}
               >
-                {showRemoved ? "숨김 해제" : "숨김학생보기"}
+                {showRemoved ? "숨김 해제" : "숨김보기"}
               </button>
             </div>
 
@@ -2885,14 +2934,23 @@ const updateDayCell = (
                           <td style={{ padding: 10 }}>
                             <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
                               {/* 수정 */}
-                              <button style={btn} onClick={() => setEditStudent(s.id)}>✏️ 정보 </button>
+                              <button
+  style={btn}
+  onClick={() => {
+    setSelectedStudentId(null);   // ✅ 캘린더 닫기
+    setFocusStatus(null);
+    setEditStudent(s.id);         // ✅ 에딧 열기
+  }}
+>
+  시간표
+</button>
                                {/* 학부모 리포트 */}
     <button
       style={btn}
       onClick={() => window.open(`/parent-report/${s.id}`, "_blank")}
-    >
-      학부모
-    </button>
+>
+  학부모
+</button>
                               
                               {/* 숨김 / 복원 */}
                               {!s.removed ? (
@@ -2904,7 +2962,7 @@ const updateDayCell = (
                                     }
                                   }}
                                 >
-                                  🙈 숨김
+                                숨기다
                                 </button>
                               ) : (
                                 <button
@@ -2925,7 +2983,7 @@ const updateDayCell = (
                                     });
                                   }}
                                 >
-                                  👀 복원
+                                  복원
                                 </button>
                               )}
 

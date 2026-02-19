@@ -40,6 +40,8 @@ type Student = {
   scienceScore?: number;
   koreanScore?: number;
   personalSchedule?: PersonalSchedule;
+  hall?: "중등관" | "고등관";
+seatNo?: number | null;
 };
 
 
@@ -141,6 +143,9 @@ function EditStudentModal({
     mathScore: student.mathScore ?? 0,
     scienceScore: student.scienceScore ?? 0,
      entryDate: (student as any).entryDate || "",
+hall: (student as any).hall || "",
+  seatNo: (student as any).seatNo ?? null,
+
   });
 
  /** ✅ 과목 리스트 */
@@ -198,16 +203,19 @@ useEffect(() => {
     });
 
     // 3) 개별 시간표
-    if (Array.isArray(data.personalSchedule?.timeBlocks)) {
-      setTimeBlocks(data.personalSchedule.timeBlocks);
-      localStorage.setItem(
-        `timeBlocks_${student.id}`,
-        JSON.stringify(data.personalSchedule.timeBlocks)
-      );
-    } else {
-      setTimeBlocks([]);
-      localStorage.removeItem(`timeBlocks_${student.id}`);
-    }
+   // 3) 개별 시간표 (Firestore → 없으면 localStorage fallback)
+const fire = data.personalSchedule?.timeBlocks;
+
+if (Array.isArray(fire)) {
+  setTimeBlocks(fire);
+  localStorage.setItem(
+    `timeBlocks_${student.id}`,
+    JSON.stringify(fire)
+  );
+} else {
+  const local = localStorage.getItem(`timeBlocks_${student.id}`);
+  setTimeBlocks(local ? JSON.parse(local) : []);
+}
   }
 
   loadFullStudent();
@@ -218,7 +226,7 @@ useEffect(() => {
 // ✅ Firestore에 저장된 개별시간 불러오기
 // 🔥 Firestore → timeBlocks 정확히 가져오기
 // 🔥 Firestore → timeBlocks 정확히 가져오기
-useEffect(() => {
+{/*useEffect(() => {
   if (!student?.id) return;
 
   const fire = student.personalSchedule?.timeBlocks;
@@ -234,7 +242,7 @@ useEffect(() => {
   setTimeBlocks([]);
   localStorage.removeItem(`timeBlocks_${student.id}`);
 }, [student]);
-
+*/}
 
 
 // ✅ 변경 시 localStorage 동기화
@@ -302,6 +310,49 @@ const handleAcademySave = async (
   );
 };
 
+// ✅ 시간 문자열 정규화 (직접입력 대응)
+const normalizeHM = (v: string) => {
+  if (!v) return "";
+  v = String(v).trim();
+  if (/^\d{2}:\d{2}$/.test(v)) return v;
+
+  const m = v.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (!m) return "";
+
+  const hh = String(Math.min(23, Math.max(0, Number(m[1])))).padStart(2, "0");
+  const mm = String(Math.min(59, Math.max(0, Number(m[2])))).padStart(2, "0");
+  return `${hh}:${mm}`;
+};
+
+const saveBaseSlot = (sub: AcademyType, idx: number) => {
+  const slots = (sched.current as any)?.[sub]?.slots ?? [];
+  const latest = slots[idx];
+
+  const from = normalizeHM(latest?.from);
+  const to = normalizeHM(latest?.to);
+
+  if (!from || !to) {
+    alert("시간을 입력해주세요!");
+    return;
+  }
+
+  setSched((prev) => {
+    const cur: any = { ...(prev.current ?? {}) };
+    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+
+    // 혹시 arr이 비어있거나 idx가 비정상이면 안전하게 채움
+    while (arr.length <= idx) arr.push({ day: 1, from: "", to: "" });
+
+    const dayNum = Number(arr[idx]?.day ?? latest?.day ?? 1);
+
+    arr[idx] = { ...(arr[idx] ?? {}), day: dayNum, from, to };
+    cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+
+    return { ...prev, current: cur };
+  });
+
+  alert("✅ 개인시간(current)에 저장됨");
+};
 
 /** ✅ PDF로 시간표 저장 함수 */
 async function printScheduleToPDF() {
@@ -397,7 +448,7 @@ async function printScheduleToPDF() {
   const handleSave = () => {
     // 기존 저장 로직
   };
-
+const baseSchedule = sched.current ?? {};
   return (
     <div
       style={{
@@ -407,15 +458,18 @@ async function printScheduleToPDF() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        zIndex: 60,
+        zIndex: 200,
         pointerEvents: "auto",
       }}
-      onClick={onClose}
+     onClick={(e) => {
+  if (e.target !== e.currentTarget) return; // 배경을 눌렀을 때만 닫힘
+  onClose();
+}}
     >
       <div
         style={{
           position: "relative",
-          zIndex: 61,
+          zIndex: 201,
           width: 900,
           maxWidth: "92vw",
           background: "#fdfaf5",
@@ -481,15 +535,56 @@ async function printScheduleToPDF() {
             style={inp}
             placeholder="학생 연락처"
           />
-          <input
-            name="parentPhone"
-            value={form.parentPhone}
-            onChange={handleChange}
-            style={inp}
-            placeholder="부모님 연락처"
-          />
+         <input
+  name="parentPhone"
+  value={form.parentPhone}
+  onChange={handleChange}
+  style={inp}
+  placeholder="부모님 연락처"
+/>
 
-          <input
+{/* ✅ 여기 붙이기 시작 */}
+<select
+  name="hall"
+  value={(form as any).hall || ""}
+  onChange={(e) =>
+    setForm((f: any) => ({
+      ...f,
+      hall: e.target.value === "중등관" || e.target.value === "고등관" ? e.target.value : "",
+      // 관 바꾸면 좌석번호 초기화(선택) - 추천
+      seatNo: null,
+    }))
+  }
+  style={inp}
+>
+  <option value="">관 선택</option>
+  <option value="중등관">중등관</option>
+  <option value="고등관">고등관</option>
+</select>
+
+<input
+  type="number"
+  value={(form as any).seatNo ?? ""}
+  min={1}
+  max={
+    (form as any).hall === "중등관"
+      ? 16
+      : (form as any).hall === "고등관"
+      ? 43
+      : undefined
+  }
+  onChange={(e) =>
+    setForm((f: any) => ({
+      ...f,
+      seatNo: e.target.value === "" ? null : Number(e.target.value),
+    }))
+  }
+  style={inp}
+  placeholder="좌석번호"
+/>
+{/* ✅ 여기까지 */}
+
+<input
   type="date"
   name="entryDate"
   value={form.entryDate || ""}
@@ -502,242 +597,207 @@ async function printScheduleToPDF() {
 
 
 
-        {/* 개인 시간표 */}
-        <div style={{ marginTop: 10 }}>
-          <div
-            style={{
-              fontWeight: 700,
-              fontSize: 14,
-              marginBottom: 8,
-              color: "#3b2f2f",
-            }}
-          >
-            🗓️ 개인시간(기본 시간표)
+      {/* 개인 시간표 */}
+<div style={{ marginTop: 10 }}>
+  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 8, color: "#3b2f2f" }}>
+    🗓️ 개인시간(기본 시간표)
+  </div>
+
+  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+    {SUBJECTS.map((sub) => {
+      const slots =
+        (baseSchedule as any)?.[sub]?.slots?.length
+          ? (baseSchedule as any)[sub].slots
+          : [{ day: 1, from: "", to: "" }];
+
+      return (
+        <div
+          key={sub}
+          style={{
+            background: "#fff",
+            border: "1px solid #e5d9c7",
+            borderRadius: 8,
+            padding: 8,
+            boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#3b2f2f", marginBottom: 4 }}>
+            {sub}
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
-              gap: 6,
-            }}
-          >
-            {SUBJECTS.map((sub) => (
-              <div
-                key={sub}
+          {slots.map((slot: any, i: number) => (
+            <div
+              key={`${sub}-${i}`}
+              style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}
+            >
+              {/* 요일 */}
+              <select
+                value={Number(slot.day ?? 1)}
+                onChange={(e) => {
+                  const day = Number(e.target.value);
+                  setSched((prev) => {
+                    const cur: any = { ...(prev.current ?? {}) };
+                    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+
+                    // 표시용 기본 1줄이었던 경우에도 실제 arr 생성
+                    if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
+
+                    arr[i] = { ...(arr[i] ?? {}), day };
+                    cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+                    return { ...prev, current: cur };
+                  });
+                }}
                 style={{
-                  background: "#fff",
-                  border: "1px solid #e5d9c7",
-                  borderRadius: 8,
-                  padding: 8,
-                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                  width: 42,
+                  height: 30,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  padding: "3px 4px",
+                  borderRadius: 6,
+                  border: "1px solid #d1bfa3",
+                  background: "#f9f7f2",
+                  textAlign: "center",
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "#3b2f2f",
-                    marginBottom: 4,
-                  }}
-                >
-                  {sub}
-                </div>
+                {["일", "월", "화", "수", "목", "금", "토"].map((d, idx) => (
+                  <option key={idx} value={idx}>
+                    {d}
+                  </option>
+                ))}
+              </select>
 
-                {(activeSchedule[sub]?.slots ?? [{ day: 1, from: "", to: "" }]).map(
-                  (slot, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        marginBottom: 4,
-                      }}
-                    >
-                      <select
-                        value={slot.day}
-                      onChange={(e) => {
-  const newSlots = [...(activeSchedule[sub]?.slots ?? [])];
-  newSlots[i].day = parseInt(e.target.value, 10); // ✅ 문자열 → 확실한 숫자 변환
+              {/* 시작 */}
+              <input
+                type="time"
+                step="60"
+                value={slot.from ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSched((prev) => {
+                    const cur: any = { ...(prev.current ?? {}) };
+                    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+                    if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
 
-  setSched((s) => ({
-    ...s,
-    current: {
-      ...s.current,
-      [sub]: { ...s.current[sub], slots: newSlots },
-    },
-  }));
-}}
-                        style={{
-                          width: 42,
-                          height: 30,
-                          fontSize: 12,
-                          fontWeight: 500,
-                          padding: "3px 4px",
-                          borderRadius: 6,
-                          border: "1px solid #d1bfa3",
-                          background: "#f9f7f2",
-                          textAlign: "center",
-                        }}
-                      >
-                        {["일", "월", "화", "수", "목", "금", "토"].map(
-                          (d, idx) => (
-                            <option key={idx} value={idx}>
-                              {d}
-                            </option>
-                          )
-                        )}
-                      </select>
+                    arr[i] = { ...(arr[i] ?? {}), from: v };
+                    cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+                    return { ...prev, current: cur };
+                  });
+                }}
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  border: "1px solid #ccc",
+                  borderRadius: 6,
+                  padding: "3px 6px",
+                  minWidth: 80,
+                }}
+              />
 
-                      {/* 시작시간 */}
-                      <input
-                        type="time"
-                        step="60"
-                        value={slot.from || ""}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          const newSlots = [...(activeSchedule[sub]?.slots ?? [])];
-                          newSlots[i] = { ...newSlots[i], from: v };
-                          setSched((s) => ({
-                            ...s,
-                            current: {
-                              ...s.current,
-                              [sub]: { ...s.current[sub], slots: newSlots },
-                            },
-                          }));
-                        }}
-                        style={{
-                          flex: 1,
-                          fontSize: 12,
-                          border: "1px solid #ccc",
-                          borderRadius: 6,
-                          padding: "3px 6px",
-                          minWidth: 80,
-                        }}
-                      />
+              {/* 종료 */}
+              <input
+                type="time"
+                step="60"
+                value={slot.to ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSched((prev) => {
+                    const cur: any = { ...(prev.current ?? {}) };
+                    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+                    if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
 
-                      {/* 종료시간 */}
-                      <input
-                        type="time"
-                        step="60"
-                        value={slot.to || ""}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          const newSlots = [...(activeSchedule[sub]?.slots ?? [])];
-                          newSlots[i] = { ...newSlots[i], to: v };
-                          setSched((s) => ({
-                            ...s,
-                            current: {
-                              ...s.current,
-                              [sub]: { ...s.current[sub], slots: newSlots },
-                            },
-                          }));
-                        }}
-                        style={{
-                          flex: 1,
-                          fontSize: 12,
-                          border: "1px solid #ccc",
-                          borderRadius: 6,
-                          padding: "3px 6px",
-                          minWidth: 80,
-                        }}
-                      />
+                    arr[i] = { ...(arr[i] ?? {}), to: v };
+                    cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+                    return { ...prev, current: cur };
+                  });
+                }}
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  border: "1px solid #ccc",
+                  borderRadius: 6,
+                  padding: "3px 6px",
+                  minWidth: 80,
+                }}
+              />
 
-                      {/* 저장 */}
-                      <button
-  onClick={() => {
-    if (!slot.from || !slot.to) {
-      alert("시간을 입력해주세요!");
-      return;
-    }
-
-    // ✅ 최신 요일 값을 바로 가져오기 (state 지연 방지)
-    const latestDay = Number(
-      (activeSchedule[sub]?.slots ?? [])[i]?.day ?? slot.day ?? 0
-    );
-
-    handleAcademySave(sub as AcademyType, latestDay, slot.from, slot.to);
+             {/* 저장 */}
+<button
+  type="button"
+  onClick={() => saveBaseSlot(sub, i)}
+  style={{
+    height: 30,
+    marginTop: 2,
+    background: "#dae8fc",
+    color: "#2f3b52",
+    borderRadius: 6,
+    padding: "3px 10px",
+    border: "1px solid #b9c6ec",
+    fontSize: 12,
+    cursor: "pointer",
   }}
-                        style={{
-                          height: 30,
-                          marginTop: 2,
-                          background: "#dae8fc",
-                          color: "#2f3b52",
-                          borderRadius: 6,
-                          padding: "3px 10px",
-                          border: "1px solid #b9c6ec",
-                          fontSize: 12,
-                          cursor: "pointer",
-                        }}
-                      >
-                        저장
-                      </button>
-                      {/* 삭제 */}
-                      <button
-                        onClick={() => {
-                          const confirmDelete = confirm("이 시간을 삭제하시겠습니까?");
-                          if (!confirmDelete) return;
-                          const newSlots = (
-                            activeSchedule[sub]?.slots ?? []
-                          ).filter((_, idx) => idx !== i);
-                          setSched((s) => ({
-                            ...s,
-                            current: {
-                              ...s.current,
-                              [sub]: { ...s.current[sub], slots: newSlots },
-                            },
-                          }));
-                        }}
-                        style={{
-                          height: 30,
-                          marginTop: 2,
-                          background: "#f9d6d5",
-                          color: "#5a2a2a",
-                          borderRadius: 6,
-                          padding: "3px 8px",
-                          border: "1px solid #e4b6b5",
-                          fontSize: 12,
-                          cursor: "pointer",
-                        }}
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  )
-                )}
+>
+  저장
+</button>
+              {/* 삭제 */}
+              <button
+                onClick={() => {
+                  if (!confirm("이 시간을 삭제하시겠습니까?")) return;
+                  setSched((prev) => {
+                    const cur: any = { ...(prev.current ?? {}) };
+                    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+                    const nextArr = arr.filter((_: any, idx: number) => idx !== i);
+                    cur[sub] = { ...(cur[sub] ?? {}), slots: nextArr };
+                    return { ...prev, current: cur };
+                  });
+                }}
+                style={{
+                  height: 30,
+                  marginTop: 2,
+                  background: "#f9d6d5",
+                  color: "#5a2a2a",
+                  borderRadius: 6,
+                  padding: "3px 8px",
+                  border: "1px solid #e4b6b5",
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                삭제
+              </button>
+            </div>
+          ))}
 
-                {/* 시간 추가 버튼 */}
-                <button
-                  onClick={() => {
-                    const newSlots = [
-                      ...(activeSchedule[sub]?.slots ?? []),
-                      { day: 1, from: "", to: "" },
-                    ];
-                    setSched((s) => ({
-                      ...s,
-                      current: {
-                        ...s.current,
-                        [sub]: { ...s.current[sub], slots: newSlots },
-                      },
-                    }));
-                  }}
-                  style={{
-                    fontSize: 11,
-                    border: "1px solid #e5d9c7",
-                    borderRadius: 6,
-                    padding: "2px 5px",
-                    background: "#f3e7d0",
-                    color: "#3b2f2f",
-                    marginTop: 4,
-                  }}
-                >
-                  ➕ 시간 추가
-                </button>
-              </div>
-            ))}
-          </div>
+          {/* ✅ 시간 추가 버튼 */}
+          <button
+            type="button"
+            onClick={() => {
+              console.log("➕ 시간 추가 클릭:", sub);
+              setSched((prev) => {
+                const cur: any = { ...(prev.current ?? {}) };
+                const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+                arr.push({ day: 1, from: "", to: "" });
+                cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+                return { ...prev, current: cur };
+              });
+            }}
+            style={{
+              fontSize: 11,
+              border: "1px solid #e5d9c7",
+              borderRadius: 6,
+              padding: "6px 8px",
+              background: "#f3e7d0",
+              color: "#3b2f2f",
+              marginTop: 6,
+              cursor: "pointer",
+            }}
+          >
+            ➕ 시간 추가
+          </button>
         </div>
+      );
+    })}
+  </div>
+</div>
 
 {/* 🕓 개별 시간 설정 */}
 <div style={{ marginTop: 20 }}>
@@ -1060,26 +1120,28 @@ async function printScheduleToPDF() {
                 !!from && !!to && from <= t && t < to;
 
               // 기존 스케줄 병합
-              const mergedSchedule = {
-                ...(sched.current || {}),
-                ...(sched.next?.data || {}),
-              };
+              const baseForGrid = sched.current || {};
 
               // 기본 스케줄에서 해당 시간대 과목 찾기
-              const matchSubject = Object.entries(mergedSchedule).find(
-                ([sub, data]) =>
-                  (data?.slots || []).some(
-                    (s) => s.day === dayIndex && inRange(label, s.from, s.to)
-                  )
-              );
+              const matchSubject = Object.entries(baseForGrid).find(
+  ([sub, data]) =>
+    (data?.slots || []).some(
+      (s: any) =>
+        Number(s.day) === Number(dayIndex) && inRange(label, s.from, s.to)
+    )
+);
 
               // 개별 시간 블록 확인
               const customBlock = timeBlocks.find((b) => {
-                const matchDay =
-                  (Array.isArray(b.days) && b.days.includes(String(dayIndex))) ||
-                  (b.day !== undefined && b.day === String(dayIndex));
-                return matchDay && inRange(label, b.start, b.end);
-              });
+  const days = Array.isArray(b.days)
+    ? b.days
+    : b.day != null
+    ? [String(b.day)]
+    : [];
+
+  const matchDay = days.includes(String(dayIndex));
+  return matchDay && inRange(label, b.start, b.end);
+});
 
               // 우선순위: 개인 블록 > 기본 스케줄
              const subjectName =
@@ -1202,91 +1264,140 @@ async function printScheduleToPDF() {
     📄 PDF로 저장
   </button>
 
-         <button
+      <button
   style={btnD}
   onClick={async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    try {
+      console.log("🔥 저장 버튼 클릭됨", student?.id);
 
-    // 🔹 현재 활성 스케줄 결정
-    const active =
-      sched.next && new Date() >= new Date(sched.next.effectiveDate)
-        ? sched.next.data
-        : sched.current;
+      const hall = (form as any).hall;
+const seatNo = (form as any).seatNo;
 
-    // 🔹 과목별 공백 슬롯 제거
-    Object.keys(active).forEach((subj) => {
-      const data = active[subj as AcademyType];
-      if (data?.slots) {
-        data.slots = data.slots.filter((s) => s.from && s.to);
-      }
-    });
+const maxSeat =
+  hall === "중등관"
+    ? 16
+    : hall === "고등관"
+    ? 43
+    : null;
 
-    // 🔹 내일부터 적용될 스케줄 준비
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
+// 👇👇👇 여기 추가 👇👇👇
+const isMS = String(form.gradeLevel || "").includes("중");
+const isHS = String(form.gradeLevel || "").includes("고");
 
-    const updated = {
-      ...form,                // 🔥 entryDate 포함
-      entryDate: form.entryDate || null,
-      personalSchedule: {
-        current: sched.current, // 오늘까지
-        next: {
-          effectiveDate: tomorrow.toISOString(),
-          data: JSON.parse(JSON.stringify(active)), // 내일부터 적용될 시간표
+const mismatch =
+  (isMS && hall === "고등관") ||
+  (isHS && hall === "중등관");
+
+if (mismatch) {
+  const ok = confirm(
+    `⚠️ 학교급(${form.gradeLevel})과 관(${hall})이 다릅니다.\n` +
+    `실력/특별 배치로 저장할까요?`
+  );
+  if (!ok) return;
+}
+// 👆👆👆 여기까지 👆👆👆
+
+// 기존 좌석 검증
+if (hall && maxSeat) {
+  if (seatNo != null && (seatNo < 1 || seatNo > maxSeat)) {
+    alert(`좌석번호가 올바르지 않습니다. (${hall}는 1~${maxSeat})`);
+    return;
+  }
+}
+
+      // 🔹 현재 활성 스케줄 결정
+      const active =
+        sched.next && new Date() >= new Date(sched.next.effectiveDate)
+          ? sched.next.data
+          : sched.current;
+
+      // ✅ active가 undefined/null이면 방어
+      const safeActive: any = active ?? {};
+
+      // 🔹 과목별 공백 슬롯 제거
+      Object.keys(safeActive).forEach((subj) => {
+        const data = safeActive[subj as AcademyType];
+        if (data?.slots) {
+          data.slots = data.slots.filter((s: any) => s.from && s.to);
+        }
+      });
+
+      // 🔹 내일부터 적용될 스케줄 준비
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+
+      const updated = {
+        ...form,
+
+        hall: (form as any).hall || "",
+        seatNo: (form as any).seatNo ?? null,
+
+        entryDate: (form as any).entryDate || null,
+
+        personalSchedule: {
+          current: sched.current,
+          next: {
+            effectiveDate: tomorrow.toISOString(),
+            data: JSON.parse(JSON.stringify(safeActive)),
+          },
         },
-      },
-      academySubjects: Object.keys(active).filter(
-        (k) => (active[k as AcademyType]?.slots ?? []).length > 0
-      ) as AcademyType[],
-    };
 
-    // 🔥 Firestore 업데이트 (중복 제거 포함)
-    await setDoc(
-      doc(db, "students", student.id),
-      {
-        ...student,              // 기존 학생 정보 유지
-        ...updated,              // entryDate + 기본 정보 병합
+        academySubjects: Object.keys(safeActive).filter(
+          (k) => (safeActive[k as AcademyType]?.slots ?? []).length > 0
+        ) as AcademyType[],
+      };
+ const safeNext = sched.next
+  ? JSON.parse(JSON.stringify(sched.next))
+  : null;
+
+      // 🔥 Firestore 저장 payload (네 로직 유지)
+      const payload = {
+        ...student,
+        ...updated,
+
+        hall: (updated as any).hall || "",
+        seatNo: (updated as any).seatNo ?? null,
 
         personalSchedule: {
           current: {
             ...sched.current,
-            // 🔹 영어 중복 제거
             영어: {
               ...sched.current.영어,
               slots: (sched.current.영어?.slots || []).filter(
-                (slot, index, self) =>
+                (slot: any, index: number, self: any[]) =>
                   index ===
                   self.findIndex(
-                    (s) =>
-                      s.day === slot.day &&
-                      s.from === slot.from &&
-                      s.to === slot.to
+                    (s) => s.day === slot.day && s.from === slot.from && s.to === slot.to
                   )
               ),
             },
           },
-
-          // 🔹 next 일정은 그대로 저장
-          next: sched.next ? JSON.parse(JSON.stringify(sched.next)) : undefined,
-
-          // 🔥 개별 시간은 완전 병합 저장
+         next: safeNext,
           timeBlocks: JSON.parse(JSON.stringify(timeBlocks || [])),
         },
 
-        academySubjects: Object.keys(active).filter(
-          (k) => (active[k as AcademyType]?.slots ?? []).length > 0
+        academySubjects: Object.keys(safeActive).filter(
+          (k) => (safeActive[k as AcademyType]?.slots ?? []).length > 0
         ) as AcademyType[],
-      },
-      { merge: true }
-    );
+      };
 
-    // 로컬 반영
-    const newStudent = { ...student, ...updated };
-    onSave(newStudent);
+      await setDoc(doc(db, "students", student.id), payload, { merge: true });
 
-    alert("✅ 저장 완료! (입학일 포함 모든 정보 Firestore 반영됨)");
+      // ✅ 로컬 반영
+      const newStudent = {
+        ...student,
+        ...updated,
+        hall: (updated as any).hall || "",
+        seatNo: (updated as any).seatNo ?? null,
+      };
+
+      onSave(newStudent);
+      alert("✅ 저장 완료! (입학일 포함 모든 정보 Firestore 반영됨)");
+    } catch (err) {
+      console.error("❌ 저장 실패:", err);
+      alert("❌ 저장 실패! (콘솔 에러 확인)");
+    }
   }}
 >
   저장

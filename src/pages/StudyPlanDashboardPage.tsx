@@ -8,6 +8,7 @@ import {
   setDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import OpsModal from "../components/admin/OpsModal";
 import { db } from "../firebase";
 import type { AssignmentRules, Weekday } from "../services/firestore";
 import { saveAssignmentRules, loadAssignmentRules } from "../services/firestore";
@@ -168,7 +169,7 @@ export default function StudyPlanDashboardPage() {
   const [dateStr, setDateStr] = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
-
+const [opsOpen, setOpsOpen] = useState(false);
   const [records, setRecords] = useState<RecordsForDate>({});
   const [dayPlans, setDayPlans] = useState<Record<string, DayPlan>>({});
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
@@ -1132,7 +1133,7 @@ if (todaySnap.exists()) {
         fontFamily: "Pretendard, -apple-system, BlinkMacSystemFont, system-ui",
       }}
     >
-
+<OpsModal open={opsOpen} onClose={() => setOpsOpen(false)} />
       {/* 상단 헤더 */}
       <div
         style={{
@@ -1158,6 +1159,22 @@ if (todaySnap.exists()) {
             한 화면에서 오늘 모든 학생의 출결 · 순공 · 과제 진행도를 확인하고
             바로 수정할 수 있습니다.
           </div>
+          <button
+  onClick={() => {
+    console.log("운영 버튼 클릭됨");
+    setOpsOpen(true);
+  }}
+  style={{
+    border: "1px solid #ddd",
+    borderRadius: 10,
+    padding: "8px 12px",
+    background: "#fff",
+    cursor: "pointer",
+    fontWeight: 700,
+  }}
+>
+  운영(타임/출결)
+</button>
         </div>
 
         <div
