@@ -826,6 +826,15 @@ body {
   color: #111827;
 }
 
+.date{
+  position: absolute;
+  top: 4.5mm;      /* 상단 라인 아래 */
+  right: 5mm;      /* 카드 오른쪽 여백 맞춤 */
+  font-size: 6pt;
+  color: #9CA3AF;
+  font-weight: 600;
+}
+
 /* ===== 과제 ===== */
 
 .task {
@@ -878,6 +887,20 @@ const schoolClass =
 
   const nameEl = card.querySelector(".print-name") || card.querySelector("div");
   const name = (nameEl?.textContent || "").trim();
+  const dateStr = (card.getAttribute("data-date") || "").toString();
+  let formattedDate = "";
+
+if (dateStr) {
+  const d = new Date(dateStr);
+  const days = ["일","월","화","수","목","금","토"];
+
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const weekday = days[d.getDay()];
+
+  formattedDate = `${y}.${m}.${day} (${weekday})`;
+}
 
   const taskEls = Array.from(card.querySelectorAll(".print-task b"));
 
@@ -906,13 +929,14 @@ const schoolClass =
          </span>`;
 
   // ✅ return 안에서 tagHtml 사용
-  return `<div class="card ${schoolClass}">
-    <div class="head">
-      ${tagHtml}
-      <div class="name">${name}</div>
-    </div>
-    ${taskHtml}
-  </div>`;
+ return `<div class="card ${schoolClass}">
+  <div class="head">
+    ${tagHtml}
+    <div class="name">${name}</div>
+  </div>
+ ${formattedDate ? `<div class="date">${formattedDate}</div>` : ``}
+  ${taskHtml}
+</div>`;
 })
     .join("");
 
@@ -2295,6 +2319,7 @@ return (
   className="print-card"
   data-gradelevel={student.gradeLevel ?? ""}
   data-grade={String(student.grade ?? "")}
+  data-date={assignDate}
   style={{
     border: "1px solid #e5e7eb",
     borderRadius: 10,
