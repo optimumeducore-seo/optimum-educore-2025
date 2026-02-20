@@ -462,46 +462,134 @@ for (const s of hallStudents as any[]) {
 
 const SeatGrid = () => {
   // ✅ 고등(또는 다른 관)은 기존처럼 1~seatCount 뿌리기
-  if (hall !== "ms") {
-    return (
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-          gap: 6,
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 10,
-          background: "#fff",
-          marginBottom: 12,
-        }}
-      >
-        {Array.from({ length: seatCount }).map((_, i) => {
-          const no = i + 1;
-          const s = seatMap[no];
-          const rec = s ? records?.[s.id] || {} : null;
+ if (hall !== "ms") {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+        gap: 6,
+        border: "1px solid #eee",
+        borderRadius: 12,
+        padding: 10,
+        background: "#fff",
+        marginBottom: 12,
+      }}
+    >
+      {Array.from({ length: seatCount }).map((_, i) => {
+        const no = i + 1;
+        const s = seatMap[no];
+        const rec = s ? records?.[s.id] || {} : null;
 
-          // ✅ 여기 아래는 너 원래 카드 코드 그대로 복붙하면 됨
-          // (지금은 최소 형태로 둠)
-          return (
-            <div
-              key={no}
-              style={{
-                borderRadius: 10,
-                padding: 8,
-                minHeight: 56,
-                background: "#fafafa",
-                border: "1px solid #ddd",
-              }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.8 }}>{no}번</div>
-              <div style={{ fontSize: 11, opacity: 0.6, marginTop: 8 }}>{s ? s.name : "비어있음"}</div>
+        const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
+        const outTime = rec?.outTime || rec?.out || "";
+        const segs = Array.isArray(rec?.segments) ? rec.segments : [];
+        const currentSeg = segs.find((x: any) => !x?.end);
+
+        const expectedMin = toMin(expectedHHMM || "");
+        const now = new Date();
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+
+        const isAbsent = rec?.status === "absent";
+        const lateByNoShow = !!s && !inTime && expectedMin != null && nowMin > expectedMin + 15;
+        const lateByCheckin = !!s && !!inTime && isLate15(expectedHHMM || "", inTime);
+        const eduLate = !isAbsent && (lateByNoShow || lateByCheckin);
+
+        const returnLateFlag =
+          !!rec?.returnLate || (typeof rec?.returnLateMin === "number" && rec.returnLateMin > 15);
+
+        const bg =
+          isAbsent ? "#e0f2fe" :
+          returnLateFlag ? "#fff7ed" :
+          eduLate ? "#ffe4e6" :
+          "#fafafa";
+
+        const bd =
+          isAbsent ? "1px solid #60a5fa" :
+          returnLateFlag ? "1px solid #fdba74" :
+          eduLate ? "1px solid #fb7185" :
+          "1px solid #ddd";
+
+        const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
+        const lastAcad = acadArr.at(-1) ?? null;
+        const acadName = lastAcad?.label || lastAcad?.title || lastAcad?.name || "";
+        const acadEnd = lastAcad?.endHHMM || lastAcad?.end || "";
+
+        const late = eduLate;
+
+        return (
+          <div
+            key={no}
+            style={{
+              borderRadius: 10,
+              padding: 8,
+              minHeight: 56,
+              background: bg,
+              border: bd,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.8 }}>{no}번</div>
+
+            <div style={{ fontSize: 11, marginTop: 2 }}>
+              {inTime ? (
+                <span style={{ color: "#2563eb", fontWeight: 600 }}>등원 {inTime}</span>
+              ) : (
+                <span style={{ color: "#9ca3af" }}>미체크인</span>
+              )}
+
+              {outTime && (
+                <span style={{ color: "#16a34a", fontWeight: 600 }}>
+                  {" · "}하원 {outTime}
+                </span>
+              )}
+
+              {late && <span style={{ color: "#ef4444", fontWeight: 700 }}> · 지각</span>}
+
+              {currentSeg && (
+                <div style={{ fontSize: 10, marginTop: 2, color: "#7c3aed", fontWeight: 600 }}>
+                  📚 {currentSeg.type} 진행중
+                </div>
+              )}
             </div>
-          );
-        })}
-      </div>
-    );
-  }
+
+            {s ? (
+              <>
+                <div style={{ fontSize: 12, fontWeight: late ? 900 : 700, marginTop: 2 }}>
+                  {s.name}
+                </div>
+
+                <div style={{ fontSize: 10, opacity: 0.7 }}>
+                  {acadName || "-"}
+                  {acadEnd ? ` · ${acadEnd}` : ""}
+                </div>
+
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <button
+                    style={{ ...btn, padding: "4px 6px", fontSize: 11 }}
+                    onClick={() => setStatus(s.id, "")}
+                    title="지각 해제"
+                  >
+                    해제
+                  </button>
+                  <button
+                    style={{ ...btn, padding: "4px 6px", fontSize: 11 }}
+                    onClick={() => setStatus(s.id, "late")}
+                    disabled={!late && !!inTime}
+                    title="15분 초과면 지각 처리"
+                  >
+                    지각
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 11, opacity: 0.6, marginTop: 8 }}>비어있음</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
   // ✅ ======= 중등(ms) 전용: 9열(door 포함) + 2행 =======
   return (
