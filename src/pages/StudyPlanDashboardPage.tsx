@@ -22,7 +22,10 @@ import type { MainTask } from "../services/firestore";
 type Student = {
   id: string;
   name: string;
-  grade?: string;
+  grade?: string | number;   // 지금 데이터가 "고1" 같은 문자열이라 이게 안전
+  gradeLevel?: string;       // ✅ "중학교" / "고등학교"
+  hidden?: boolean;
+  isPaused?: boolean;
   school?: string;
   removed?: boolean;
 };
@@ -160,6 +163,7 @@ const normalizeTasks = (v: any): TaskItem[] => {
   }));
 };
 
+
 /* -------------------------------------------------- */
 /* 메인 컴포넌트: StudyPlanDashboardPage              */
 /* -------------------------------------------------- */
@@ -209,6 +213,45 @@ const [opsOpen, setOpsOpen] = useState(false);
     d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
   };
+
+
+   const getSchoolGroup = (s: any) => {
+    const gl = (s.gradeLevel ?? "").toString();
+    const g = (s.grade ?? "").toString();
+
+    if (gl.includes("중") || g.includes("중")) return 0;
+    if (gl.includes("고") || g.includes("고")) return 1;
+    return 9;
+  };
+
+  const getGradeNumber = (s: any) => {
+    const raw = `${s.grade ?? ""}`;
+    const num = parseInt(raw.replace(/[^0-9]/g, ""), 10);
+    return Number.isFinite(num) ? num : 99;
+  };
+
+const sortedStudents = useMemo(() => {
+  const visible = students.filter((s: any) => !s.hidden && !s.isPaused && !s.removed);
+
+  return visible.slice().sort((a: any, b: any) => {
+    // 1) 중등 -> 고등
+    const ga = getSchoolGroup(a);
+    const gb = getSchoolGroup(b);
+    if (ga !== gb) return ga - gb;
+
+    // 2) 학년 오름차순
+    const na = getGradeNumber(a);
+    const nb = getGradeNumber(b);
+    if (na !== nb) return na - nb;
+
+    // 3) 이름순
+    return (a.name ?? "").localeCompare(b.name ?? "", "ko");
+  });
+}, [students]);
+
+  
+const middle = sortedStudents.filter((s: any) => getSchoolGroup(s) === 0);
+const high = sortedStudents.filter((s: any) => getSchoolGroup(s) === 1);
 
   // 학생 체크 토글
   const toggleStudent = (id: string) => {
@@ -383,13 +426,20 @@ const [opsOpen, setOpsOpen] = useState(false);
   useEffect(() => {
     const loadStudents = async () => {
       const snap = await getDocs(collection(db, "students"));
-      const list: StudentLite[] = snap.docs.map((d) => ({
-        id: d.id,
-        name: (d.data() as any).name || "이름 없음",
-        grade: (d.data() as any).grade,
-      }));
-
-      setStudents(list);
+    const list = snap.docs.map((d) => {
+  const data = d.data() as any;
+  return {
+    id: d.id,
+    name: data.name || "이름 없음",
+    grade: data.grade,
+    gradeLevel: data.gradeLevel, // ✅ 추가
+    school: data.school,
+    hidden: !!data.hidden,
+    isPaused: !!data.isPaused,
+    removed: !!data.removed,
+  };
+});
+setStudents(list);
 
       // 첫 학생 자동 선택
       if (list.length > 0) {
@@ -679,93 +729,191 @@ const handlePrint = () => {
   const cardHeight = printMode === 8 ? "130mm" : "88mm";
 
   const style = `
-  <style>
-    @page { size: A4 portrait; margin: 8mm; }
-    body { margin: 0; font-family: 'Malgun Gothic', sans-serif; }
+ <style>
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
 
-    /* ✅ 4열 고정 */
-    .sheet {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6mm;
-    }
+@page { size: A4 portrait; margin: 8mm; }
 
-    /* ✅ 카드 크기 통일 */
-    .card {
-      border: 1px solid #bbb;
-      border-radius: 6px;
-      padding: 5mm;
-      height: ${cardHeight};
-      box-sizing: border-box;
-      overflow: hidden;
-      page-break-inside: avoid;
-      background: #fff;
-    }
+body {
+  margin: 0;
+  font-family: 'Malgun Gothic', sans-serif;
+  background: #fff;
+}
 
-    .name {
-      font-weight: 800;
-      font-size: 12pt;
-      margin-bottom: 3mm;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+/* ✅ 4열 고정 */
+.sheet {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6mm;
+}
 
-    .task {
-      font-size: 9pt;
-      line-height: 1.2;
-      margin: 1.2mm 0;
-      border: none !important;
-      background: transparent !important;
-      padding: 0 !important;
-    }
+/* ✅ 카드 공통 */
+.card {
+  border: 1px solid #1E3A8A;
+  border-radius: 6px;
+  padding: 5mm;
+  height: ${cardHeight};
+  box-sizing: border-box;
+  overflow: hidden;
+  page-break-inside: avoid;
+  background: #fff;
+  position: relative;
+}
 
-    /* ✅ 이월 강조 */
-    .task.carried { font-weight: 800; }
-    .badge {
-      display: inline-block;
-      font-size: 8pt;
-      padding: 0.2mm 1.5mm;
-      margin-right: 2mm;
-      border: 1px solid #d97706;
-      border-radius: 999px;
-    }
+/* 🔵 중학생 = 블루 상단라인 */
+.card.middle::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  height: 3.5mm;
+  width: 100%;
+  background: #e4c66e;
+}
 
-    /* 체크박스/버튼 숨김 */
-    input, button { display:none !important; }
-  </style>
-  `;
+/* 🔷 고등학생 = 네이비 상단라인 */
+.card.high::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  height: 3.5mm;
+  width: 100%;
+  background: #1E3A8A;
+}
+
+/* ===== 카드 헤더 (중등/고등 + 이름) ===== */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3mm 0 3mm 0;
+}
+
+/* 중등/고등 배지 */
+.tag {
+  font-size: 8pt;
+  font-weight: 900;
+  padding: 0.6mm 2mm;
+  border-radius: 999px;
+  border: 1px solid #E5E7EB;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.tag.middle {
+  border-color: #f4d317;
+  color: #312f27;
+}
+
+.tag.high {
+  border-color: #1E3A8A;
+  color: #1E3A8A;
+}
+
+/* 학생 이름 */
+.name {
+  margin: 0;
+  font-weight: 800;
+  font-size: 12pt;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #111827;
+}
+
+/* ===== 과제 ===== */
+
+.task {
+  font-size: 7pt;
+  line-height: 1.2;
+  margin: 1.2mm 0;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  color: #111827;
+}
+
+/* 이월 강조 */
+.task.carried {
+  font-weight: 800;
+  color: #B91C1C;
+}
+
+/* 이월 배지 */
+.badge {
+  display: inline-block;
+  font-size: 7pt;
+  padding: 0.2mm 1.5mm;
+  margin-right: 2mm;
+  border: 1px solid #C00000;
+  color: #C00000;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+/* 체크박스/버튼 숨김 */
+input, button {
+  display: none !important;
+}
+</style>
+`;
 
   // ✅ print-card들을 가벼운 HTML로 변환
   const htmlCards = cards
-    .map((card) => {
-      const nameEl = card.querySelector(".print-name") || card.querySelector("div");
-      const name = (nameEl?.textContent || "").trim();
+  .map((card) => {
 
-      // ✅ b 태그(과제 제목) + data-carried="1" 여부 읽기
-      const taskEls = Array.from(card.querySelectorAll(".print-task b"));
+ const gradeLevel = (card.getAttribute("data-gradelevel") || "").toString();
+const grade = (card.getAttribute("data-grade") || "").toString();
+const raw = `${gradeLevel} ${grade}`;
 
-      const tasks = taskEls
-        .map((b) => {
-          const text = (b.textContent || "").trim();
-          const carried = b.getAttribute("data-carried") === "1";
-          return { text, carried };
-        })
-        .filter((t) => !!t.text);
+const schoolClass =
+  raw.includes("중") ? "middle" :
+  raw.includes("고") ? "high" :
+  "etc";
 
-      const taskHtml = tasks
-        .map(({ text, carried }) => {
-          const badge = carried ? `<span class="badge">이월</span>` : "";
-          const cls = carried ? "task carried" : "task";
-          return `<div class="${cls}">• ${badge}${text}</div>`;
-        })
-        .join("");
+  const nameEl = card.querySelector(".print-name") || card.querySelector("div");
+  const name = (nameEl?.textContent || "").trim();
 
-      return `<div class="card">
-        <div class="name">${name}</div>
-        ${taskHtml}
-      </div>`;
+  const taskEls = Array.from(card.querySelectorAll(".print-task b"));
+
+  const tasks = taskEls
+    .map((b) => {
+      const text = (b.textContent || "").trim();
+      const carried = b.getAttribute("data-carried") === "1";
+      return { text, carried };
     })
+    .filter((t) => !!t.text);
+
+  const taskHtml = tasks
+    .map(({ text, carried }) => {
+      const badge = carried ? `<span class="badge">이월</span>` : "";
+      const cls = carried ? "task carried" : "task";
+      return `<div class="${cls}">• ${badge}${text}</div>`;
+    })
+    .join("");
+
+  // ✅ ✅ 여기 추가
+  const tagHtml =
+    schoolClass === "etc"
+      ? ""
+      : `<span class="tag ${schoolClass}">
+           ${schoolClass === "middle" ? "중등" : "고등"}
+         </span>`;
+
+  // ✅ return 안에서 tagHtml 사용
+  return `<div class="card ${schoolClass}">
+    <div class="head">
+      ${tagHtml}
+      <div class="name">${name}</div>
+    </div>
+    ${taskHtml}
+  </div>`;
+})
     .join("");
 
   const win = window.open("", "_blank", "width=900,height=700");
@@ -787,7 +935,7 @@ const handlePrint = () => {
   /* ---------------- 요약 테이블 계산 ---------------- */
 
   const summaryRows = useMemo(() => {
-    return students.map((s) => {
+    return sortedStudents.map((s) => {
       const rec = records[s.id] || {};
       const netMin = calcNetStudyMin(rec);
 
@@ -1248,67 +1396,87 @@ if (todaySnap.exists()) {
               paddingRight: 4,
             }}
           >
-            {students.map((s) => {
-              const active = s.id === selectedStudentId;
-              const rec = records[s.id] || {};
-              const net = calcNetStudyMin(rec);
+          <>
+  {/* 중학생 */}
+  <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+    🎓 중학생
+  </div>
 
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedStudentId(s.id)}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: active
-                      ? "1px solid #1E3A8A"
-                      : "1px solid transparent",
-                    background: active ? "#EEF2FF" : "#F9FAFB",
-                    marginBottom: 6,
-                    cursor: "pointer",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: 2,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 13,
-                        color: "#111827",
-                      }}
-                    >
-                      {s.name}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        color: "#6B7280",
-                      }}
-                    >
-                      {s.school} {s.grade}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "#6B7280" }}>
-                    순공:{" "}
-                    <b style={{ color: "#16A34A" }}>{minToHM(net)}</b>
-                    {rec.time && (
-                      <>
-                        {" · "}등원 {rec.time}
-                        {rec.outTime && ` / 하원 ${rec.outTime}`}
-                      </>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+  {middle.map((s) => {
+    const active = s.id === selectedStudentId;
+    const rec = records[s.id] || {};
+    const net = calcNetStudyMin(rec);
+
+    return (
+      <button
+        key={s.id}
+        onClick={() => setSelectedStudentId(s.id)}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          padding: "8px 10px",
+          borderRadius: 10,
+          border: active
+            ? "1px solid #1E3A8A"
+            : "1px solid transparent",
+          background: active ? "#EEF2FF" : "#F9FAFB",
+          marginBottom: 6,
+          cursor: "pointer",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 700 }}>{s.name}</span>
+          <span style={{ fontSize: 11, color: "#6B7280" }}>
+            {s.school} {s.grade}
+          </span>
+        </div>
+        <div style={{ fontSize: 11, color: "#6B7280" }}>
+          순공: <b style={{ color: "#16A34A" }}>{minToHM(net)}</b>
+        </div>
+      </button>
+    );
+  })}
+
+  {/* 고등학생 */}
+  <div style={{ fontSize: 12, fontWeight: 800, margin: "12px 0 6px" }}>
+    🎓 고등학생
+  </div>
+
+  {high.map((s) => {
+    const active = s.id === selectedStudentId;
+    const rec = records[s.id] || {};
+    const net = calcNetStudyMin(rec);
+
+    return (
+      <button
+        key={s.id}
+        onClick={() => setSelectedStudentId(s.id)}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          padding: "8px 10px",
+          borderRadius: 10,
+          border: active
+            ? "1px solid #1E3A8A"
+            : "1px solid transparent",
+          background: active ? "#EEF2FF" : "#F9FAFB",
+          marginBottom: 6,
+          cursor: "pointer",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <span style={{ fontWeight: 700 }}>{s.name}</span>
+          <span style={{ fontSize: 11, color: "#6B7280" }}>
+            {s.school} {s.grade}
+          </span>
+        </div>
+        <div style={{ fontSize: 11, color: "#6B7280" }}>
+          순공: <b style={{ color: "#16A34A" }}>{minToHM(net)}</b>
+        </div>
+      </button>
+    );
+  })}
+</>
           </div>
         </div>
 
@@ -2109,21 +2277,31 @@ if (todaySnap.exists()) {
               marginTop: 16,
             }}
           >
-            {Object.entries(taskByStudent).map(([sid, tasks]) => {
-              const student = students.find((s) => s.id === sid);
-              if (!student) return null;
+          {sortedStudents.map((student) => {
+  const sid = student.id;
+  const tasks = taskByStudent[sid] || [];
+  if (!tasks.length) return null;
 
-              return (
-                <div
-                  key={sid}
-                    className="print-card" 
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 10,
-                    padding: 12,
-                    background: "#fff",
-                  }}
-                >
+              const level =
+  (student.gradeLevel ?? "").toString().includes("중") || String(student.grade ?? "").includes("중")
+    ? "middle"
+    : (student.gradeLevel ?? "").toString().includes("고") || String(student.grade ?? "").includes("고")
+    ? "high"
+    : "etc";
+
+return (
+ <div
+  key={sid}
+  className="print-card"
+  data-gradelevel={student.gradeLevel ?? ""}
+  data-grade={String(student.grade ?? "")}
+  style={{
+    border: "1px solid #e5e7eb",
+    borderRadius: 10,
+    padding: 12,
+    background: "#fff",
+  }}
+>
                   <div
   className="print-name"   // ✅ (선택)
   style={{ fontWeight: 700, marginBottom: 8, fontSize: 14 }}
