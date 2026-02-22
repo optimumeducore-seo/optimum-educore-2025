@@ -50,27 +50,33 @@ const toDayKey = (d: any): DayKey => {
 };
 
 // ✅ named export 유지
+// ✅ named export 유지
 export function convertPersonalScheduleToBlocks(personalSchedule: any): ScheduleBlock[] {
   const cur = personalSchedule?.current ?? personalSchedule?.data ?? personalSchedule;
   if (!cur) return [];
 
   const blocks: ScheduleBlock[] = [];
 
-  Object.values(cur).forEach((subject: any) => {
+  // ✅ 과목명(key)까지 같이 받기
+  Object.entries(cur).forEach(([subjectName, subject]: any) => {
     if (!subject?.slots) return;
 
     subject.slots.forEach((slot: any) => {
       if (!slot?.from || !slot?.to) return;
 
-      // 디버그(필요할 때만 잠깐 켜)
-      // console.log("slot.day raw =", slot.day, "=>", toDayKey(slot.day));
+      const name = String(subjectName || "").trim(); // "국어" "수학" ...
+      console.log("slot.day raw =", slot.day, "=>", toDayKey(slot.day), "subject=", name);
 
       blocks.push({
         day: toDayKey(slot.day),
         start: String(slot.from),
         end: String(slot.to),
         type: "ACADEMY",
-      });
+
+        // ✅ 과목을 표시하려면 이 2개가 핵심
+        subject: name as any,   // ScheduleBlock 타입에 없으면 as any로 우선
+        label: name as any,     // OpsModal이 label/title/name을 읽으니 label이 제일 편함
+      } as any);
     });
   });
 

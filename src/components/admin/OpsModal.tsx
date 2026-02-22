@@ -1,5 +1,5 @@
 // src/components/admin/OpsModal.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react"; 
 import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore"; 
 import { db } from "../../firebase";
 
@@ -38,12 +38,41 @@ const pillSub: React.CSSProperties = {
   background: "#ffffff",
 };
 
+const CabinetIcon = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <rect x="6" y="4" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
+    <circle cx="15.5" cy="12" r="1" fill="currentColor" />
+    <path d="M12 4v16" stroke="currentColor" strokeWidth="1.5" opacity="0.5" />
+  </svg>
+);
+
 export default function OpsModal({ open, onClose }: Props) {
   const [tab, setTab] = useState<"timetable" | "attendance">("timetable");
   const [students, setStudents] = useState<StudentLite[]>([]);
   const [records, setRecords] = useState<Record<string, any>>({});
   const [hall, setHall] = useState<"ms" | "hs">("ms");
   const [vacationMode, setVacationMode] = useState(true);
+  const [filterType, setFilterType] = useState<"none" | "noShow" | "noReturn">("none");
+  // "HH:MM" -> minutes
+const toMin = (hhmm?: string) => {
+  if (!hhmm || typeof hhmm !== "string") return null;
+  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(mm)) return null;
+  return h * 60 + mm;
+};
+
+const isLate15 = (expectedHHMM?: string, actualHHMM?: string) => {
+  const e = toMin(expectedHHMM);
+  const a = toMin(actualHHMM);
+  if (e == null || a == null) return false;
+  return a - e > 15;
+};
+
+ // ✅ 상단 뱃지용: 미등원/미복귀 리스트 (중/고 합쳐서)
+
 
  useEffect(() => {
   if (!open) return;
@@ -96,11 +125,13 @@ export default function OpsModal({ open, onClose }: Props) {
     );
   });
 
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
-  const dateStr = `${yyyy}-${mm}-${dd}`;
+const now = new Date();            // ✅ Date 객체
+const isSunday = now.getDay() === 0;
+
+const yyyy = now.getFullYear();
+const mm = String(now.getMonth() + 1).padStart(2, "0");
+const dd = String(now.getDate()).padStart(2, "0");
+const dateStr = `${yyyy}-${mm}-${dd}`;
 
   const unsubRecords = onSnapshot(doc(db, "records", dateStr), (snap: any) => {
     if (!snap.exists()) {
@@ -116,14 +147,15 @@ export default function OpsModal({ open, onClose }: Props) {
   };
 }, [open, vacationMode]);
 
-  useEffect(() => {
+useEffect(() => {
   const interval = setInterval(() => {
+    // ✅ 일요일엔 지각 자동체크(저장) 자체를 안함
+    if (new Date().getDay() === 0) return;
+
     students.forEach(async (s) => {
       const rec = records?.[s.id] || {};
-    const actual =
-  rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
-
-      if (actual) return; // 이미 체크인했으면 skip
+      const actual = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
+      if (actual) return;
 
       const expected = getLastAcademyEnd(s);
       const expectedMin = toMin(expected || "");
@@ -132,32 +164,16 @@ export default function OpsModal({ open, onClose }: Props) {
       const now = new Date();
       const nowMin = now.getHours() * 60 + now.getMinutes();
 
-    if (!actual && nowMin - expectedMin > 15 && rec?.status !== "late") {
-  await setStatus(s.id, "late");
-}
+      if (!actual && nowMin - expectedMin > 15 && rec?.status !== "late") {
+        await setStatus(s.id, "late");
+      }
     });
-  }, 60000); // 1분마다 검사
+  }, 60000);
 
   return () => clearInterval(interval);
 }, [students, records]);
 
-// "HH:MM" -> minutes
-const toMin = (hhmm?: string) => {
-  if (!hhmm || typeof hhmm !== "string") return null;
-  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const mm = Number(m[2]);
-  if (!Number.isFinite(h) || !Number.isFinite(mm)) return null;
-  return h * 60 + mm;
-};
 
-const isLate15 = (expectedHHMM?: string, actualHHMM?: string) => {
-  const e = toMin(expectedHHMM);
-  const a = toMin(actualHHMM);
-  if (e == null || a == null) return false;
-  return a - e > 15;
-};
 const getLastAcademyEnd = (s: any): string | null => {
   const arr = Array.isArray(s.blocks) ? s.blocks : [];
   if (!arr.length) return null;
@@ -227,8 +243,135 @@ const setStatus = async (studentId: string, status: "late" | "ok" | "absent" | "
     [`${studentId}.status`]: status,
   });
 };
+// ✅ 요일키 (sun~sat)
+const dowKey = () => {
+  const d = new Date().getDay();
+  return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][d];
+};
 
+// ✅ 오늘 요일에 해당하는 학원 블록만
+const pickTodayAcademyBlocks = (acadArr: any[]) => {
+ const todayKey = dowKey();
+return (acadArr || []).filter((b) => String(b?.day || "").toLowerCase() === todayKey);
+};
+
+// ✅ 블록 중 현재 진행중(현재 시간이 start~end 사이)
+const pickCurrentBlock = (blocks: any[]) => {
+  const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+
+  const toMin2 = (t?: string) => {
+    const m = String(t || "").match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]);
+  };
+
+  return (
+    (blocks || []).find((b) => {
+      const s = toMin2(b?.start || b?.startHHMM);
+      const e = toMin2(b?.end || b?.endHHMM);
+      if (s == null || e == null) return false;
+      return nowMin >= s && nowMin <= e;
+    }) || null
+  );
+};
+
+// ✅ 오늘 마지막 학원(없으면 null)
+const pickLastBlock = (blocks: any[]) => (blocks?.length ? blocks[blocks.length - 1] : null);
+
+// ✅ records.segments 에서 “끝나지 않은” 마지막 세그먼트 찾기
+const pickCurrentSeg = (rec: any) => {
+  const segArr = Array.isArray(rec?.segments) ? rec.segments : [];
+  return [...segArr]
+    .reverse()
+    .find((x) => !x?.endAt && !x?.endedAt && !x?.endTime && !x?.end) || null;
+};
+// ✅ 마지막으로 "끝난" 세그먼트 가져오기 (없으면 null)
+const pickLastEndedSeg = (rec: any) => {
+  const segArr = Array.isArray(rec?.segments) ? rec.segments : [];
+  const ended = segArr
+    .filter((x: any) => x?.endAt || x?.endedAt || x?.endTime || x?.end)
+    .sort((a: any, b: any) => {
+      const ta = new Date(a.endAt || a.endedAt || a.endTime || a.end).getTime();
+      const tb = new Date(b.endAt || b.endedAt || b.endTime || b.end).getTime();
+      return tb - ta;
+    });
+  return ended[0] || null;
+};
+
+const isAcademySeg = (seg: any) => {
+  const label = String(seg?.label || seg?.title || seg?.subject || seg?.type || "").toLowerCase();
+  return label.includes("academy") || label.includes("학원");
+};
+
+const minutesSinceSegEnd = (seg: any) => {
+  const end = seg?.endAt || seg?.endedAt || seg?.endTime || seg?.end;
+  if (!end) return null;
+  const tEnd = new Date(end).getTime();
+  if (!Number.isFinite(tEnd)) return null;
+  const diffMin = Math.floor((Date.now() - tEnd) / 60000);
+  return diffMin;
+};
+
+const { noShowList, noReturnList } = useMemo(() => {
+  const isSunday = new Date().getDay() === 0;
+
+  const expectedHHMM = vacationMode ? "13:00" : "15:30";
+  const expectedMin = toMin(expectedHHMM || "");
+
+  const calcNoShow = () => {
+    if (isSunday) return [];
+    if (expectedMin == null) return [];
+
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    return students.filter((s: any) => {
+      const rec = records?.[s.id] || {};
+      const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
+      const isAbsent = rec?.status === "absent";
+      return !isAbsent && !inTime && nowMin > expectedMin + 15;
+    });
+  };
+
+  const calcNoReturn = () => {
+    return students.filter((s: any) => {
+      const rec = records?.[s.id] || {};
+      const currentSeg = pickCurrentSeg(rec);
+      const lastEnded = pickLastEndedSeg(rec);
+
+      const endedAcademy = lastEnded && isAcademySeg(lastEnded);
+      const afterAcademyMin = endedAcademy ? minutesSinceSegEnd(lastEnded) : null;
+
+      const returnLate15 =
+        endedAcademy && !currentSeg && afterAcademyMin != null && afterAcademyMin > 15;
+
+      return (
+        returnLate15 ||
+        !!rec?.returnLate ||
+        (typeof rec?.returnLateMin === "number" && rec.returnLateMin > 15)
+      );
+    });
+  };
+
+  return {
+    noShowList: calcNoShow(),
+    noReturnList: calcNoReturn(),
+  };
+}, [students, records, vacationMode]);
+
+const segLabelOf = (seg: any) =>
+  String(seg?.label || seg?.title || seg?.subject || seg?.type || "").trim();
   if (!open) return null;
+
+  const scrollToStudent = (studentId: string) => {
+  const el = document.getElementById(`seat-${studentId}`);
+  if (el) {
+    el.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  }
+};
 
   const blocksTotal = students.reduce((a, s) => a + (s.blocks?.length || 0), 0);
 
@@ -356,32 +499,163 @@ return (
     ...(hall === "hs" ? pastelPinkOn : pastelPink),
   }}
 >
-  고등관(43)
+  고등관(47)
 </button>
             </>
           )}
         </div>
 
-        {/* 오른쪽: 공통 버튼 */}
-        <div style={{ display: "flex", gap: 8 }}>
-         <button
-  onClick={() => setVacationMode((v) => !v)}
-  style={{
-    ...pastelBase,
-    ...pastelGold,
-  }}
->
-  {vacationMode ? "방학 모드 ON" : "방학 모드 OFF"}
-</button>
+       {/* 오른쪽: 공통 버튼 */}
+<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
 
-          <button style={btn} onClick={() => window.print()}>
-            프린트
-          </button>
+  {/* 방학모드 */}
+  <button
+    onClick={() => setVacationMode((v) => !v)}
+    style={{
+      ...pastelBase,
+      ...pastelGold,
+    }}
+  >
+    {vacationMode ? "방학 모드 ON" : "방학 모드 OFF"}
+  </button>
 
-          <button style={btn} onClick={onClose}>
-            닫기
-          </button>
+  {/* 출결 탭일 때만 */}
+{/* 출결 탭일 때만 */}
+{tab === "attendance" && (
+  <>
+    {/* 미등원 + 팝업 */}
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setFilterType(filterType === "noShow" ? "none" : "noShow")}
+        style={{
+          ...pastelBase,
+          background: filterType === "noShow" ? "#fee2e2" : "#f1f5f9",
+        }}
+      >
+        미등원 {noShowList.length}
+      </button>
+
+      {filterType === "noShow" && (
+        <div
+          style={{
+            position: "absolute",
+            top: 46,
+            right: 0,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            padding: 10,
+            minWidth: 180,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+            zIndex: 999,
+          }}
+        >
+          {noShowList.length === 0 ? (
+            <div style={{ fontSize: 12, opacity: 0.6 }}>없음</div>
+          ) : (
+            noShowList.map((s) => (
+              <div
+                key={s.id}
+                onClick={() => {
+                  scrollToStudent(s.id);
+                  setFilterType("none"); // ✅ 클릭하면 닫히게(원하면 빼)
+                }}
+                style={{
+                  padding: "6px 8px",
+                  cursor: "pointer",
+                  borderRadius: 8,
+                  fontSize: 13,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                {s.name}
+              </div>
+            ))
+          )}
         </div>
+      )}
+    </div>
+
+    {/* 미복귀 + 팝업 */}
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setFilterType(filterType === "noReturn" ? "none" : "noReturn")}
+        style={{
+          ...pastelBase,
+          background: filterType === "noReturn" ? "#fef3c7" : "#f1f5f9",
+        }}
+      >
+        미복귀 {noReturnList.length}
+      </button>
+
+      {filterType === "noReturn" && (
+        <div
+          style={{
+            position: "absolute",
+            top: 46,
+            right: 0,
+            background: "#fff",
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            padding: 10,
+            minWidth: 180,
+            boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+            zIndex: 999,
+          }}
+        >
+          {noReturnList.length === 0 ? (
+            <div style={{ fontSize: 12, opacity: 0.6 }}>없음</div>
+          ) : (
+            noReturnList.map((s) => (
+              <div
+                key={s.id}
+                onClick={() => {
+                  scrollToStudent(s.id);
+                  setFilterType("none"); // ✅ 클릭하면 닫히게(원하면 빼)
+                }}
+                style={{
+                  padding: "6px 8px",
+                  cursor: "pointer",
+                  borderRadius: 8,
+                  fontSize: 13,
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#f3f4f6")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              >
+                {s.name}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  </>
+)}
+
+  {/* 프린트 */}
+  <button
+    onClick={() => window.print()}
+    style={{
+      ...pastelBase,
+      background: "#ffffff",
+    }}
+  >
+    프린트
+  </button>
+
+  {/* 닫기 */}
+  <button
+    onClick={onClose}
+    style={{
+      ...pastelBase,
+      background: "#ffffff",
+    }}
+  >
+    닫기
+  </button>
+
+</div>
       </div>
 
       {/* ✅ 내용 */}
@@ -391,7 +665,7 @@ return (
         </div>
 
           {tab === "timetable" ? (
-            // ✅ 프린트는 이 영역만 찍힘
+          
             <div id="ops-print-area">
               <TimeTable
                 students={students}
@@ -402,7 +676,7 @@ return (
               />
             </div>
          ) : (
-  <div style={{ padding: 12 }}>
+  <div style={{ padding: 12, width: "100%" }}>
 
     {/* 좌석 수 선택(현재 16 → 다음달 43 → 그다음 59) */}
    
@@ -443,7 +717,7 @@ const ms = students.filter((s: any) => guessHall(s) === "중등관");
 const hs = students.filter((s: any) => guessHall(s) === "고등관");
 
 const hallStudents = hall === "ms" ? ms : hs;
-  const seatCount = hall === "ms" ? 16 : 43;
+  const seatCount = hall === "ms" ? 16 : 47;
 
 const expectedHHMM = vacationMode ? "13:00" : "15:30";
 
@@ -452,6 +726,19 @@ const seatLayout16Rows: (number | "door")[][] = [
   [16, 15, 14, 13, "door", 12, 11, 10, 9],
   [8, 7, 6, 5, "door", 4, 3, 2, 1],
 ];
+type Cell = number | "aisle" | "pillar" | "door" | "blank"; 
+
+const hsLayoutRows: Cell[][] = [
+  [-1,1,2,3,4,5,6,7],
+  ["aisle"],
+  [8,9,10,11,12,13,14,15],
+  [16,17,18,19,20,21,22,23],
+  ["aisle"],
+  [24,25,26,27,28,29,30,31],
+  [32,33,34,35,36,37,38,39],
+  ["aisle"],
+  [40,41,42,43,44,45,46,47],
+];
 
 // seat -> student 매핑
 const seatMap: Record<number, any> = {};
@@ -459,152 +746,432 @@ for (const s of hallStudents as any[]) {
   const seatNo = typeof (s as any).seatNo === "number" ? (s as any).seatNo : null;
   if (typeof seatNo === "number") seatMap[seatNo] = s;
 }
-
+const isCabinetSeat = (no: number) => no >= 32; // ✅ 32~47
 const SeatGrid = () => {
   // ✅ 고등(또는 다른 관)은 기존처럼 1~seatCount 뿌리기
- if (hall !== "ms") {
+// ✅ 고등관(47) 도면형 렌더
+if (hall === "hs") {
+  const COLS = 8;     // 7개 줄 + 빈칸 1개
+  const CARD_W = 155; // 필요하면 더 줄여
+  const CARD_H = 120;
+  const GAP = 8;
+
+  // ✅ 32~47 구분(문달린 1인용 책장)
+  const isLockerSeat = (no: number) => no >= 32;
+
+const renderSeatCard = (no: number) => {
+  const s = seatMap[no];
+  const rec = s ? (records?.[s.id] || {}) : null;
+
+  // ===== 세그먼트 기반(복귀 15분) =====
+  const currentSeg = pickCurrentSeg(rec);
+  const lastEnded = pickLastEndedSeg(rec);
+
+  const endedAcademy = lastEnded && isAcademySeg(lastEnded);
+  const afterAcademyMin = endedAcademy ? minutesSinceSegEnd(lastEnded) : null;
+
+  const returnLate15 =
+    !!s &&
+    endedAcademy &&
+    !currentSeg &&
+    afterAcademyMin != null &&
+    afterAcademyMin > 15;
+
+  const segLabel = segLabelOf(currentSeg);
+
+  // ===== 출결/지각(일요일 제외) =====
+  const isSunday = new Date().getDay() === 0;
+
+  const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
+  const outTime = rec?.outTime || rec?.out || "";
+
+  const isAbsent = rec?.status === "absent";
+
+  const expectedMin = toMin(expectedHHMM || "");
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  const lateByNoShow =
+    !!s && !inTime && expectedMin != null && nowMin > expectedMin + 15;
+
+  const lateByCheckin =
+    !!s && !!inTime && isLate15(expectedHHMM || "", inTime);
+
+  const eduLate = !isAbsent && (lateByNoShow || lateByCheckin);
+  const showLate = !isSunday && eduLate; // ✅ 화면/색상에 쓰는 최종 지각
+
+  // ===== 기타 플래그 =====
+  const locker = isLockerSeat(no);
+
+  const returnLateFlag =
+    returnLate15 ||
+    !!rec?.returnLate ||
+    (typeof rec?.returnLateMin === "number" && rec.returnLateMin > 15);
+const cabinet = isCabinetSeat(no);
+  // ===== 색상(지각은 showLate 기준!) =====
+ const bg =
+  isAbsent ? "#dbeafe" :
+  returnLateFlag ? "#fef3c7" :
+  showLate ? "#fee2e2" :
+  cabinet ? "#eddec0" :   // ✅ 1인책장 연두
+  "#f8fafc";
+
+const bd =
+  isAbsent ? "2px solid #2563eb" :
+  returnLateFlag ? "2px solid #f59e0b" :
+  showLate ? "2px solid #dc2626" :
+  cabinet ? "2px solid #84cc16" :  // ✅ 1인책장 테두리 강조
+  "1px solid #e2e8f0";
+
+  // ===== 1인책장(extraStyle) =====
+  
+  const extraStyle: React.CSSProperties = cabinet
+    ? {
+        border: "2px solid #d89b17",
+        boxShadow: "inset 0 0 0 1px rgba(216, 231, 109, 0.15)",
+        background: bg,
+      }
+    : {};
+
+  // ===== 오늘 학원 블록 =====
+  const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
+  const todayBlocks = pickTodayAcademyBlocks(acadArr);
+
+  const currentAcad = pickCurrentBlock(todayBlocks);
+  const lastTodayAcad = pickLastBlock(todayBlocks);
+
+  const acadName =
+    currentAcad?.label ||
+    currentAcad?.title ||
+    currentAcad?.name ||
+    currentAcad?.subject ||
+    "학원";
+
+  const acadStart =
+    currentAcad?.start || currentAcad?.startHHMM ||
+    lastTodayAcad?.start || lastTodayAcad?.startHHMM || "";
+
+  const acadEnd =
+    currentAcad?.end || currentAcad?.endHHMM ||
+    lastTodayAcad?.end || lastTodayAcad?.endHHMM || "";
+
+   return (
+  <div
+  
+  key={no}
+  id={s ? `seat-${s.id}` : undefined}
+    style={{
+      borderRadius: 12,
+      padding: 8,
+      height: CARD_H,
+      background: bg,
+      border: bd,
+      overflow: "hidden",
+      position: "relative",
+      
+      ...extraStyle,
+    }}
+  >
+    {returnLateFlag && (
+  <div
+    style={{
+      position: "absolute",
+      top: 6,
+      left: 8,
+      background: "#f59e0b",
+      color: "#fff",
+      fontSize: 10,
+      fontWeight: 900,
+      padding: "2px 6px",
+      borderRadius: 8,
+    }}
+  >
+    15분 복귀X
+  </div>
+)}
+    {/* 우상단: 1인책장/자물쇠 */}
+   
+{/* 1줄: 번호 + 상태 */}
+<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+  <div style={{ fontSize: 13, fontWeight: 900, opacity: 0.85 }}>
+   {no}번
+{isCabinetSeat(no) && " · 1인책장🔒"}
+  </div>
+
+  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    {isSunday && (
+      <div style={{ fontSize: 12, fontWeight: 800, color: "#9d2182", opacity: 0.75 }}>
+        자율
+      </div>
+    )}
+
+    {showLate && (
+      <div style={{ fontSize: 12, fontWeight: 900, color: "#ef4444" }}>
+        지각
+      </div>
+    )}
+  </div>
+</div>
+
+    {s ? (
+      <>
+        {/* 2줄: 이름 */}
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 900,
+            marginTop: 4,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {s.name}
+        </div>
+
+        {/* 3줄: 등/하원 */}
+        <div style={{ fontSize: 11, marginTop: 4 }}>
+  {inTime ? (
+    <span style={{ color: "#2563eb", fontWeight: 700 }}>등원 {inTime}</span>
+  ) : (
+    <span style={{ color: "#9ca3af" }}>미체크인</span>
+  )}
+
+  {outTime && (
+    <span style={{ color: "#16a34a", fontWeight: 700 }}>
+      {" · "}하원 {outTime}
+    </span>
+  )}
+
+  {showLate && (
+  <span style={{ color: "#ef4444", fontWeight: 800 }}>
+    {" · "}지각
+  </span>
+)}
+</div>
+{currentSeg && (
+  <div
+    style={{
+      fontSize: 11,
+      fontWeight: 900,
+      marginTop: 4,
+      color: "#7c3aed",
+    }}
+  >
+    ▶ {segLabel || "진행중"}
+  </div>
+)}
+        {/* 4줄: 마지막 학원 */}
+        {acadName && (
+          <div
+            style={{
+              fontSize: 10,
+              opacity: 0.7,
+              marginTop: 4,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {acadName}
+            {acadEnd ? ` · ${acadEnd}` : ""}
+          </div>
+        )}
+     {(todayBlocks || []).map((b: any, i: number) => {
+  const sub = b?.subject || b?.label;
+  const st = b?.start;
+  const en = b?.end;
+
+  if (!sub) return null;
+
+  const isCurrent =
+    currentAcad &&
+    currentAcad.start === b.start &&
+    currentAcad.end === b.end;
+
   return (
     <div
+      key={i}
       style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-        gap: 6,
+        fontSize: 11,
+        marginTop: 2,
+        color: isCurrent ? "#e76f2e" : "#94a3b8",
+        fontWeight: isCurrent ? 900 : 600
+      }}
+    >
+      {isCurrent && "▶ "}
+      {sub} {st}-{en}
+    </div>
+  );
+})}
+      </>
+    ) : (
+      <div style={{ fontSize: 11, opacity: 0.55, marginTop: 18 }}>비어있음</div>
+    )}
+  </div>
+);
+  };
+let aisleSeen = 0;
+
+return (
+  <div
+    style={{
+      position: "relative",
+      paddingLeft: 90,          // ✅ 왼쪽 출입문 영역 확보 (60~90 조절)
+      width: "fit-content",
+      margin: "0 auto",
+    }}
+  >
+    {/* ✅ 왼쪽 세로 "출입문" */}
+    <div
+      style={{
+        position: "absolute",
+        left: 18,
+        top: 24,                // ✅ 시작 높이 (원하면 18~40 조절)
+        fontWeight: 900,
+        fontSize: 18,
+        color: "#111827",
+        letterSpacing: 2,
+        lineHeight: 1.05,
+        opacity: 0.85,
+        userSelect: "none",
+      }}
+    >
+      출<br />입<br />문
+    </div>
+
+    {/* ✅ 기존 그리드 */}
+    <div
+      style={{
         border: "1px solid #eee",
         borderRadius: 12,
         padding: 10,
         background: "#fff",
         marginBottom: 12,
+        display: "grid",
+        gridTemplateColumns: `repeat(${COLS}, ${CARD_W}px)`,
+        gap: GAP,
+        justifyContent: "center",
+        overflow: "hidden",
+        maxWidth: "100%",
       }}
     >
-      {Array.from({ length: seatCount }).map((_, i) => {
-        const no = i + 1;
-        const s = seatMap[no];
-        const rec = s ? records?.[s.id] || {} : null;
+      {hsLayoutRows.flatMap((row, rIdx) => {
+        // ✅ 복도
+        if (row.length === 1 && row[0] === "aisle") {
+          aisleSeen += 1;
+          const isFirstAisle = aisleSeen === 1; // ✅ 1~7 아래 복도만 문
 
-        const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
-        const outTime = rec?.outTime || rec?.out || "";
-        const segs = Array.isArray(rec?.segments) ? rec.segments : [];
-        const currentSeg = segs.find((x: any) => !x?.end);
-
-        const expectedMin = toMin(expectedHHMM || "");
-        const now = new Date();
-        const nowMin = now.getHours() * 60 + now.getMinutes();
-
-        const isAbsent = rec?.status === "absent";
-        const lateByNoShow = !!s && !inTime && expectedMin != null && nowMin > expectedMin + 15;
-        const lateByCheckin = !!s && !!inTime && isLate15(expectedHHMM || "", inTime);
-        const eduLate = !isAbsent && (lateByNoShow || lateByCheckin);
-
-        const returnLateFlag =
-          !!rec?.returnLate || (typeof rec?.returnLateMin === "number" && rec.returnLateMin > 15);
-
-        const bg =
-          isAbsent ? "#e0f2fe" :
-          returnLateFlag ? "#fff7ed" :
-          eduLate ? "#ffe4e6" :
-          "#fafafa";
-
-        const bd =
-          isAbsent ? "1px solid #60a5fa" :
-          returnLateFlag ? "1px solid #fdba74" :
-          eduLate ? "1px solid #fb7185" :
-          "1px solid #ddd";
-
-        const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
-        const lastAcad = acadArr.at(-1) ?? null;
-        const acadName = lastAcad?.label || lastAcad?.title || lastAcad?.name || "";
-        const acadEnd = lastAcad?.endHHMM || lastAcad?.end || "";
-
-        const late = eduLate;
-
-        return (
-          <div
-            key={no}
-            style={{
-              borderRadius: 10,
-              padding: 8,
-              minHeight: 56,
-              background: bg,
-              border: bd,
-            }}
-          >
-            <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.8 }}>{no}번</div>
-
-            <div style={{ fontSize: 11, marginTop: 2 }}>
-              {inTime ? (
-                <span style={{ color: "#2563eb", fontWeight: 600 }}>등원 {inTime}</span>
-              ) : (
-                <span style={{ color: "#9ca3af" }}>미체크인</span>
-              )}
-
-              {outTime && (
-                <span style={{ color: "#16a34a", fontWeight: 600 }}>
-                  {" · "}하원 {outTime}
-                </span>
-              )}
-
-              {late && <span style={{ color: "#ef4444", fontWeight: 700 }}> · 지각</span>}
-
-              {currentSeg && (
-                <div style={{ fontSize: 10, marginTop: 2, color: "#7c3aed", fontWeight: 600 }}>
-                  📚 {currentSeg.type} 진행중
+          return [
+            <div
+              key={`aisle-${rIdx}`}
+              style={{
+                gridColumn: `1 / span ${COLS}`,
+                height: 28,
+                borderRadius: 999,
+                background: "#f2f3db",
+                border: "1px dashed #cbd5e1",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                position: "relative",
+                fontSize: 10,
+                fontWeight: 900,
+                color: "#393c3f",
+              }}
+            >
+              {/* ✅ 첫 복도에만 왼쪽 "🚪 출입문" 뱃지 */}
+              {isFirstAisle && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: -64, // ✅ 복도 왼쪽 바깥으로 빼기 (원하면 -70)
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    height: 22,
+                    padding: "0 10px",
+                    borderRadius: 999,
+                    background: "#fff7ed",
+                    border: "2px solid #fdba74",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11,
+                    fontWeight: 900,
+                    color: "#9a3412",
+                    whiteSpace: "nowrap",
+                    userSelect: "none",
+                  }}
+                >
+                  🚪 출입문
                 </div>
               )}
-            </div>
 
-            {s ? (
-              <>
-                <div style={{ fontSize: 12, fontWeight: late ? 900 : 700, marginTop: 2 }}>
-                  {s.name}
-                </div>
+              복도
+            </div>,
+          ];
+        }
 
-                <div style={{ fontSize: 10, opacity: 0.7 }}>
-                  {acadName || "-"}
-                  {acadEnd ? ` · ${acadEnd}` : ""}
-                </div>
+        // ✅ 일반 줄: row에 -1 들어있으면 그대로 살리기
+        const filled = [...row];
 
-                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                  <button
-                    style={{ ...btn, padding: "4px 6px", fontSize: 11 }}
-                    onClick={() => setStatus(s.id, "")}
-                    title="지각 해제"
-                  >
-                    해제
-                  </button>
-                  <button
-                    style={{ ...btn, padding: "4px 6px", fontSize: 11 }}
-                    onClick={() => setStatus(s.id, "late")}
-                    disabled={!late && !!inTime}
-                    title="15분 초과면 지각 처리"
-                  >
-                    지각
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div style={{ fontSize: 11, opacity: 0.6, marginTop: 8 }}>비어있음</div>
-            )}
-          </div>
-        );
+        // 8열 맞추기: 부족하면 -1로 채움
+        while (filled.length < COLS) filled.push(-1 as any);
+
+        return filled.map((cell, i) => {
+          // ✅ 빈칸(-1)
+          if (cell === -1) {
+            return (
+              <div
+                key={`gap-${rIdx}-${i}`}
+                style={{ width: CARD_W, height: CARD_H, opacity: 0 }}
+              />
+            );
+          }
+
+          // ✅ 숫자 좌석만 렌더
+          if (typeof cell === "number") return renderSeatCard(cell);
+
+          // ✅ 혹시 나중에 "blank" 문자열도 쓰면 대응 (선택)
+          if (cell === "blank") {
+            return (
+              <div
+                key={`blank-${rIdx}-${i}`}
+                style={{ width: CARD_W, height: CARD_H, opacity: 0 }}
+              />
+            );
+          }
+
+          return null;
+        });
       })}
     </div>
-  );
+  </div>
+);
 }
-
   // ✅ ======= 중등(ms) 전용: 9열(door 포함) + 2행 =======
-  return (
+ return (
+  <div
+    style={{
+      width: "100%",
+      overflowX: "auto",
+      overflowY: "hidden",
+      paddingBottom: 8,
+      WebkitOverflowScrolling: "touch",
+    }}
+  >
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(9, 190px)", // ✅ 9열 고정
-        justifyContent: "center",
+        gridTemplateColumns: "repeat(9, 155px)", // ✅ 9열 고정
+       justifyContent: "center",
         gap: 10,
         border: "1px solid #eee",
         borderRadius: 12,
         padding: 10,
-        background: "#fff",
+        background: "#fcfcf9",
         marginBottom: 12,
-        overflowX: "auto", // 화면 좁으면 가로 스크롤
+       
       }}
     >
       {seatLayout16Rows.map((row, r) =>
@@ -627,7 +1194,7 @@ const SeatGrid = () => {
                   justifyContent: "center",
                   fontWeight: 900,
                   color: "#64748b",
-                  minHeight: 56 * 2 + 10,
+                  minHeight: 120 * 2 + 10,
                 }}
               >
                 door
@@ -638,121 +1205,278 @@ const SeatGrid = () => {
           const no = cell as number;
           const s = seatMap[no];
           const rec = s ? records?.[s.id] || {} : null;
+          const currentSeg = pickCurrentSeg(rec);
+          const lastEnded = pickLastEndedSeg(rec);
+const endedAcademy = lastEnded && isAcademySeg(lastEnded);
+const afterAcademyMin = endedAcademy ? minutesSinceSegEnd(lastEnded) : null;
 
-          // ======= 여기부터 너 기존 카드 로직 그대로 =======
-          const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
-          const outTime = rec?.outTime || rec?.out || "";
+// ✅ 학원 끝났는데 지금 세그먼트(복귀)가 없고, 15분 넘었다
+const returnLate15 =
+  !!s &&
+  endedAcademy &&
+  !currentSeg &&
+  afterAcademyMin != null &&
+  afterAcademyMin > 15;
+const segLabel = segLabelOf(currentSeg);
 
-          const expectedMin = toMin(expectedHHMM || "");
-          const now = new Date();
-          const nowMin = now.getHours() * 60 + now.getMinutes();
 
-          const isAbsent = rec?.status === "absent";
-          const lateByNoShow = !!s && !inTime && expectedMin != null && nowMin > expectedMin + 15;
-          const lateByCheckin = !!s && !!inTime && isLate15(expectedHHMM || "", inTime);
-          const eduLate = !isAbsent && (lateByNoShow || lateByCheckin);
 
-          const returnLateFlag =
-            !!rec?.returnLate || (typeof rec?.returnLateMin === "number" && rec.returnLateMin > 15);
+// ======= 여기부터 너 기존 카드 로직 그대로 =======
+const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
+const outTime = rec?.outTime || rec?.out || "";
 
-          const bg =
-            isAbsent ? "#e0f2fe" :
-            returnLateFlag ? "#fff7ed" :
-            eduLate ? "#ffe4e6" :
-            "#fafafa";
+const expectedMin = toMin(expectedHHMM || "");
+const now = new Date();
+const nowMin = now.getHours() * 60 + now.getMinutes();
 
-          const bd =
-            isAbsent ? "1px solid #60a5fa" :
-            returnLateFlag ? "1px solid #fdba74" :
-            eduLate ? "1px solid #fb7185" :
-            "1px solid #ddd";
+const isAbsent = rec?.status === "absent";
 
-          const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
-          const lastAcad = acadArr.at(-1) ?? null;
-          const acadName = lastAcad?.label || lastAcad?.title || lastAcad?.name || "";
-          const acadEnd = lastAcad?.endHHMM || lastAcad?.end || "";
+const lateByNoShow =
+  !!s && !inTime && expectedMin != null && nowMin > expectedMin + 15;
 
-          const late = eduLate;
+const lateByCheckin =
+  !!s && !!inTime && isLate15(expectedHHMM || "", inTime);
+
+// ✅ 1) eduLate 먼저!
+const eduLate = !isAbsent && (lateByNoShow || lateByCheckin);
+
+// ✅ 2) 그 다음 late / 일요일 제어
+const isSunday = new Date().getDay() === 0;
+const late = eduLate;
+const showLate = !isSunday && late;
+
+// ✅ 3) 복귀 15분 미만(세그먼트 기준) 플래그는 여기 그대로
+const returnLateFlag =
+  returnLate15 ||
+  !!rec?.returnLate ||
+  (typeof rec?.returnLateMin === "number" && rec.returnLateMin > 15);
+
+// ✅ 4) 색상도 showLate 기준으로(일요일엔 지각색 안 먹게)
+const bg =
+  isAbsent ? "#e0f2fe" :
+  returnLateFlag ? "#fff7ed" :
+  showLate ? "#ffe4e6" :
+  "#fafafa";
+
+const bd =
+  isAbsent ? "1px solid #60a5fa" :
+  returnLateFlag ? "1px solid #fdba74" :
+  showLate ? "1px solid #fb7185" :
+  "1px solid #ddd";
+
+   const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
+if (s) {
+  console.log("acad days:", s.name, (acadArr || []).map((b:any) => b?.day));
+}
+
+// ✅ 오늘 요일에 해당하는 블록만
+const todayBlocks = pickTodayAcademyBlocks(acadArr);
+if (todayBlocks.length > 0) {
+  console.log("TODAY FULL BLOCK:", s.name, todayBlocks);
+}
+if (s && todayBlocks?.length) {
+  console.log("TODAY FULL BLOCK:", s.name, todayBlocks);
+}
+
+// ✅ 지금 시간에 걸린 “진행중 학원” (없으면 null)
+const currentAcad = pickCurrentBlock(todayBlocks);
+
+// ✅ 오늘 마지막 학원(없으면 null)
+const lastTodayAcad = pickLastBlock(todayBlocks);
+
+const acadName =
+  currentAcad?.label ||
+  currentAcad?.title ||
+  currentAcad?.name ||
+  currentAcad?.subject ||
+  "학원";
+
+const acadStart =
+  currentAcad?.start || currentAcad?.startHHMM ||
+  lastTodayAcad?.start || lastTodayAcad?.startHHMM || "";
+
+const acadEnd =
+  currentAcad?.end || currentAcad?.endHHMM ||
+  lastTodayAcad?.end || lastTodayAcad?.endHHMM || "";
+
+        
 
           return (
-            <div
-              key={no}
-              style={{
-                borderRadius: 10,
-                padding: 8,
-                minHeight: 56,
-                background: bg,
-                border: bd,
-              }}
+           <div
+  key={no}
+  id={s ? `seat-${s.id}` : undefined}
+             style={{
+  borderRadius: 10,
+  padding: 8,
+  width: 155,
+  height: 120,
+  position: "relative",
+  background: bg,
+  border: bd,
+}}
             >
-              <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.8 }}>{no}번</div>
+             {returnLateFlag && (
+  <div
+    style={{
+      position: "absolute",
+      top: 6,
+      left: 8,
+      background: "#f59e0b",
+      color: "#fff",
+      fontSize: 10,
+      fontWeight: 900,
+      padding: "2px 6px",
+      borderRadius: 8,
+    }}
+  >
+    15분 복귀X
+  </div>
+)}
 
-              <div style={{ fontSize: 11, marginTop: 2 }}>
-                {inTime ? (
-                  <span style={{ color: "#2563eb", fontWeight: 600 }}>등원 {inTime}</span>
-                ) : (
-                  <span style={{ color: "#9ca3af" }}>미체크인</span>
-                )}
+{/* 1줄: 번호 + 상태(우측) */}
+<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+  <div style={{ fontSize: 13, fontWeight: 900, opacity: 0.85 }}>
+    {no}번
+  </div>
 
-                {outTime && (
-                  <span style={{ color: "#16a34a", fontWeight: 600 }}>
-                    {" · "}하원 {outTime}
-                  </span>
-                )}
+  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    {isSunday && (
+      <div style={{ fontSize: 12, fontWeight: 800, color: "#9d2182", opacity: 0.75 }}>
+        자율
+      </div>
+    )}
 
-                {late && <span style={{ color: "#ef4444", fontWeight: 700 }}> · 지각</span>}
-              </div>
+    {showLate && (
+      <div style={{ fontSize: 12, fontWeight: 900, color: "#ef4444" }}>
+        지각
+      </div>
+    )}
+  </div>
+</div>
 
-              {s ? (
-                <>
-                  <div style={{ fontSize: 12, fontWeight: late ? 900 : 700, marginTop: 2 }}>
-                    {s.name}
-                  </div>
+{s ? (
+  <>
+    {/* 2줄: 이름 */}
+    <div
+      style={{
+        fontSize: 13,
+        fontWeight: 900,
+        marginTop: 4,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {s.name}
+    </div>
 
-                  <div style={{ fontSize: 10, opacity: 0.7 }}>
-                    {acadName || "-"}
-                    {acadEnd ? ` · ${acadEnd}` : ""}
-                  </div>
+    {/* 3줄: 등/하원 */}
+    <div style={{ fontSize: 11, marginTop: 4 }}>
+      {inTime ? (
+        <span style={{ color: "#2563eb", fontWeight: 700 }}>등원 {inTime}</span>
+      ) : (
+        <span style={{ color: "#9ca3af" }}>미체크인</span>
+      )}
 
-                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                    <button
-                      style={{ ...btn, padding: "4px 6px", fontSize: 11 }}
-                      onClick={() => setStatus(s.id, "")}
-                      title="지각 해제"
-                    >
-                      해제
-                    </button>
-                    <button
-                      style={{ ...btn, padding: "4px 6px", fontSize: 11 }}
-                      onClick={() => setStatus(s.id, "late")}
-                      disabled={!late && !!inTime}
-                      title="15분 초과면 지각 처리"
-                    >
-                      지각
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div style={{ fontSize: 11, opacity: 0.6, marginTop: 8 }}>비어있음</div>
-              )}
+      {outTime && (
+        <span style={{ color: "#16a34a", fontWeight: 700 }}>
+          {" · "}하원 {outTime}
+        </span>
+      )}
+
+      {showLate && (
+        <span style={{ color: "#ef4444", fontWeight: 800 }}>
+          {" · "}지각
+        </span>
+      )}
+    </div>
+
+    {/* 4줄: 진행중 세그먼트 */}
+    {currentSeg && (
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 900,
+          marginTop: 4,
+          color: "#e76f2e",
+        }}
+      >
+        ▶ {segLabel || "진행중"}
+      </div>
+    )}
+
+    {/* 5줄: 마지막 학원 */}
+    {acadName && (
+      <div
+        style={{
+          fontSize: 10,
+          opacity: 0.7,
+          marginTop: 4,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {acadName}
+        {acadEnd ? ` · ${acadEnd}` : ""}
+      </div>
+    )}
+
+    {/* 6줄+: 오늘 학원 블록 리스트 */}
+    {(todayBlocks || []).map((b: any, i: number) => {
+      const sub = b?.subject || b?.label;
+      const st = b?.start;
+      const en = b?.end;
+      if (!sub) return null;
+
+      const isCurrent =
+        currentAcad &&
+        currentAcad.start === b.start &&
+        currentAcad.end === b.end;
+
+      return (
+        <div
+          key={i}
+          style={{
+            fontSize: 11,
+            marginTop: 2,
+            color: isCurrent ? "#7c3aed" : "#94a3b8",
+            fontWeight: isCurrent ? 900 : 600,
+          }}
+        >
+          {isCurrent && "▶ "}
+          {sub} {st}-{en}
+        </div>
+      );
+    })}
+  </>
+) : (
+  <div style={{ fontSize: 11, opacity: 0.55, marginTop: 18 }}>비어있음</div>
+)}
+              
             </div>
+             
           );
           // ======= 여기까지 =======
         })
       )}
     </div>
+    </div>
   );
 };
+const isSundayTop = new Date().getDay() === 0;
+
+// ✅ 미등원: 체크인 없고, (예상시간 + 15분) 지남 (일요일 제외)
+
 
       return (
-        <>
-          {/* ✅ 한 화면에 좌석(최대 59까지) 먼저 보이게 */}
-          <SeatGrid />
+  <>
+  
 
-          {/* ✅ 중등 왼쪽 / 고등 오른쪽 */}
-         
-        </>
-      );
+    {/* ✅ 좌석 */}
+    <SeatGrid />
+  </>
+);
     })()}
   </div>
 )}
@@ -770,8 +1494,9 @@ const backdrop: React.CSSProperties = {
 };
 
 const modal: React.CSSProperties = {
-  width: "100vw",
-  height: "100vh",              // ✅ 원래대로 (화면 스크롤 구조 유지)
+
+ width: "100%",
+  height: "100vh",
   background: "#fff",
   display: "flex",
   flexDirection: "column",

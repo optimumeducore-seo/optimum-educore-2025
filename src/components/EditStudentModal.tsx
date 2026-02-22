@@ -324,6 +324,23 @@ const normalizeHM = (v: string) => {
   return `${hh}:${mm}`;
 };
 
+const smartTime = (raw: string) => {
+  const v = String(raw || "").trim();
+
+  // 이미 HH:MM 또는 H:M 형태면 normalize로
+  if (v.includes(":")) return normalizeHM(v);
+
+  // 숫자만: 930, 0930, 9, 12, 123 등
+  if (!/^\d{1,4}$/.test(v)) return ""; // 이상한 문자면 빈값
+
+  const n = v.padStart(4, "0"); // 930 -> 0930
+  const hh = Number(n.slice(0, 2));
+  const mm = Number(n.slice(2, 4));
+
+  if (hh > 23 || mm > 59) return "";
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+};
+
 const saveBaseSlot = (sub: AcademyType, idx: number) => {
   const slots = (sched.current as any)?.[sub]?.slots ?? [];
   const latest = slots[idx];
@@ -668,57 +685,83 @@ const baseSchedule = sched.current ?? {};
 
               {/* 시작 */}
               <input
-                type="time"
-                step="60"
-                value={slot.from ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setSched((prev) => {
-                    const cur: any = { ...(prev.current ?? {}) };
-                    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
-                    if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
+  type="text"
+  placeholder="HH:MM"
+  value={slot.from ?? ""}
+  onChange={(e) => {
+    const v = e.target.value;
+    setSched((prev) => {
+      const cur: any = { ...(prev.current ?? {}) };
+      const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+      if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
 
-                    arr[i] = { ...(arr[i] ?? {}), from: v };
-                    cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
-                    return { ...prev, current: cur };
-                  });
-                }}
-                style={{
-                  flex: 1,
-                  fontSize: 12,
-                  border: "1px solid #ccc",
-                  borderRadius: 6,
-                  padding: "3px 6px",
-                  minWidth: 80,
-                }}
-              />
+      arr[i] = { ...(arr[i] ?? {}), from: v };
+      cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+      return { ...prev, current: cur };
+    });
+  }}
+  onBlur={() => {
+  setSched((prev) => {
+    const cur: any = { ...(prev.current ?? {}) };
+    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+    if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
+
+    const raw = arr[i]?.from ?? "";
+    const fixed = smartTime(raw) || normalizeHM(raw) || raw; // 변환 실패면 원값
+    arr[i] = { ...(arr[i] ?? {}), from: fixed };
+    cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+    return { ...prev, current: cur };
+  });
+}}
+  style={{
+    flex: 1,
+    fontSize: 12,
+    border: "1px solid #ccc",
+    borderRadius: 6,
+    padding: "3px 6px",
+    minWidth: 80,
+  }}
+/>
 
               {/* 종료 */}
-              <input
-                type="time"
-                step="60"
-                value={slot.to ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setSched((prev) => {
-                    const cur: any = { ...(prev.current ?? {}) };
-                    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
-                    if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
+             <input
+  type="text"
+  placeholder="HH:MM"
+  value={slot.to ?? ""}
+  onChange={(e) => {
+    const v = e.target.value;
+    setSched((prev) => {
+      const cur: any = { ...(prev.current ?? {}) };
+      const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+      if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
 
-                    arr[i] = { ...(arr[i] ?? {}), to: v };
-                    cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
-                    return { ...prev, current: cur };
-                  });
-                }}
-                style={{
-                  flex: 1,
-                  fontSize: 12,
-                  border: "1px solid #ccc",
-                  borderRadius: 6,
-                  padding: "3px 6px",
-                  minWidth: 80,
-                }}
-              />
+      arr[i] = { ...(arr[i] ?? {}), to: v };
+      cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+      return { ...prev, current: cur };
+    });
+  }}
+  onBlur={() => {
+  setSched((prev) => {
+    const cur: any = { ...(prev.current ?? {}) };
+    const arr: any[] = Array.isArray(cur[sub]?.slots) ? [...cur[sub].slots] : [];
+    if (arr.length === 0) arr.push({ day: 1, from: "", to: "" });
+
+    const raw = arr[i]?.from ?? "";
+    const fixed = smartTime(raw) || normalizeHM(raw) || raw; // 변환 실패면 원값
+    arr[i] = { ...(arr[i] ?? {}), from: fixed };
+    cur[sub] = { ...(cur[sub] ?? {}), slots: arr };
+    return { ...prev, current: cur };
+  });
+}}
+  style={{
+    flex: 1,
+    fontSize: 12,
+    border: "1px solid #ccc",
+    borderRadius: 6,
+    padding: "3px 6px",
+    minWidth: 80,
+  }}
+/>
 
              {/* 저장 */}
 <button
@@ -865,39 +908,55 @@ const baseSchedule = sched.current ?? {};
 
         {/* 시간 입력 */}
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
-          <input
-            type="time"
-            value={block.start || ""}
-            onChange={(e) => {
-              const updated = [...timeBlocks];
-              updated[i].start = e.target.value;
-              setTimeBlocks(updated);
-            }}
-            style={{
-              flex: 1,
-              fontSize: 12,
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "3px 6px",
-            }}
-          />
+         <input
+  type="text"
+  placeholder="HH:MM"
+  value={block.start || ""}
+  onChange={(e) => {
+    const updated = [...timeBlocks];
+    updated[i].start = e.target.value;
+    setTimeBlocks(updated);
+  }}
+  onBlur={() => {
+    const updated = [...timeBlocks];
+    const raw = updated[i]?.start || "";
+    const fixed = smartTime(raw) || normalizeHM(raw) || raw;
+    updated[i].start = fixed;
+    setTimeBlocks(updated);
+  }}
+  style={{
+    flex: 1,
+    fontSize: 12,
+    border: "1px solid #ccc",
+    borderRadius: 6,
+    padding: "3px 6px",
+  }}
+/>
           <span style={{ fontSize: 11, color: "#777" }}>~</span>
           <input
-            type="time"
-            value={block.end || ""}
-            onChange={(e) => {
-              const updated = [...timeBlocks];
-              updated[i].end = e.target.value;
-              setTimeBlocks(updated);
-            }}
-            style={{
-              flex: 1,
-              fontSize: 12,
-              border: "1px solid #ccc",
-              borderRadius: 6,
-              padding: "3px 6px",
-            }}
-          />
+  type="text"
+  placeholder="HH:MM"
+  value={block.end || ""}
+  onChange={(e) => {
+    const updated = [...timeBlocks];
+    updated[i].end = e.target.value;
+    setTimeBlocks(updated);
+  }}
+  onBlur={() => {
+    const updated = [...timeBlocks];
+    const raw = updated[i]?.end || "";
+    const fixed = smartTime(raw) || normalizeHM(raw) || raw;
+    updated[i].end = fixed;
+    setTimeBlocks(updated);
+  }}
+  style={{
+    flex: 1,
+    fontSize: 12,
+    border: "1px solid #ccc",
+    borderRadius: 6,
+    padding: "3px 6px",
+  }}
+/>
         </div>
 
 {/* 과목 선택 or 직접입력 */}
@@ -1046,15 +1105,56 @@ const baseSchedule = sched.current ?? {};
     }}
   >
     {/* Optimum 헤더 */}
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "inline-block" }}>
-        <span style={{ color: "#b71c1c", fontSize: 26, fontWeight: 900 }}>O</span>
-        <span style={{ color: "#000", fontSize: 18, fontWeight: 600 }}>PTIMUM</span>
-        <span style={{ color: "#1e3a8a", fontSize: 26, fontWeight: 900 }}> E</span>
-        <span style={{ color: "#000", fontSize: 18, fontWeight: 600 }}>DUCORE</span>
-        <span style={{ color: "#444", fontSize: 18, fontWeight: 800 }}> 시간표</span>
-      </div>
-    </div>
+   <div
+  style={{
+    marginBottom: 28,
+    textAlign: "center",
+    letterSpacing: "1px",
+  }}
+>
+  <div
+    style={{
+      display: "inline-block",
+      paddingBottom: 8,
+      borderBottom: "2px solid #E5E7EB",
+    }}
+  >
+    <span
+    style={{
+      fontSize: 23,
+      fontWeight: 700,
+      letterSpacing: "1px",
+      color: "#C53030",
+      marginRight: 6,
+    }}
+  >
+    OPTIMUM
+  </span>
+
+  <span
+    style={{
+      fontSize: 23,
+      fontWeight: 700,
+      letterSpacing: "1px",
+      color: "#1E3A8A",
+    }}
+  >
+    EDUCORE
+  </span>
+
+  <span
+    style={{
+      marginLeft: 12,
+      fontSize: 14,
+      color: "#414243",
+      fontWeight: 500,
+      letterSpacing: "2px",
+    }}
+  >
+    WEEKLY SCHEDULE
+  </span>
+  </div>
+</div>
 
     {/* 실제 시간표 grid */}
     <div
@@ -1090,34 +1190,61 @@ const baseSchedule = sched.current ?? {};
         return (
           <React.Fragment key={i}>
             {/* 왼쪽 시간축 */}
-            <div
-              style={{
-                textAlign: "center",
-                padding: "2px 0",
-                borderTop: "1px solid #eee",
-                borderRight: "1px solid #ddd",
-                color: "#444",
-              }}
-            >
-              {label}
-            </div>
+       <div
+  style={{
+    textAlign: "right",
+    padding: "2px 8px",
+    background: "#fafafa",
+
+    // 선은 구분되게
+    borderTop:
+      minute === "00"
+        ? "1px solid #d1d5db"
+        : "1px dashed #e5e7eb",
+
+    borderRight: "1px solid #d1d5db",
+
+    // 글자 크기는 동일
+    fontSize: 11,
+
+    // 대신 색과 굵기로만 차이
+    color: minute === "00" ? "#1f2937" : "#6b7280",
+    fontWeight: minute === "00" ? 700 : 700,
+
+    whiteSpace: "nowrap",
+  }}
+>
+  {label.replace(/^0/, "")}
+</div>
 
             {/* 요일별 칸 */}
             {["월", "화", "수", "목", "금", "토", "일"].map((day, idx) => {
               // 공통 변수 (한 번만 선언)
               const dayIndex = (idx + 1) % 7; // ✅ 그대로 사용 (보정하지 않음)
-              const colorMap: Record<string, string> = {
-                영어: "#7da2ff",
-                수학: "#6dd47e",
-                국어: "#ffb347",
-                과학: "#a56eff",                
-                기타: "#fdd54f",
-                학교: "#b0bec5",
-              };
+             const colorMap: Record<string, string> = {
+ 영어: "#6C8EBF",   // 부드러운 블루
+  수학: "#7BBE9E",   // 세이지 민트
+  국어: "#D4A373",   // 웜 베이지
+  과학: "#A68BC2",   // 라벤더 플럼
+  기타: "#C8C8C8",   
+  학교: "#E3E8F0",
+};
 
               // 시간 범위 판별 함수
-              const inRange = (t: string, from?: string, to?: string) =>
-                !!from && !!to && from <= t && t < to;
+              const hmToMinSafe = (v?: string) => {
+  const hhmm = normalizeHM(v || "");
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+};
+
+const inRange = (t: string, from?: string, to?: string) => {
+  const T = hmToMinSafe(t);
+  const F = hmToMinSafe(from);
+  const E = hmToMinSafe(to);
+  if (T == null || F == null || E == null) return false;
+  return F <= T && T < E;
+};
 
               // 기존 스케줄 병합
               const baseForGrid = sched.current || {};
@@ -1162,7 +1289,8 @@ const baseSchedule = sched.current ?? {};
                     borderRight: "1px solid #ddd",
                     textAlign: "center",
                     fontSize: 10,
-                    color: isFilled ? "#fff" : "#555",
+                    color: "#000",
+fontWeight: 700,
                     background,
                   }}
                 >
@@ -1350,7 +1478,11 @@ if (hall && maxSeat) {
  const safeNext = sched.next
   ? JSON.parse(JSON.stringify(sched.next))
   : null;
-
+const cleanedTimeBlocks = (timeBlocks || []).map((b: any) => ({
+  ...b,
+  start: normalizeHM(b.start),
+  end: normalizeHM(b.end),
+}));
       // 🔥 Firestore 저장 payload (네 로직 유지)
       const payload = {
         ...student,
@@ -1374,7 +1506,7 @@ if (hall && maxSeat) {
             },
           },
          next: safeNext,
-          timeBlocks: JSON.parse(JSON.stringify(timeBlocks || [])),
+         timeBlocks: JSON.parse(JSON.stringify(cleanedTimeBlocks || [])),
         },
 
         academySubjects: Object.keys(safeActive).filter(
