@@ -15,7 +15,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { arrayUnion } from "firebase/firestore";
-
+import { ensureCheckInOnOpen } from "../utils/ensureCheckInOnOpen";
 
 
 // 🔥 학생 기록을 두 구조(records + students/logs)에서 모두 읽어서 합치기
@@ -102,14 +102,26 @@ type SegmentType =
 
 type Segment = {
   type: SegmentType;
-  start: string; // "HH:MM"
-  end?: string | null; // 끝나면 "HH:MM"
-  createdAt?: any; // serverTimestamp 넣고 싶으면
+  start: string;
+  end?: string | null;
+
+  meta?: {
+    kind?: "ACADEMY" | "OUTING";
+    expectedEnd?: string;
+    academyName?: string;
+  };
+
+  createdAt?: any;   // ✅ meta 밖에 둘 거면 여기
 };
 
-const toMin = (hm: string) => {
-  const [h, m] = hm.split(":").map(Number);
-  return h * 60 + m;
+const toMin = (hhmm?: string | null) => {
+  if (!hhmm || typeof hhmm !== "string") return null;
+  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(mm)) return null;
+  return h * 60 + mm;
 };
 
 const safeHM = (v: string) => {
@@ -168,6 +180,48 @@ const [activeSegType, setActiveSegType] = useState<SegmentType>("OTHER_ACADEMY")
 const [segMemo, setSegMemo] = useState("");
 const [dayDetail, setDayDetail] = useState<any | null>(null);
 const [showDayModal, setShowDayModal] = useState(false);
+const [todayRec, setTodayRec] = useState<any>(null);
+const [toast, setToast] = useState<string | null>(null);
+const loadTodayRec = async (studentId: string) => {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const ref = doc(db, "records", dateStr);
+  const snap = await getDoc(ref);
+  const all = (snap.exists() ? snap.data() : {}) as any;
+  setTodayRec(all?.[studentId] || null);
+};
+
+const CLOSE_HM = "22:10";
+
+const hmToMin = (hm: string) => {
+const [h, m] = hm.split(":").map(Number);
+return h * 60 + m;
+};
+const nowHM = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(
+    d.getMinutes()
+  ).padStart(2, "0")}`;
+};
+
+const autoCloseAt2300 = async () => {
+if (!selected?.id) return;
+
+const n = nowHM();
+if (hmToMin(n) < hmToMin(CLOSE_HM)) return;
+
+// 오늘 기록 다시 읽어서 outTime 없으면 23:00 종료
+const dateStr = new Date().toISOString().slice(0, 10);
+const ref = doc(db, "records", dateStr);
+const snap = await getDoc(ref);
+const all = (snap.exists() ? snap.data() : {}) as any;
+const cur = all?.[selected.id] || null;
+
+if (!cur?.time || cur?.outTime) return;
+
+await setDoc(ref, { [selected.id]: { ...cur, outTime: CLOSE_HM } }, { merge: true });
+setTodayRec({ ...cur, outTime: CLOSE_HM }); // UI도 즉시 반영
+};
+
   const [monthStats, setMonthStats] = useState<
     Record<string, { days: number; total: number }>
   >({});
@@ -360,33 +414,59 @@ const calcNetStudyMin_SP = (rec: any) => {
 };
 */
 
-  // 🔹 비밀번호 인증
-  const verifyPassword = () => {
-    const key = `pw_${selected.id}`;
-    const saved = localStorage.getItem(key);
+// 🔹 비밀번호 인증
+const verifyPassword = async () => {
+  if (!selected?.id) return;
 
-    // 신규 비번 생성
-    if (!saved) {
-      if (passwordInput.trim().length < 3) {
-        alert("비밀번호를 3자리 이상 입력하세요.");
-        return;
-      }
+  const key = `pw_${selected.id}`;
+  const saved = localStorage.getItem(key);
 
-      localStorage.setItem(key, passwordInput);
-      alert("🔐 비밀번호가 설정되었습니다.");
-      setVerified(true);
+  // 신규 비번 생성
+  if (!saved) {
+    if (passwordInput.trim().length < 3) {
+      alert("비밀번호를 3자리 이상 입력하세요.");
       return;
     }
 
-    // 기존 비밀번호 검증
-    if (passwordInput !== saved) {
-      alert("❌ 비밀번호가 올바르지 않습니다.");
-      return; // ⭐ 실패 시 즉시 종료
-    }
+    localStorage.setItem(key, passwordInput);
+    alert("🔐 비밀번호가 설정되었습니다.");
 
-    // 성공
+    // ✅ 자동 체크인 (오늘 time 없으면 찍힘)
+   try {
+  const did = await ensureCheckInOnOpen(selected.id);
+if (did) {
+  setToast("✅ 자동 체크인 완료");
+  setTimeout(() => setToast(null), 1500);
+}  // 🔥 수정
+  await loadTodayRec(selected.id);                     // 🔥 여기 추가
+} catch (e) {
+  console.error("auto check-in failed", e);
+}
     setVerified(true);
-  };
+    return;
+  }
+
+  // 기존 비밀번호 검증
+  if (passwordInput !== saved) {
+    alert("❌ 비밀번호가 올바르지 않습니다.");
+    return;
+  }
+
+  // 성공
+  // ✅ 자동 체크인
+  try {
+  const did = await ensureCheckInOnOpen(selected.id);
+if (did) {
+  setToast("✅ 자동 체크인 완료");
+  setTimeout(() => setToast(null), 1500);
+} // 🔥 수정
+  await loadTodayRec(selected.id);                     // 🔥 여기 추가
+} catch (e) {
+  console.error("auto check-in failed", e);
+}
+
+  setVerified(true);
+};
 
   // 🔹 비밀번호 초기화
   const resetPassword = () => {
@@ -432,6 +512,7 @@ const summary = useMemo(() => {
 const avgPerDay =
   summary.days > 0 ? Math.round(summary.total / summary.days) : 0;
 
+const alreadyIn = !!todayRec?.time && !todayRec?.outTime;
 
 const yearlyMonthlyTotals = useMemo(() => {
   if (!records.length) return [];
@@ -619,6 +700,27 @@ const startSegment = async (type: SegmentType) => {
 
     alert("👋 하원 처리 완료!");
   };
+const startAcademyOuting = async (academyName: string, expectedEnd: string) => {
+  const ok = await isLocalNetwork();
+  if (!ok) return alert("⚠️ 학원 Wi-Fi 연결 후 체크해주세요!");
+  if (!selected) return;
+
+  const hhmm = new Date().toTimeString().slice(0, 5);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const segs = await toggleSegment(
+    selected.id,
+    "OUTING",
+    hhmm,
+    { kind: "ACADEMY", academyName, expectedEnd }
+  );
+
+  setRecords((prev) => {
+    const exists = prev.find((r) => r.date === today) || {};
+    const withoutToday = prev.filter((r) => r.date !== today);
+    return [...withoutToday, { ...exists, date: today, segments: segs }];
+  });
+};
 
 const endSegment = async () => {
   const ok = await isLocalNetwork();
@@ -651,22 +753,48 @@ const endSegment = async () => {
   }
 
   segments[segments.length - 1] = { ...last, end: hhmm };
+  // ✅ 세그먼트 닫은 직후
+const closed = segments[segments.length - 1]; // 닫힌 세그먼트(=last의 end가 채워진 버전)
+
+let returnLate = false;
+let returnLateMin = 0;
+let lastReturnExpected: string | null = null;
+
+// ✅ "학원 외출(OUTING)" 세그먼트 + meta.kind === "ACADEMY" 일 때만 판정
+if (closed?.type === "OUTING" && closed?.meta?.kind === "ACADEMY") {
+  const expected = closed?.meta?.expectedEnd ?? null;
+  lastReturnExpected = expected;
+
+  const a = toMin(hhmm);
+  const e = toMin(expected);
+
+  if (a != null && e != null) {
+    const diff = a - e;
+    returnLate = diff > 15;
+    returnLateMin = Math.max(0, diff);
+  }
+}
 
   const ip = await getPublicIP();
 
-  await setDoc(
-    ref,
-    {
-      [selected.id]: {
-        ...prev,
-        segments,
-        segUpdatedAt: new Date().toISOString(),
-        segUpdatedIP: ip || null,
-        segUpdatedDevice: navigator.userAgent,
-      },
+ await setDoc(
+  ref,
+  {
+    [selected.id]: {
+      ...prev,
+      segments,
+      segUpdatedAt: new Date().toISOString(),
+      segUpdatedIP: ip || null,
+      segUpdatedDevice: navigator.userAgent,
+
+      // ✅ 복귀지각 기록
+      returnLate: returnLate ? true : prev.returnLate ?? false,
+      returnLateMin: returnLate ? returnLateMin : prev.returnLateMin ?? 0,
+      lastReturnExpected: lastReturnExpected ?? prev.lastReturnExpected ?? null,
     },
-    { merge: true }
-  );
+  },
+  { merge: true }
+);
 
   // 화면 state 반영
   const today = date;
@@ -813,7 +941,12 @@ await setDoc(
 
 
   // 🔥 학원 등원 저장
-  async function toggleSegment(studentId: string, type: SegmentType, nowHM: string) {
+ async function toggleSegment(
+  studentId: string,
+  type: SegmentType,
+  nowHM: string,
+  meta?: Segment["meta"]
+) {
   const date = new Date().toISOString().slice(0, 10);
   const ref = doc(db, "records", date);
 
@@ -835,8 +968,8 @@ await setDoc(
 
   // 2) 새 세그먼트 시작 (연타 방지: 마지막이 동일 타입+동일 start면 추가 안함)
   const last = segments[segments.length - 1];
-  if (!(last && last.type === type && last.start === nowHM)) {
-    segments.push({ type, start: nowHM, end: null });
+    if (!(last && last.type === type && last.start === nowHM)) {
+    segments.push({ type, start: nowHM, end: null, meta: meta ?? undefined });
   }
 
   const ip = await getPublicIP();
@@ -1969,24 +2102,40 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
       marginBottom: 18,
     }}
   >
-    <button
-      onClick={checkIn}
-      style={{
-        flex: 1,
-        height: 50,
-        borderRadius: 16,
-        border: "1px solid #E8EDFF",
-        background: "#E8EDFF",
-        color: "#1E3A8A",
-        fontWeight: 900,
-        fontSize: 15,
-        cursor: "pointer",
-        transition: "all 0.2s ease",
-      }}
-    >
-      에듀코어등원
-    </button>
-
+ <button
+  disabled={alreadyIn}   // 🔥 여기 추가
+  onClick={checkIn}
+  style={{
+    flex: 1,
+    height: 50,
+    borderRadius: 16,
+    border: "1px solid #E8EDFF",
+    background: alreadyIn ? "#ccc" : "#E8EDFF",   // 🔥 회색 처리
+    color: "#1E3A8A",
+    fontWeight: 900,
+    fontSize: 15,
+    cursor: alreadyIn ? "not-allowed" : "pointer",  // 🔥 커서 변경
+    transition: "all 0.2s ease",
+  }}
+>
+  에듀코어등원
+</button>
+{toast && (
+  <div style={{
+    position: "fixed",
+    left: "50%",
+    bottom: 24,
+    transform: "translateX(-50%)",
+    background: "rgba(0,0,0,0.75)",
+    color: "#fff",
+    padding: "10px 14px",
+    borderRadius: 12,
+    fontSize: 13,
+    zIndex: 9999,
+  }}>
+    {toast}
+  </div>
+)}
     <button
       onClick={checkOut}
       style={{

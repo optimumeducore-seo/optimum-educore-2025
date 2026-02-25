@@ -13,7 +13,9 @@ import { db } from "../firebase";
 import { deleteDoc } from "firebase/firestore";
 import { uploadProof } from "../services/storage";
 import { getStorage, ref, deleteObject } from "firebase/storage";
+
 import "./StudyPlanPage.css";
+
 
 
 /* ------------------------------------------------------------------ */
@@ -301,6 +303,20 @@ const readonly = role === "parent";
 
   // 상태들
   const [student, setStudent] = useState<any | null>(null);
+  const fallbackSubjects = React.useMemo(() => {
+  const list: string[] = Array.isArray(student?.academySubjects)
+    ? student.academySubjects
+    : [];
+
+  // 중복 제거(혹시 같은 과목 여러 번 들어가면)
+  const uniq = Array.from(new Set(list.map((x) => (x ?? "").trim()).filter(Boolean)));
+
+  return uniq.map((name) => ({
+    id: name, // 한글 id OK
+    name,
+  }));
+}, [student?.academySubjects]);
+
   const [plans, setPlans] = useState<Record<string, DayPlan>>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -1403,6 +1419,7 @@ await setDoc(ref, payload, { merge: true });
             >
               ← 돌아가기
             </button>
+       
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button

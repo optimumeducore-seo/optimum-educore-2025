@@ -46,6 +46,56 @@ const CabinetIcon = ({ size = 14 }: { size?: number }) => (
   </svg>
 );
 
+type StatusKey = "P" | "L" | "A" | "E";
+
+const STATUS: Record<StatusKey, { label: string; short: string }> = {
+  P: { label: "출석", short: "출" },
+  L: { label: "지각", short: "지" },
+  A: { label: "결석", short: "결" },
+  E: { label: "조퇴", short: "조" },
+};
+
+function renderStatusText(status?: string, comment?: string) {
+  const s = (status || "P") as StatusKey;
+  const label = STATUS[s]?.label ?? "출석";
+  const c = (comment || "").trim();
+
+  // ✅ 결석일 때만 사유를 같이 보여줌
+  if (s === "A" && c) return `${label}(${c})`;
+  return label;
+}
+function renderEduStatusText(status?: string, comment?: string) {
+  const s = String(status || "");
+  const c = String(comment || "").trim();
+
+  const isAbsent = s === "absent" || s === "A";
+  const isLate = s === "late" || s === "L";
+  const isOk = s === "ok" || s === "P";
+
+  const label = isAbsent ? "결석" : isLate ? "지각" : isOk ? "출석" : "";
+
+  if (isAbsent && c) return `${label}(${c})`;
+  return label;
+}
+
+type CanonStatus = "ok" | "late" | "absent" | "";
+
+function canonStatus(raw: any): CanonStatus {
+  const s = String(raw || "").trim();
+
+  if (s === "A" || s === "absent") return "absent";
+  if (s === "L" || s === "late") return "late";
+  if (s === "P" || s === "ok") return "ok";
+  return "";
+}
+
+function isAbsentStatus(raw: any) {
+  return canonStatus(raw) === "absent";
+}
+function isLateStatus(raw: any) {
+  return canonStatus(raw) === "late";
+}
+
 export default function OpsModal({ open, onClose }: Props) {
   const [tab, setTab] = useState<"timetable" | "attendance">("timetable");
   const [students, setStudents] = useState<StudentLite[]>([]);
@@ -54,6 +104,27 @@ export default function OpsModal({ open, onClose }: Props) {
   const [vacationMode, setVacationMode] = useState(true);
   const [filterType, setFilterType] = useState<"none" | "noShow" | "noReturn">("none");
   // "HH:MM" -> minutes
+  const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+  Math.max(aStart, bStart) < Math.min(aEnd, bEnd);
+
+// ✅ 13:00~13:15(또는 expectedHHMM~expectedHHMM+15) 사이에 학원블록이 있으면 면책
+const hasAcademyDuringLateWindow = (s: any, expectedHHMM: string) => {
+  const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
+  const todayBlocks = pickTodayAcademyBlocks(acadArr);
+
+  const winStart = toMin(expectedHHMM);
+  const winEnd = winStart != null ? winStart + 15 : null;
+  if (winStart == null || winEnd == null) return false;
+
+  return (todayBlocks || []).some((b: any) => {
+    const st = toMin(b?.start || b?.startHHMM);
+    const en = toMin(b?.end || b?.endHHMM);
+    if (st == null || en == null) return false;
+
+    // ✅ 학원 판별(너 블록들은 이미 academyBlocks라서 사실 이 조건 없어도 됨)
+    return overlaps(st, en, winStart, winEnd);
+  });
+};
 const toMin = (hhmm?: string) => {
   if (!hhmm || typeof hhmm !== "string") return null;
   const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
@@ -113,16 +184,6 @@ const isLate15 = (expectedHHMM?: string, actualHHMM?: string) => {
       });
 
     setStudents(list2);
-
-    console.log(
-      "HALL CHECK",
-      list2.slice(0, 20).map((s: any) => ({
-        name: s.name,
-        hall: s.hall,
-        gradeLevel: s.gradeLevel,
-        school: s.school,
-      }))
-    );
   });
 
 const now = new Date();            // ✅ Date 객체
@@ -164,15 +225,28 @@ useEffect(() => {
       const now = new Date();
       const nowMin = now.getHours() * 60 + now.getMinutes();
 
-      if (!actual && nowMin - expectedMin > 15 && rec?.status !== "late") {
-        await setStatus(s.id, "late");
-      }
+      // ✅ 학원 가는 애는 late 저장 금지
+      const exemptLate = hasAcademyDuringLateWindow(
+        s,
+        vacationMode ? "13:00" : "15:30"
+      );
+      if (exemptLate) return;
+
+     const isAbsent =
+  rec?.status === "absent" || rec?.status === "A";
+const hasReason = (rec?.comment || "").trim().length > 0;
+
+// ✅ 결석/사유 있으면 late 자동저장 금지
+if (isAbsent || hasReason) return;
+
+if (!actual && nowMin - expectedMin > 15 && rec?.status !== "late") {
+  await setStatus(s.id, "late");
+}
     });
   }, 60000);
 
   return () => clearInterval(interval);
-}, [students, records]);
-
+}, [students, records, vacationMode]); // ✅ 이거 추가
 
 const getLastAcademyEnd = (s: any): string | null => {
   const arr = Array.isArray(s.blocks) ? s.blocks : [];
@@ -328,7 +402,8 @@ const { noShowList, noReturnList } = useMemo(() => {
     return students.filter((s: any) => {
       const rec = records?.[s.id] || {};
       const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
-      const isAbsent = rec?.status === "absent";
+     const isAbsent =
+  rec?.status === "absent" || rec?.status === "A";
       return !isAbsent && !inTime && nowMin > expectedMin + 15;
     });
   };
@@ -519,7 +594,6 @@ return (
     {vacationMode ? "방학 모드 ON" : "방학 모드 OFF"}
   </button>
 
-  {/* 출결 탭일 때만 */}
 {/* 출결 탭일 때만 */}
 {tab === "attendance" && (
   <>
@@ -571,9 +645,11 @@ return (
               >
                 {s.name}
               </div>
+              
             ))
           )}
         </div>
+        
       )}
     </div>
 
@@ -753,7 +829,7 @@ const SeatGrid = () => {
 if (hall === "hs") {
   const COLS = 8;     // 7개 줄 + 빈칸 1개
   const CARD_W = 155; // 필요하면 더 줄여
-  const CARD_H = 120;
+  const CARD_H = "auto";
   const GAP = 8;
 
   // ✅ 32~47 구분(문달린 1인용 책장)
@@ -762,6 +838,8 @@ if (hall === "hs") {
 const renderSeatCard = (no: number) => {
   const s = seatMap[no];
   const rec = s ? (records?.[s.id] || {}) : null;
+  const statusRaw = rec?.status;
+const commentText = String(rec?.comment ?? "").trim();
 
   // ===== 세그먼트 기반(복귀 15분) =====
   const currentSeg = pickCurrentSeg(rec);
@@ -785,20 +863,26 @@ const renderSeatCard = (no: number) => {
   const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
   const outTime = rec?.outTime || rec?.out || "";
 
-  const isAbsent = rec?.status === "absent";
+ const st = canonStatus(rec?.status);
+const isAbsent = st === "absent";
+const isLate = st === "late";
 
   const expectedMin = toMin(expectedHHMM || "");
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
+  const exemptLate = hasAcademyDuringLateWindow(s, expectedHHMM);
 
-  const lateByNoShow =
-    !!s && !inTime && expectedMin != null && nowMin > expectedMin + 15;
+ const lateByNoShow =
+  !!s && !exemptLate && !inTime && expectedMin != null && nowMin > expectedMin + 15;
 
   const lateByCheckin =
-    !!s && !!inTime && isLate15(expectedHHMM || "", inTime);
+  !!s && !exemptLate && !!inTime && isLate15(expectedHHMM || "", inTime);
 
-  const eduLate = !isAbsent && (lateByNoShow || lateByCheckin);
-  const showLate = !isSunday && eduLate; // ✅ 화면/색상에 쓰는 최종 지각
+ const eduLate =
+  !isAbsent &&
+  (isLate || lateByNoShow || lateByCheckin);
+
+const showLate = !isSunday && eduLate;
 
   // ===== 기타 플래그 =====
   const locker = isLockerSeat(no);
@@ -889,18 +973,17 @@ const bd =
     15분 복귀X
   </div>
 )}
-    {/* 우상단: 1인책장/자물쇠 */}
    
 {/* 1줄: 번호 + 상태 */}
 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
   <div style={{ fontSize: 13, fontWeight: 900, opacity: 0.85 }}>
    {no}번
-{isCabinetSeat(no) && " · 1인책장🔒"}
+{isCabinetSeat(no) && " · [1인책장]"}
   </div>
 
   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
     {isSunday && (
-      <div style={{ fontSize: 12, fontWeight: 800, color: "#9d2182", opacity: 0.75 }}>
+      <div style={{ fontSize: 12, fontWeight: 900, color: "#9d2182", opacity: 0.75 }}>
         자율
       </div>
     )}
@@ -928,13 +1011,34 @@ const bd =
         >
           {s.name}
         </div>
+        {(() => {
+ 
+  return null;
+})()}
+
+   {isAbsent && commentText && (
+  <div
+    style={{
+      marginTop: 4,
+      fontSize: 11,
+      fontWeight: 900,
+      color: "#37a22b",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    }}
+    title={renderEduStatusText(statusRaw, commentText)}
+  >
+    {renderEduStatusText(statusRaw, commentText)}
+  </div>
+)}
 
         {/* 3줄: 등/하원 */}
         <div style={{ fontSize: 11, marginTop: 4 }}>
   {inTime ? (
-    <span style={{ color: "#2563eb", fontWeight: 700 }}>등원 {inTime}</span>
+    <span style={{ color: "#4978df", fontWeight: 700 }}>등원 {inTime}</span>
   ) : (
-    <span style={{ color: "#9ca3af" }}>미체크인</span>
+    <span style={{ color: "#e69215" }}>미체크인</span>
   )}
 
   {outTime && (
@@ -944,7 +1048,7 @@ const bd =
   )}
 
   {showLate && (
-  <span style={{ color: "#ef4444", fontWeight: 800 }}>
+  <span style={{ color: "#f52a2a", fontWeight: 800 }}>
     {" · "}지각
   </span>
 )}
@@ -995,7 +1099,7 @@ const bd =
       style={{
         fontSize: 11,
         marginTop: 2,
-        color: isCurrent ? "#e76f2e" : "#94a3b8",
+        color: isCurrent ? "#e76f2e" : "#3a3e43",
         fontWeight: isCurrent ? 900 : 600
       }}
     >
@@ -1184,18 +1288,21 @@ return (
               <div
                 key="door"
                 style={{
-                  gridColumn: c + 1,      // 1-based
-                  gridRow: "1 / span 2",  // ✅ 세로 2칸
-                  borderRadius: 12,
-                  background: "#f3f4f6",
-                  border: "2px dashed #cbd5e1",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: 900,
-                  color: "#64748b",
-                  minHeight: 120 * 2 + 10,
-                }}
+  gridColumn: c + 1,
+  gridRow: "1 / span 2",
+  borderRadius: 12,
+  background: "#f3f4f6",
+  border: "2px dashed #cbd5e1",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 900,
+  color: "#3a3e43",
+
+  // ✅ 여기 추가
+  height: 50,          // <- 숫자 줄이면 더 낮아짐 (예: 130)
+  alignSelf: "end",  // ✅ 칸(2줄) 안에서 세로 가운데
+}}
               >
                 door
               </div>
@@ -1205,6 +1312,9 @@ return (
           const no = cell as number;
           const s = seatMap[no];
           const rec = s ? records?.[s.id] || {} : null;
+          const statusRaw = rec?.status;
+const commentText = String(rec?.comment ?? "").trim();
+
           const currentSeg = pickCurrentSeg(rec);
           const lastEnded = pickLastEndedSeg(rec);
 const endedAcademy = lastEnded && isAcademySeg(lastEnded);
@@ -1229,21 +1339,27 @@ const expectedMin = toMin(expectedHHMM || "");
 const now = new Date();
 const nowMin = now.getHours() * 60 + now.getMinutes();
 
-const isAbsent = rec?.status === "absent";
+const st = canonStatus(rec?.status);
+const isAbsent = st === "absent";
+const isLate = st === "late";
+const exemptLate = hasAcademyDuringLateWindow(s, expectedHHMM);
 
 const lateByNoShow =
-  !!s && !inTime && expectedMin != null && nowMin > expectedMin + 15;
+  !!s && !exemptLate && !inTime && expectedMin != null && nowMin > expectedMin + 15;
 
 const lateByCheckin =
-  !!s && !!inTime && isLate15(expectedHHMM || "", inTime);
-
+  !!s && !exemptLate && !!inTime && isLate15(expectedHHMM || "", inTime);
+const isSunday = new Date().getDay() === 0;
 // ✅ 1) eduLate 먼저!
-const eduLate = !isAbsent && (lateByNoShow || lateByCheckin);
+const eduLate =
+  !isAbsent &&
+  (isLate || lateByNoShow || lateByCheckin);
+
+const showLate = !isSunday && eduLate;
 
 // ✅ 2) 그 다음 late / 일요일 제어
-const isSunday = new Date().getDay() === 0;
-const late = eduLate;
-const showLate = !isSunday && late;
+
+
 
 // ✅ 3) 복귀 15분 미만(세그먼트 기준) 플래그는 여기 그대로
 const returnLateFlag =
@@ -1265,18 +1381,10 @@ const bd =
   "1px solid #ddd";
 
    const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
-if (s) {
-  console.log("acad days:", s.name, (acadArr || []).map((b:any) => b?.day));
-}
 
 // ✅ 오늘 요일에 해당하는 블록만
 const todayBlocks = pickTodayAcademyBlocks(acadArr);
-if (todayBlocks.length > 0) {
-  console.log("TODAY FULL BLOCK:", s.name, todayBlocks);
-}
-if (s && todayBlocks?.length) {
-  console.log("TODAY FULL BLOCK:", s.name, todayBlocks);
-}
+
 
 // ✅ 지금 시간에 걸린 “진행중 학원” (없으면 null)
 const currentAcad = pickCurrentBlock(todayBlocks);
@@ -1309,7 +1417,7 @@ const acadEnd =
   borderRadius: 10,
   padding: 8,
   width: 155,
-  height: 120,
+  minHeight: 130,
   position: "relative",
   background: bg,
   border: bd,
@@ -1347,7 +1455,7 @@ const acadEnd =
     )}
 
     {showLate && (
-      <div style={{ fontSize: 12, fontWeight: 900, color: "#ef4444" }}>
+      <div style={{ fontSize: 12, fontWeight: 900, color: "#f52a2a" }}>
         지각
       </div>
     )}
@@ -1369,13 +1477,34 @@ const acadEnd =
     >
       {s.name}
     </div>
+    {(() => {
+  
+  return null;
+})()}
+
+   {isAbsent && commentText && (
+  <div
+    style={{
+      marginTop: 4,
+      fontSize: 11,
+      fontWeight: 900,
+      color: "#37a22b",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    }}
+    title={renderEduStatusText(statusRaw, commentText)}
+  >
+    {renderEduStatusText(statusRaw, commentText)}
+  </div>
+)}
 
     {/* 3줄: 등/하원 */}
     <div style={{ fontSize: 11, marginTop: 4 }}>
       {inTime ? (
         <span style={{ color: "#2563eb", fontWeight: 700 }}>등원 {inTime}</span>
       ) : (
-        <span style={{ color: "#9ca3af" }}>미체크인</span>
+        <span style={{ color: "#e69215" }}>미체크인</span>
       )}
 
       {outTime && (
@@ -1440,7 +1569,7 @@ const acadEnd =
           style={{
             fontSize: 11,
             marginTop: 2,
-            color: isCurrent ? "#7c3aed" : "#94a3b8",
+            color: isCurrent ? "#7c3aed" : "#3a3e43",
             fontWeight: isCurrent ? 900 : 600,
           }}
         >

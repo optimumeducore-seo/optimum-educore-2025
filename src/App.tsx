@@ -2177,24 +2177,72 @@ const restoreStudent = async (sid: string) => {
 
 
         {/* 헤더 */}
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
 
           <div>
             <img style={{ height: 40, objectFit: "contain" }} />
-            <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, letterSpacing: "0.5px" }}>
-              <span style={{ color: "#b71c1c", fontSize: 30 }}>O</span>
-              <span style={{ color: "#000000", fontSize: 20 }}>PTIMUM</span>
-              <span style={{ color: "#1e3a8a", fontSize: 30 }}>E</span>
-              <span style={{ color: "#000000", fontSize: 20 }}>DUCORE</span>
-              <span style={{ color: "#1aa368ff", fontSize: 20, fontStyle: "italic", margin: 20 }}> -Design Your Routine · Own the Result- </span>
-            </h1>
+           {/* 헤더 */}
+<div
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "center",
+    flexWrap: "wrap",
+  }}
+>
+  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <img style={{ height: 40, objectFit: "contain" }} />
+
+    {/* ✅ 타이틀 + 슬로건 (위 스타일 적용) */}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+      {/* 로고라인 */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span
+          style={{
+            fontSize: 35,
+            fontWeight: 900,
+            letterSpacing: 2,
+            color: "#8B1E1E",
+          }}
+        >
+          OPTIMUM
+        </span>
+
+        <span
+          style={{
+            fontSize: 35,
+            fontWeight: 900,
+            letterSpacing: 2,
+            color: "#1d3d86",
+          }}
+        >
+          EDUCORE
+        </span>
+         <span
+        style={{
+          marginTop: 18,
+          color: "#B8962E",
+          fontSize: 15,
+          fontStyle: "normal",
+          fontWeight: 700,
+          lineHeight: 1.2,
+          letterSpacing: 0.4,
+        }}
+      >
+        Design the Routine, Own the Result
+      </span>
+      </div>
+     
+    </div>
+  </div>
+
+  {/* 오른쪽 영역(버튼/필터/기타) 있으면 여기 그대로 두면 됨 */}
+</div>
           </div>
 
 
-
-
-
-          {/* 깔끔한 날짜+시계 위젯 */}
+    {/* 깔끔한 날짜+시계 위젯 */}
 
           <div style={{
 
