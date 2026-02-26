@@ -14,6 +14,7 @@ import type { AssignmentRules, Weekday } from "../services/firestore";
 import { saveAssignmentRules, loadAssignmentRules } from "../services/firestore";
 import { rescheduleDeletedAutoTask } from "../services/firestore";
 import type { MainTask } from "../services/firestore";
+import { useNavigate } from "react-router-dom";
 
 /* -------------------------------------------------- */
 /* 타입 정의 (간단 버전)                              */
@@ -214,7 +215,7 @@ const [opsOpen, setOpsOpen] = useState(false);
     return d.toISOString().slice(0, 10);
   };
 
-
+const navigate = useNavigate();
    const getSchoolGroup = (s: any) => {
     const gl = (s.gradeLevel ?? "").toString();
     const g = (s.grade ?? "").toString();
@@ -1347,6 +1348,7 @@ if (todaySnap.exists()) {
 >
   운영(타임/출결)
 </button>
+
         </div>
 
         <div
@@ -1584,7 +1586,25 @@ if (todaySnap.exists()) {
                     }}
                     onClick={() => setSelectedStudentId(row.student.id)}
                   >
-                    <td style={tdCell}>{row.student.name}</td>
+                  <td style={tdCell}>
+  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <span>{row.student.name}</span>
+
+    <span
+  onClick={(e) => {
+    e.stopPropagation();
+    navigate(`/study-plan/term-print/${row.student.id}?role=teacher`);
+  }}
+  style={{
+    fontSize: 12,
+    color: "#31c176",
+    cursor: "pointer"
+  }}
+>
+  · 시험 ·
+</span>
+  </div>
+</td>
                     <td style={tdCell}>
                       {row.student.school} {row.student.grade}
                     </td>
@@ -2284,6 +2304,7 @@ if (todaySnap.exists()) {
                   >
                     💾 저장하기
                   </button>
+                 
                 </>
 
               )}
