@@ -577,10 +577,8 @@ async function handleCheckIn(studentId: string, inputTime: string) {
   }
 
   await setDoc(ref, {
-  [studentId]: {
-    time: inputTime,
-    outTime: null,
-},
+  [`${studentId}.time`]: inputTime,
+  [`${studentId}.outTime`]: null,
 }, { merge: true });
 
 
@@ -590,7 +588,7 @@ async function handleCheckIn(studentId: string, inputTime: string) {
 // =============================
 // ✅ 학생 하원
 // =============================
-async function handleCheckOut(studentId: string, inputtime: string) {
+async function handleCheckOut(studentId: string, inputTime: string) {
   const date = new Date().toISOString().slice(0, 10);
   const ref = doc(db, "records", date);
 
@@ -615,11 +613,8 @@ async function handleCheckOut(studentId: string, inputtime: string) {
   }
 
   await setDoc(ref, {
-    [studentId]: {
-      time: prev.time,
-      outTime: inputtime,   // 함수 변수 이름 그대로 사용
-    },
-  }, { merge: true });
+  [`${studentId}.outTime`]: inputTime,
+}, { merge: true });
 
   console.log("하원 저장 완료", date, studentId);
 }

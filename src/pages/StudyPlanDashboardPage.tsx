@@ -78,6 +78,7 @@ type StudentLite = {
 
 
 const SUBJECTS = [
+   { key: "common", label: "공통" },
   { key: "kor", label: "국어" },
   { key: "math", label: "수학" },
   { key: "eng", label: "영어" },
@@ -89,7 +90,7 @@ const SUBJECTS = [
   { key: "hanja", label: "한자" },
   { key: "jp", label: "일본어" },
 ];
-
+const RULE_SUBJECT = "common";
 /* -------------------------------------------------- */
 /* 유틸 함수                                          */
 /* -------------------------------------------------- */
@@ -148,20 +149,26 @@ const minToHM = (m: number) => {
 const normalizeTasks = (v: any): TaskItem[] => {
   if (!Array.isArray(v)) return [];
 
-  return v.map((x: any) => ({
-    id: x.id,                       // ✅ 유지
-    title: x.title ?? "",
-    text: x.text ?? "",
-    done: !!x.done,
-    carriedFrom: x.carriedFrom ?? "", // ✅ 유지
-    deleted: x.deleted === true ? true : false,
-    subtasks: Array.isArray(x.subtasks)
-      ? x.subtasks.map((s: any) => ({
-          text: s.text ?? "",
-          done: !!s.done,
-        }))
-      : undefined,                 // ✅ 수동은 subtasks 자체를 안 둠
-  }));
+  return v.map((x: any) => {
+    const base: TaskItem = {
+      id: x.id,
+      title: x.title ?? "",
+      text: x.text ?? "",
+      done: !!x.done,
+      carriedFrom: x.carriedFrom ?? "",
+      deleted: x.deleted === true,
+    };
+
+    // ✅ subtasks는 있을 때만 넣는다 (undefined 절대 금지)
+    if (Array.isArray(x.subtasks)) {
+      base.subtasks = x.subtasks.map((s: any) => ({
+        text: s.text ?? "",
+        done: !!s.done,
+      }));
+    }
+
+    return base;
+  });
 };
 
 
@@ -180,15 +187,14 @@ const [opsOpen, setOpsOpen] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(
     null
   );
-  const [selectedSubject, setSelectedSubject] = useState<string>("kor");
+  const [selectedSubject, setSelectedSubject] = useState<string>("common");
   // 학년 선택
   const [selectedGrade, setSelectedGrade] = useState("");
 
   // 여러 학생 선택
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
-  // 과목 선택
-  const [ruleSubject, setRuleSubject] = useState("kor");
+  
 
   // 여러 학생에게 넣을 과제 입력값
   const [multiTaskInput, setMultiTaskInput] = useState("");
@@ -265,47 +271,42 @@ const high = sortedStudents.filter((s: any) => getSchoolGroup(s) === 1);
 
   // 🔥 선택 학생들에게 오늘(dateStr) 과제 저장
   // 여러 학생에게 같은 과제 저장
-  const saveMultiTask = async () => {
-    if (!selectedStudentIds.length)
-      return alert("학생을 1명 이상 선택하세요.");
+ const saveMultiTask = async () => {
+  if (!selectedStudentIds.length) return alert("학생을 1명 이상 선택하세요.");
+  if (!multiTaskInput.trim()) return alert("과제를 입력하세요.");
+  if (!assignDate) return alert("날짜가 선택되지 않았습니다.");
 
-    if (!multiTaskInput.trim())
-      return alert("과제를 입력하세요.");
+  const tasks = multiTaskInput
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((text) => ({
+      id: crypto.randomUUID(),
+      text,
+      done: false,
+      deleted: false,
+    }));
 
-    if (!assignDate)
-      return alert("날짜가 선택되지 않았습니다.");
+  await Promise.all(
+    selectedStudentIds.map(async (sid) => {
+      const ref = doc(db, "studyPlans", sid, "days", assignDate);
 
-    const tasks = multiTaskInput
-      .split("\n")
-      .map(t => t.trim())
-      .filter(Boolean)
-      .map(text => ({
-        id: crypto.randomUUID(),   // ⭐ 반드시
-        text,
-        done: false,
-        deleted: false,
-      }))
-
-    await Promise.all(
-      selectedStudentIds.map(async (sid) => {
-        const ref = doc(db, "studyPlans", sid, "days", assignDate);
-
-        await setDoc(
-          ref,
-          {
-            date: assignDate,
-            [ruleSubject]: {
-              teacherTasks: tasks,
-              updatedAt: serverTimestamp(),
-            },
+      await setDoc(
+        ref,
+        {
+          date: assignDate,
+          common: {                // ✅ 여기! ruleSubject 제거
+            teacherTasks: tasks,
+            updatedAt: serverTimestamp(),
           },
-          { merge: true }
-        );
-      })
-    );
+        },
+        { merge: true }
+      );
+    })
+  );
 
-    alert("✔ 선택한 학생들에게 과제가 저장되었습니다!");
-  };
+  alert("✔ 선택한 학생들에게 과제가 저장되었습니다!");
+};
 
   // 🔽 여기!
   type DashboardSubTask = {
@@ -559,7 +560,7 @@ setStudents(list);
     const day = dayPlans[selectedStudentId];
     const subj = day?.subjects?.[selectedSubject];
 
-    setTeacherInput((subj?.teacherTasks || []).map((t) => t.text).join("\n"));
+    setTeacherInput((subj?.teacherTasks || []).map(t => (t.text || t.title || "")).join("\n"));
     setStudentInput((subj?.studentPlans || []).map((t) => t.text).join("\n"));
     setMemo(subj?.memo || "");
     setDone(!!subj?.done);
@@ -577,22 +578,36 @@ setStudents(list);
     const prevSubj = prevDay?.subjects?.[selectedSubject];
 
     const ref = doc(db, "studyPlans", sid, "days", dateStr);
-
+   const stripUndefinedDeep = (obj: any): any => {
+  if (Array.isArray(obj)) return obj.map(stripUndefinedDeep);
+  if (obj && typeof obj === "object") {
+    const out: any = {};
+    Object.keys(obj).forEach((k) => {
+      const v = obj[k];
+      if (v === undefined) return;      // ✅ undefined 제거
+      out[k] = stripUndefinedDeep(v);
+    });
+    return out;
+  }
+  return obj;
+};
     // 🔥 기존 데이터를 완전 무시하고 새로 구성 (덮어쓰기)
-    const teacherTasks: TaskItem[] =
-      prevSubj?.teacherTasks?.length
-        ? prevSubj.teacherTasks
-        : teacherInput
-          .split("\n")
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .map(text => ({
-            id: crypto.randomUUID(),   // ⭐ 반드시
-            text,
-            done: false,
-            deleted: false,
-          }))
-
+   const teacherTasks: TaskItem[] = teacherInput
+  .split("\n")
+  .map(t => t.trim())
+  .filter(Boolean)
+  .map((text, idx) => {
+  const prev = prevSubj?.teacherTasks?.[idx];
+  const t: any = {
+    id: prev?.id ?? crypto.randomUUID(),
+    text,
+    done: prev?.done ?? false,
+    deleted: prev?.deleted ?? false,
+    carriedFrom: prev?.carriedFrom ?? "",
+  };
+  if (prev?.subtasks) t.subtasks = prev.subtasks; // ✅ 있을 때만
+  return t as TaskItem;
+});
     const studentPlans: TaskItem[] = studentInput
       .split("\n")
       .map((t) => t.trim())
@@ -604,9 +619,9 @@ setStudents(list);
 
     const mergedSubject: SubjectPlan = {
       teacherTasks,
-      studentPlans: prevSubj?.studentPlans || [],
+      studentPlans: studentPlans,
       memo: memo.trim(),
-      done: prevSubj?.done ?? done,
+      done: done,
       updatedAt: serverTimestamp(),
       proofImages: prevSubj?.proofImages || [],
       proofMemo: prevSubj?.proofMemo || "",
@@ -1593,7 +1608,7 @@ if (todaySnap.exists()) {
     <span
   onClick={(e) => {
     e.stopPropagation();
-    navigate(`/study-plan/term-print/${row.student.id}?role=teacher`);
+    navigate(`/study-plan/${row.student.id}?role=teacher`);
   }}
   style={{
     fontSize: 12,
@@ -1601,7 +1616,7 @@ if (todaySnap.exists()) {
     cursor: "pointer"
   }}
 >
-  · 시험 ·
+  · 시험 .
 </span>
   </div>
 </td>
@@ -1636,15 +1651,15 @@ if (todaySnap.exists()) {
                         "-"
                       )}
                     </td>
-                    <td style={tdCell}>
-                      {row.wordTotal ? (
-                        <>
-                          {row.wordCorrect}/{row.wordTotal}
-                        </>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
+                  <td style={tdCell}>
+  {row.wordTotal != null ? (
+    <>
+      {row.wordCorrect ?? 0}/{row.wordTotal}
+    </>
+  ) : (
+    "-"
+  )}
+</td>
                   </tr>
                 ))}
               </tbody>
@@ -1717,32 +1732,7 @@ if (todaySnap.exists()) {
                   </select>
                 </div>
 
-                {/* 과목 */}
-                <div>
-                  <label style={{ fontSize: 13, fontWeight: 600, marginRight: 6 }}>
-                    과목:
-                  </label>
-                  <select
-                    value={ruleSubject}
-                    onChange={(e) => setRuleSubject(e.target.value)}
-                    style={{
-                      padding: "6px 8px",
-                      borderRadius: 8,
-                      border: "1px solid #CBD5E1",
-                    }}
-                  >
-                    <option value="kor">국어</option>
-                    <option value="math">수학</option>
-                    <option value="eng">영어</option>
-                    <option value="sci">과학</option>
-                    <option value="soc">사회</option>
-                    <option value="hist1">역사1</option>
-                    <option value="hist2">역사2</option>
-                    <option value="tech">기술가정</option>
-                    <option value="hanja">한자</option>
-                    <option value="jp">일본어</option>
-                  </select>
-                </div>
+            
 
                 {/* 날짜 */}
                 <div>

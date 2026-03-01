@@ -1,6 +1,6 @@
 // src/pages/StudyPlanPage.tsx
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useLocation, } from "react-router-dom";
 import {
   collection,
   doc,
@@ -45,6 +45,14 @@ type SubjectPlan = {
   wordTest?: { correct?: number; total?: number; };
 };
 
+type StudentExam = {
+  id: string;      // examId
+  title: string;
+  start: string;
+  end: string;
+  subjects: { key: string; name: string }[];
+};
+
 type DayPlan = {
   date: string;
   subjects: Record<string, SubjectPlan>;
@@ -59,6 +67,7 @@ type ExamItem = {
 };
 
 const SUBJECTS = [
+   { key: "common", label: "공통" },
   { key: "kor", label: "국어" },
   { key: "math", label: "수학" },
   { key: "eng", label: "영어" },
@@ -125,6 +134,15 @@ function getNextDate(ds: string) {
     d.getDate()
   ).padStart(2, "0")}`;
 }
+
+const toDate = (s: string) => new Date(s + "T00:00:00");
+const dday = (end: string) => {
+  const today = new Date();
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const e = toDate(end).getTime();
+  const diff = Math.ceil((e - t) / (1000 * 60 * 60 * 24));
+  return diff; // 남은 일수(오늘 포함 느낌이면 +1 조정 가능)
+};
 
 /* ===============================
    🔵 과목 데이터 정리 함수
@@ -281,8 +299,8 @@ const cloneForNextDay = (t: any, fromDate: string) => {
 /* ------------------------------------------------------------------ */
 
 export default function StudyPlanPage() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>(); // studentId
+const navigate = useNavigate();
   const location = useLocation();
 
   // 역할 구분 (?role=teacher / ?role=student / ?role=parent)
@@ -323,7 +341,7 @@ const readonly = role === "parent";
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
 
-  const [selectedSubject, setSelectedSubject] = useState<string>("kor");
+ const [selectedSubject, setSelectedSubject] = useState<string>("common");
 
   const [teacherInput, setTeacherInput] = useState("");
   const [studentInput, setStudentInput] = useState("");
@@ -345,6 +363,35 @@ const readonly = role === "parent";
   const [testMemo, setTestMemo] = useState("");
   const [zoomImgIndex, setZoomImgIndex] = useState<number | null>(null);
 
+
+const [myExams, setMyExams] = useState<StudentExam[]>([]);
+const [selectedExamId, setSelectedExamId] = useState<string>("");
+const [goals, setGoals] = useState<Record<string, number>>({});
+
+useEffect(() => {
+  const load = async () => {
+    if (!id) return;
+
+    const snap = await getDocs(collection(db, "studentExams", id, "exams"));
+    const list = snap.docs.map((d) => ({
+      id: d.id,                 // ✅ 이게 문서ID
+      ...(d.data() as any),
+    })) as any[];
+
+    const normalized: StudentExam[] = list.map((x) => ({
+      id: x.id,                 // ✅ 무조건 문서ID만 사용
+      title: x.title || "",
+      start: x.start || x.planStart || "",   // (필드명이 다를 수 있으니 보강)
+      end: x.end || x.planEnd || "",
+      subjects: (x.subjects || []).map((s: any) => ({ key: s.key, name: s.name })),
+    }));
+
+    setMyExams(normalized);
+    setSelectedExamId((prev) => prev || (normalized[0]?.id ?? ""));
+  };
+
+  load();
+}, [id]);
 
 
   // 🔹 빠른 기간 선택 (텀 스케줄 출력용)
@@ -545,7 +592,22 @@ const readonly = role === "parent";
     load();
   }, [student]);
 
+useEffect(() => {
+  const loadProgress = async () => {
+    if (!id || !selectedExamId) return;
 
+    const ref = doc(db, "studentExams", id, "progress", selectedExamId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      setGoals({});
+      return;
+    }
+    const data = snap.data() as any;
+    setGoals(data.goals || {});
+  };
+
+  loadProgress();
+}, [id, selectedExamId]);
 
   // ✅ 오늘 날짜의 "선생님 과제" 요약 (과목별로 한 번에 보기용)
   const todayTeacherSummary = React.useMemo(() => {
@@ -624,26 +686,25 @@ const readonly = role === "parent";
 
   await setDoc(ref, payload, { merge: true });
 };
+const saveGoal = async (subjectKey: string, value: number) => {
+  if (!id || !selectedExamId) return;
 
-const stripUndefinedDeep = (v: any): any => {
-  if (v === undefined) return undefined;
+  const next = { ...goals, [subjectKey]: value };
+  setGoals(next);
 
-  if (Array.isArray(v)) {
-    // 배열 요소에서 undefined 제거
-    return v.map(stripUndefinedDeep).filter((x) => x !== undefined);
-  }
-
-  if (v && typeof v === "object") {
-    const out: any = {};
-    Object.entries(v).forEach(([k, val]) => {
-      const cleaned = stripUndefinedDeep(val);
-      if (cleaned !== undefined) out[k] = cleaned;
-    });
-    return out;
-  }
-
-  return v;
+  await setDoc(
+    doc(db, "studentExams", id, "progress", selectedExamId),
+    {
+      studentId: id,
+      examId: selectedExamId,
+      goals: next,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 };
+
+
   /* ------------------------------ */
   /* 🔵 메인 과제 전체 토글 */
   /* ------------------------------ */
@@ -1336,6 +1397,10 @@ await setDoc(ref, payload, { merge: true });
         (t) => selectedDate >= t.start && selectedDate <= t.end
       )
       : [];
+      const studentPlansList =
+  selectedDate ? (plans[selectedDate]?.subjects?.[selectedSubject]?.studentPlans || []) : [];
+
+const hasStudentPlans = studentPlansList.length > 0;
 
   return (
     <div
@@ -1382,122 +1447,131 @@ await setDoc(ref, payload, { merge: true });
         </div>
       </div>
 
-      {/* 출력/이동 영역 (선생님/학생) */}
-      {!isParent && (
-        <div
+     {/* 출력/이동 영역 (선생님/학생) */}
+{!isParent && (
+  <div
+    style={{
+      marginBottom: 16,
+      padding: "14px 16px",
+      background: "#F8FAFC",
+      borderRadius: 16,
+      border: "1px solid #E5E7EB",
+      boxShadow: "0 8px 22px rgba(15,23,42,0.06)",
+    }}
+  >
+    {/* 상단: 시험 선택 + 액션 */}
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+        flexWrap: "wrap",
+      }}
+    >
+      {/* 왼쪽: 시험 선택 */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>시험</div>
+
+        <select
+          value={selectedExamId ?? ""}
+          onChange={(e) => setSelectedExamId(e.target.value)}
           style={{
-            marginBottom: 20,
-            padding: "14px 16px",
-            background: "#F3F4FF",
-            borderRadius: 14,
-            border: "1px solid #DDE3FF",
+            height: 38,
+            padding: "0 12px",
+            borderRadius: 12,
+            border: "1px solid #E5E7EB",
+            background: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            color: "#0F172A",
+            outline: "none",
           }}
         >
+          <option value="">시험 선택</option>
+          {myExams.map((ex) => (
+            <option key={ex.id} value={ex.id}>
+              {ex.title}
+            </option>
+          ))}
+        </select>
 
-          <div className="sp-btn-row"
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-     
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={() => navigate(`/study-plan/term-print/${id}`)}
-                style={topOutBtn}
-              >
-                🗂 시험모드
-              </button>
-
-              <button
-                onClick={() => navigate(`/study-plan/portfolio-print/${id}`)}
-                style={topOutBtn}
-              >
-                📘 매니지먼트 포트폴리오
-              </button>
-
-              <button
-                onClick={() => setShowPrintOptions(!showPrintOptions)}
-                style={{
-                  ...topOutBtn,
-                  background: "#EEF2FF",
-                }}
-              >
-                📅 기간 선택
-              </button>
+        {/* 시험 요약 */}
+        {(() => {
+          const ex = myExams.find((x) => x.id === selectedExamId);
+          if (!ex) return null;
+          return (
+            <div style={{ fontSize: 12, color: "#64748B", fontWeight: 700 }}>
+              {ex.start} ~ {ex.end} · D-{dday(ex.end)} · 과목 {ex.subjects.length}
             </div>
-          </div>
+          );
+        })()}
+      </div>
 
-          {showPrintOptions && (
-            <div
-              style={{
-                padding: 16,
-                border: "1px solid #E5E7EB",
-                background: "#F8FAFC",
-                borderRadius: 12,
-                marginTop: 14,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
-                <button style={rangeBtn} onClick={() => quickRange("week")}>
-                  이번 주
-                </button>
-                <button style={rangeBtn} onClick={() => quickRange("month")}>
-                  이번 달
-                </button>
-                <button style={rangeBtn} onClick={() => quickRange("lastWeek")}>
-                  지난 주
-                </button>
-                <button
-                  style={rangeBtn}
-                  onClick={() => quickRange("lastMonth")}
-                >
-                  지난 달
-                </button>
+      {/* 오른쪽: 버튼들 */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => {
+            if (!id) return alert("학생 ID 없음");
+            if (!selectedExamId) return alert("시험을 먼저 선택하세요");
+            navigate(`/study-plan/term-print/${id}/${selectedExamId}`);
+          }}
+          style={{
+            height: 38,
+            padding: "0 14px",
+            borderRadius: 12,
+            border: "none",
+            background: "#e5aaa5",
+            color: "#282424",
+            fontSize: 13,
+            fontWeight: 900,
+            cursor: "pointer",
+            boxShadow: "0 10px 22px rgba(38, 75, 162, 0.18)",
+          }}
+        >
+         시험모드
+        </button>
 
-                <span style={{ color: "#94A3B8" }}>|</span>
+        <button
+          type="button"
+          onClick={() => navigate(`/study-plan/portfolio-print/${id}`)}
+          style={{
+            height: 38,
+            padding: "0 14px",
+            borderRadius: 12,
+            border: "1px solid #E5E7EB",
+            background: "#fff",
+            color: "#0F172A",
+            fontSize: 13,
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          📘 포트폴리오
+        </button>
+      </div>
+    </div>
 
-                <span style={{ fontSize: 13, color: "#475569" }}>📅</span>
-                <input
-                  type="date"
-                  value={start}
-                  onChange={(e) => setStart(e.target.value)}
-                  style={dateInput}
-                />
-                <span>~</span>
-                <input
-                  type="date"
-                  value={end}
-                  onChange={(e) => setEnd(e.target.value)}
-                  style={dateInput}
-                />
-
-                <button
-                  onClick={() =>
-                    navigate(
-                      `/study-plan/term-print/${id}?start=${start}&end=${end}`
-                    )
-                  }
-                  style={applyBtn}
-                >
-                  적용
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+    {/* 시험이 없을 때 안내 */}
+    {myExams.length === 0 && (
+      <div
+        style={{
+          marginTop: 12,
+          padding: "10px 12px",
+          borderRadius: 12,
+          border: "1px dashed rgba(15,23,42,0.18)",
+          background: "#FFFFFF",
+          color: "#64748B",
+          fontSize: 12,
+          fontWeight: 800,
+        }}
+      >
+        등록된 시험이 없습니다. (선생님이 시험 관리에서 먼저 입력해야 함)
+      </div>
+    )}
+  </div>
+)}
 
       {/* ---------------- 2컬럼 레이아웃 ---------------- */}
       <div
@@ -1582,10 +1656,24 @@ await setDoc(ref, payload, { merge: true });
                         lineHeight: 1.4,
                       }}
                     >
-                      {subj.tasks
-  .map((t: any) => (t?.title ?? t?.text ?? ""))
-  .filter(Boolean)
-  .join("\n")}
+                      {subj.tasks.map((task: any, i: number) => (
+  <label
+    key={i}
+    style={{
+      display: "flex",
+      gap: 6,
+      marginBottom: 4,
+      fontSize: 12,
+    }}
+  >
+    <input
+      type="checkbox"
+      checked={task.done}
+      onChange={() => toggleTask("teacherTasks", i)}
+    />
+    <span>{task.title || task.text}</span>
+  </label>
+))}
 
                     </div>
                   </div>
@@ -1594,6 +1682,7 @@ await setDoc(ref, payload, { merge: true });
             </div>
           )}
           {/* 과목 탭 (5개씩 두 줄) */}
+          {/* 
           <div
             className="sp-subject-grid"
             style={{
@@ -1629,22 +1718,8 @@ await setDoc(ref, payload, { merge: true });
               );
             })}
           </div>
-
-          {/* 선택한 날짜 / 과목 정보 */}
-          <div
-            style={{
-              fontSize: 13,
-              marginBottom: 6,
-              color: "#4B5563",
-            }}
-          >
-            🗓{" "}
-            {selectedDate
-              ? selectedDate.replace(/-/g, ".")
-              : "날짜를 선택해주세요"}{" "}
-            · 과목: {currentSubjectLabel}
-          </div>
-
+*/}
+   
           {/* 선택 날짜가 시험기간이면 안내 */}
           {selectedDateTests.length > 0 && (
             <div
@@ -1671,15 +1746,7 @@ await setDoc(ref, payload, { merge: true });
             </div>
           )}
 
-          {/* 선생님 과제 입력 */}
-          <InputSection
-            readonly={isParent || isStudent}
-            title="선생님 과제"
-            value={teacherInput}
-            setValue={setTeacherInput}
-            placeholder="예) 수학 문제집 p.132~135, 개념정리, 단원평가 등"
-            subjLabel={currentSubjectLabel}
-          />
+     
 
           {/* 문제집 자동 채우기 버튼 (선생님만) */}
           {isTeacher && (
@@ -1702,7 +1769,7 @@ await setDoc(ref, payload, { merge: true });
           )}
 
           {/* 🔵 단어 시험 기록 */}
-          {selectedDate && (
+         {selectedDate && isTeacher && (
             <div
               style={{
                 background: "#F0F9FF",
@@ -1866,92 +1933,7 @@ await setDoc(ref, payload, { merge: true });
             </div>
           )}
 
-          {/* 선생님 과제 체크박스 */}
-          {/* 🔥 자동 + 수동 과제 렌더링 */}
-          {selectedDate &&
-            plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks?.map(
-              (task, i) => {
-                console.log("### CHECK RENDER ###");
-                console.log("isParent:", isParent);
-                console.log("task:", task);
-                // ★ 자동 과제
-                if (Array.isArray(task.subtasks) && task.subtasks.length > 0) {
-
-                  return (
-                    <div key={i} style={{ marginBottom: 10 }}>
-                      {/* 🟥 메인 박스 */}
-                      <label style={{ display: "flex", gap: 6 }}>
-                        <input
-                          type="checkbox"
-                          checked={!!task.done}
-
-                          onChange={() => toggleMain(i)}
-                          disabled={readonly}
-
-                        />
-                        <b>{task.title}</b>
-                      </label>
-
-                      {/* 🟦 서브 과제 */}
-                      {task.subtasks.map((sub, subIndex) => (
-                        <div
-                          key={subIndex}
-                          style={{
-                            marginLeft: 24,
-                            display: "flex",
-                            gap: 6,
-                            marginBottom: 4,
-                            fontSize: 12,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={sub.done}
-                            onChange={() => toggleSubtask(i, subIndex)}
-                            disabled={readonly}
-
-                          />
-                          <span>{sub.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                }
-
-                // ★ 수동 과제 (기존 그대로)
-                return (
-                  <label
-                    key={i}
-                    style={{
-                      display: "flex",
-                      gap: 6,
-                      marginBottom: 4,
-                      fontSize: 13,
-                    }}
-                  >
-                  
-                 <input
-                      type="checkbox"
-                      checked={task.done}
-                      onChange={() => toggleTask("teacherTasks", i)} 
-                      disabled={readonly}
-                    />
-
-                      <span
-      style={{
-        textDecoration: task.carriedOver ? "line-through" : "none",
-        color: task.carriedOver ? "#9CA3AF" : "#111827",
-      }}
-    >
-      {task.carriedOver && "❌ "}
-      {task.title || task.text}
-    </span>
-
-
-                  </label>
-                );
-              }
-            )}
+       {/*
           <button
   onClick={() => alert("⚠️ 이월 기능 점검중이라 잠시 꺼뒀어요.")}
   style={{
@@ -1967,42 +1949,80 @@ await setDoc(ref, payload, { merge: true });
   }}
 >
   ❌ 안 한 과제 다음날로 미루기
-</button>
+</button> */}
 
 
-          {/* 내 공부 계획 입력 */}
-          <InputSection
-            readonly={isParent || isTeacher}
-            title="내 공부 계획"
-            value={studentInput}
-            setValue={setStudentInput}
-            placeholder="예) 오답 정리, 개념 암기, 시험 대비 요약노트 등"
-          />
+      {/* ✏️ 내 공부 계획 — 선생님 박스와 같은 이중 박스 (여기 1곳만!) */}
+{selectedDate && (
+  <div
+    style={{
+      marginBottom: 14,
+      padding: "10px 12px",
+      borderRadius: 10,
+      border: "1px solid #D1FAE5",
+      background: "#ECFDF5",
+    }}
+  >
+    <div style={{ fontSize: 12, fontWeight: 800, color: "#047857", marginBottom: 6 }}>
+      ✏️ 내 공부 계획
+    </div>
 
-          {/* 학생 계획 체크박스 */}
-          {selectedDate &&
-            plans[selectedDate]?.subjects?.[selectedSubject]?.studentPlans?.map(
-              (task, i) => (
-                <label
-                  key={i}
-                  style={{
-                    display: "flex",
-                    gap: 6,
-                    marginBottom: 4,
-                    fontSize: 13,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={task.done}
-                    onChange={() => toggleTask("studentPlans", i)}
-                    disabled={isParent}
-                  />
-                  <span>{task.text}</span>
-                </label>
-              )
-            )}
-          {/* 🔥 집공 인증샷 섹션 */}
+    <div
+      style={{
+        padding: "6px 8px",
+        borderRadius: 8,
+        background: "#FFFFFF",
+        border: "1px dashed #A7F3D0",
+      }}
+    >
+      <textarea
+        value={studentInput}
+        onChange={(e) => setStudentInput(e.target.value)}
+        readOnly={isParent || isTeacher}
+        disabled={(isParent || isTeacher) && !studentInput}
+        rows={4}
+        placeholder="예) 오답 정리, 개념 암기, 시험 대비 요약노트 등"
+        style={{
+          width: "100%",
+          borderRadius: 10,
+          border: "1px solid #E5E7EB",
+          padding: "8px 10px",
+          fontSize: 13,
+          background: "#F9FAFB",
+          resize: "vertical",
+        }}
+      />
+
+      {hasStudentPlans && (
+        <div style={{ marginTop: 10 }}>
+          {studentPlansList.map((task, i) => (
+            <label
+              key={i}
+              style={{
+                display: "flex",
+                gap: 6,
+                marginBottom: 4,
+                fontSize: 12,
+                color: "#1F2937",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={!!task.done}
+                onChange={() => toggleTask("studentPlans", i)}
+                disabled={isParent}
+              />
+              <span>{task.text}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
+      
+       
+          {/* 🔥 집공 인증샷 섹션 
           {selectedDate && (
             <ProofSection
               images={proofImages}
@@ -2014,7 +2034,7 @@ await setDoc(ref, payload, { merge: true });
               selectedDate={selectedDate || ""}
             />
           )}
-
+            */}
           {/* 메모 */}
           {selectedDate && (
             <InputSection
@@ -2345,12 +2365,12 @@ function InputSection({
           let text = e.target.value;
 
           // 선생님 과제일 때만 "과목)" prefix 자동
-          if (title === "선생님 과제" && subjLabel) {
-            const prefix = subjLabel + ")";
-            if (text && !text.startsWith(prefix)) {
-              text = prefix + " " + text;
-            }
-          }
+          if (!readonly && title === "선생님 과제" && subjLabel) {
+  const prefix = subjLabel + ")";
+  if (text && !text.startsWith(prefix)) {
+    text = prefix + " " + text;
+  }
+}
 
           setValue(text);
         }}

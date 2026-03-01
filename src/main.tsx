@@ -28,7 +28,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <Route path="/parent-report/:id" element={<ParentMonthlyReport />} />
   <Route path="/exam/:id" element={<ExamInputPage />} />
   <Route path="/study-plan/:id" element={<StudyPlanPage />} />
-  <Route path="/study-plan/term-print/:id" element={<TermPrintPage />} />
+
+<Route path="/study-plan/term-print/:studentId/:examId" element={<TermPrintPage />} />
 <Route path="/study-plan/portfolio-print/:id" element={<PortfolioPrintPage />} />
 <Route path="/exam-manage" element={<ExamManagePage />} />
 <Route path="/qr-checkin" element={<QrCheckInPage />} />
