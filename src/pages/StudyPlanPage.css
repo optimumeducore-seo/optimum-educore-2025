@@ -1,222 +1,340 @@
-/* ------------------------------
-   기본 레이아웃
------------------------------- */
+/* ==============================
+   BASE
+============================== */
 
-.sp-container {
-  max-width: 960px;
-  margin: 32px auto;
-  padding: 28px 24px;
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
-  font-family: Pretendard;
+.sp-container{
+  max-width:960px;
+  margin:32px auto;
+  padding:28px 24px;
+  background:#fff;
+  border-radius:18px;
+  box-shadow:0 8px 22px rgba(15,23,42,0.12);
+  font-family:Pretendard;
 }
 
-/* ------------------------------
-   2컬럼 레이아웃
------------------------------- */
-
-.sp-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+.sp-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
 }
 
-/* 모바일: 1컬럼 */
-@media (max-width: 768px) {
-  .sp-grid {
-    grid-template-columns: 1fr !important;
-    gap: 14px !important;
-  }
+/* ==============================
+   SUBJECT GRID
+============================== */
+
+.sp-subject-grid{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:8px;
+  margin-bottom:12px;
 }
 
-/* ------------------------------
-   과목 버튼 그리드 (5개씩)
------------------------------- */
+/* ==============================
+   CALENDAR
+============================== */
 
-.sp-subject-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
+.sp-calendar-weekdays{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  text-align:center;
+  margin-bottom:6px;
+  font-weight:700;
+  font-size:12px;
+  color:#6B7280;
 }
 
-/* 모바일: 4개씩 */
-@media (max-width: 768px) {
-  .sp-subject-grid {
-    grid-template-columns: repeat(4, 1fr) !important;
-  }
+.sp-day-grid{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:6px;
 }
 
-/* ------------------------------
-   달력 요일 (7칸)
------------------------------- */
+.sp-day-box{
+  border:1px solid #E5E7EB;
+  border-radius:12px;
+  background:#F9FAFB;
+  cursor:pointer;
 
-.sp-calendar-weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  text-align: center;
-  margin-bottom: 6px;
-  font-weight: 700;
-  font-size: 12px;
-  color: #6B7280;
+  height:120px;
+  padding:14px 0;
+
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  text-align:center;
+  gap:3px;
+
+  font-size:15px;
 }
 
-/* ------------------------------
-   달력 날짜 그리드
------------------------------- */
-
-.sp-day-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-}
-
-/* 모바일: 2칸 레이아웃 */
-@media (max-width: 768px) {
-  .sp-day-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 8px !important;
-  }
-}
-
-/* 날짜 박스 */
-.sp-day-box {
-  border: 1px solid #E5E7EB;
-  border-radius: 12px;
-  padding: 14px 0;
-  height: 120px;
-  background: #F9FAFB;
-  cursor: pointer;
+.calendarHeader{
+  position: relative;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-  font-size: 15px;
-  gap: 3px;
-}
-
-/* 모바일 날짜 박스 */
-@media (max-width: 768px) {
-  .sp-day-box {
-    height: 90px !important;
-    padding: 8px 0 !important;
-    font-size: 14px !important;
-    border-radius: 10px !important;
-  }
-}
-
-/* ------------------------------
-   상단 버튼 줄
------------------------------- */
-
-.sp-btn-row {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
+  justify-content: center;   /* 핵심 */
+  height: 48px;
 }
 
-/* 모바일: 세로 정렬 */
-@media (max-width: 768px) {
-  .sp-btn-row {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 8px !important;
+.calendarTitle{
+  font-size: 20px;
+  font-weight: 900;
+  color: #1E3A8A;
+}
+
+.calendarHeader button{
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.calendarHeader button:first-of-type{
+  left: 0;
+}
+
+.calendarHeader button:last-of-type{
+  right: 0;
+}
+.sp-day-box.is-today{
+  box-shadow:0 0 0 2px rgba(59,130,246,0.5);
+}
+
+.sp-day-num{ font-weight:800; }
+.sp-test-badge{ font-size:11px; color:#B91C1C; margin-bottom:2px; }
+
+.bg-default{ background:#F9FAFB !important; }
+.bg-has-plan{ background:#E0F2FE !important; }
+.bg-test{ background:#FFE4E6 !important; }
+.bg-selected{ background:#FEE2E2 !important; }
+
+.badge-blue{
+  background:#DBEAFE;
+  color:#1E3A8A;
+  font-size:11px;
+  font-weight:700;
+  padding:2px 6px;
+  border-radius:6px;
+}
+
+.badge-green{
+  background:#DCFCE7;
+  color:#15803D;
+  font-size:11px;
+  font-weight:700;
+  padding:2px 6px;
+  border-radius:6px;
+}
+
+/* ==============================
+   EXAM CARD (CURRENT JSX)
+   examCard > examTopRow + examMetaBox
+============================== */
+
+.examCard{
+  margin-bottom:16px;
+  padding:14px 16px;
+  background:#F8FAFC;
+  border-radius:16px;
+  border:1px solid #E5E7EB;
+  box-shadow:0 8px 22px rgba(15,23,42,0.06);
+}
+
+.examTopRow{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+/* select */
+.examSelect{
+  min-width:240px;
+  height:38px;
+  padding:0 12px;
+  border-radius:12px;
+  border:1px solid #E5E7EB;
+  background:#fff;
+  font-size:13px;
+  font-weight:800;
+  color:#0F172A;
+  outline:none;
+}
+
+/* buttons */
+.examActions{
+  display:flex;
+  gap:10px;
+  flex-wrap:nowrap;
+}
+
+.examActions button{
+  height:38px;
+  padding:0 14px;
+  border-radius:12px;
+  font-size:13px;
+  font-weight:900;
+  white-space:nowrap;
+  cursor:pointer;
+}
+
+/* 버튼 톤 */
+.btnExamMode{
+  border:none;
+  background:#ddeafc;
+  color:#2A2929;
+  box-shadow:0 10px 18px rgba(30,58,138,0.18);
+}
+
+.btnPortfolio{
+  border:1px solid #E5E7EB;
+  background:#d1d6da;
+  color:#0F172A;
+}
+
+/* meta box */
+.examMetaBox{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px dashed rgba(15,23,42,0.18);
+  background:#FFFFFF;
+}
+
+.examMetaLine1{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.examTitle{
+  font-size:14px;
+  font-weight:900;
+  color:#0F172A;
+  line-height:1.2;
+}
+
+.examBadge{
+  font-size:12px;
+  font-weight:900;
+  padding:4px 10px;
+  border-radius:999px;
+  white-space:nowrap;
+}
+.examBadge.isBefore{ background:#EEF2FF; color:#1E3A8A; }
+.examBadge.isOn{ background:#FEE2E2; color:#B91C1C; }
+.examBadge.isEnd{ background:#E5E7EB; color:#374151; }
+
+.examMetaLine2{
+  margin-top:6px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  font-size:12px;
+  color:#64748B;
+  font-weight:800;
+  line-height:1.35;
+}
+
+.examEmpty{
+  margin-top:12px;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px dashed rgba(15,23,42,0.18);
+  background:#FFFFFF;
+  color:#64748B;
+  font-size:12px;
+  font-weight:800;
+}
+
+/* ==============================
+   RESPONSIVE
+============================== */
+
+/* 768px 이하: 2컬럼 → 1컬럼 */
+@media (max-width:768px){
+  .sp-grid{
+    grid-template-columns:1fr !important;
+    gap:14px !important;
+  }
+
+  .sp-container{
+    margin:8px auto !important;
+    padding:16px !important;
+  }
+
+  .sp-subject-grid{
+    grid-template-columns:repeat(4,1fr) !important;
+  }
+
+  /* 달력: 7칸 유지 + 박스만 작게 */
+  .sp-day-box{
+    height:54px !important;
+    padding:6px 0 !important;
+    border-radius:10px !important;
+    font-size:12px !important;
+  }
+  .sp-test-badge{ font-size:9px !important; }
+  .badge-blue,.badge-green{ font-size:9px !important; padding:1px 4px !important; }
+
+  .examSelect{
+    min-width:unset;
+    width:100%;
   }
 }
 
-/* ------------------------------
-   모바일 전체 패딩 조절
------------------------------- */
+/* 520px 이하: 시험카드 세로 + 버튼 2열 */
+@media (max-width:520px){
+  .examTopRow{
+    flex-direction:column;
+    align-items:stretch;
+    gap:10px;
+  }
 
-@media (max-width: 768px) {
-  .sp-container {
-    margin: 8px auto !important;
-    padding: 16px !important;
+  .examSelect{
+    height:44px;
+    border-radius:14px;
+  }
+
+  .examActions{
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+
+  .examActions button{
+    width:100%;
+    height:44px;
+    border-radius:14px;
   }
 }
 
-.sp-day-box {
-  border: 1px solid #E5E7EB;
-  border-radius: 12px;
-  padding: 14px 0;
-  height: 120px;
-  background: #F9FAFB;
+/* 기본 스타일 (컴퓨터/태블릿용) */
+.save-button {
+  padding: 12px 24px;
+  background: #1e3a8a;
+  border-radius: 8px;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-  font-size: 15px;
-  gap: 3px;
+  /* 컴퓨터에서는 콘텐츠 흐름에 맞게 배치 */
 }
 
-/* 오늘 날짜 강조 */
-.sp-day-box.is-today {
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
-}
-
-/* 모바일 */
+/* 휴대폰용 스타일 (화면 너비가 768px 이하일 때만 적용) */
 @media (max-width: 768px) {
-  .sp-day-box {
-    height: 90px !important;
-    padding: 8px 0 !important;
-    font-size: 14px !important;
+  .save-button {
+    position: fixed;     /* 화면 아래에 딱 붙이기 */
+    bottom: 0;
+    left: 0;
+    width: 100%;         /* 가로로 꽉 차게 */
+    height: 60px;
+    border-radius: 0;    /* 폰에서는 꽉 찬 느낌이 더 세련됨 */
+    z-index: 9999;       /* 캘린더보다 위로! */
+    font-size: 18px;     /* 누르기 쉽게 크게 */
+    box-shadow: 0 -4px 10px rgba(0,0,0,0.1); /* 위쪽으로 은은한 그림자 */
   }
-}
-
-.sp-day-num {
-  font-weight: 700;
-}
-
-.sp-test-badge {
-  font-size: 11px;
-  color: #B91C1C;
-  margin-bottom: 2px;
-}
-
-/* 기본 날짜 배경 */
-.bg-default {
-  background: #f9fafb !important;
-}
-
-/* 계획 존재 */
-.bg-has-plan {
-  background: #e0f2fe !important;
-}
-
-/* 시험기간 */
-.bg-test {
-  background: #ffe4e6 !important;
-}
-
-/* 선택 */
-.bg-selected {
-  background: #fee2e2 !important;
-}
-
-/* 오늘 */
-.sp-day-box.is-today {
-  box-shadow: 0 0 0 2px rgba(59,130,246,0.5);
-}
-
-/* 배지 */
-.badge-blue {
-  background: #dbeafe;
-  color: #1e3a8a;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-
-.badge-green {
-  background: #dcfce7;
-  color: #15803d;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 6px;
+  
+  /* 버튼이 화면을 가리지 않게 아래쪽 여백 추가 */
+  body {
+    padding-bottom: 70px; 
+  }
 }

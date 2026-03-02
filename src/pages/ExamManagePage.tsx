@@ -1,6 +1,17 @@
 // src/pages/ExamManagePage.tsx
 import React, { useEffect, useState } from "react";
-import { collection, doc, getDocs, setDoc, query, where, serverTimestamp, deleteDoc, writeBatch } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  query,
+  where,
+  serverTimestamp,
+  deleteDoc,
+  writeBatch,
+  documentId,
+} from "firebase/firestore";
 import { db } from "../firebase";
 
 // 학생 타입 (느슨하게 any로 써도 되지만, 기본 구조만 정의)
@@ -262,6 +273,143 @@ export default function ExamManagePage() {
     return { rows, maxP };
   };
 
+const ScheduleTable = ({
+  scheduleByDate,
+}: {
+  scheduleByDate: ExamScheduleByDate;
+}) => {
+  const { rows, maxP } = buildScheduleMatrix(scheduleByDate || {});
+
+  // 아무 일정도 없으면
+  if (!rows.length) {
+    return (
+      <div
+        style={{
+          border: "1px dashed #E5E7EB",
+          borderRadius: 12,
+          padding: 12,
+          fontSize: 12,
+          color: "#64748B",
+          background: "#F8FAFC",
+        }}
+      >
+        시험시간표가 아직 없습니다. (시험일정 탭에서 교시를 추가해 주세요)
+      </div>
+    );
+  }
+
+  const wrapStyle: React.CSSProperties = {
+    border: "1px solid #E5E7EB",
+    borderRadius: 14,
+    overflow: "auto",
+    background: "#FFFFFF",
+    maxHeight: 240, // ✅ 여기 조절하면 “안흔들리고” 고정 높이로 보여짐
+  };
+
+  const tableStyle: React.CSSProperties = {
+    width: "100%",
+    borderCollapse: "separate",
+    borderSpacing: 0,
+    minWidth: 520,
+  };
+
+  const thBase: React.CSSProperties = {
+    position: "sticky",
+    top: 0,
+    zIndex: 3,
+    background: "#F8FAFC",
+    color: "#334155",
+    fontSize: 12,
+    fontWeight: 900,
+    padding: "10px 10px",
+    borderBottom: "1px solid #E5E7EB",
+    whiteSpace: "nowrap",
+  };
+
+  const thLeft: React.CSSProperties = {
+    ...thBase,
+    left: 0,
+    zIndex: 4, // ✅ 좌상단이 가장 위로
+    textAlign: "left",
+    minWidth: 110,
+  };
+
+  const th: React.CSSProperties = {
+    ...thBase,
+    textAlign: "center",
+    minWidth: 90,
+  };
+
+  const tdBase: React.CSSProperties = {
+    fontSize: 12,
+    padding: "10px 10px",
+    borderBottom: "1px solid #F1F5F9",
+    background: "#FFFFFF",
+    whiteSpace: "nowrap",
+  };
+
+  const tdLeft: React.CSSProperties = {
+    ...tdBase,
+    position: "sticky",
+    left: 0,
+    zIndex: 2,
+    background: "#FFFFFF",
+    fontWeight: 800,
+    color: "#0F172A",
+    borderRight: "1px solid #F1F5F9",
+    minWidth: 110,
+  };
+
+  const td: React.CSSProperties = {
+    ...tdBase,
+    textAlign: "center",
+    color: "#111827",
+  };
+
+  const emptyTd: React.CSSProperties = {
+    ...td,
+    color: "#94A3B8",
+  };
+
+  return (
+    <div style={wrapStyle}>
+      <table style={tableStyle}>
+        <thead>
+          <tr>
+            <th style={thLeft}>날짜(요일)</th>
+            {Array.from({ length: maxP }, (_, i) => (
+              <th key={i + 1} style={th}>
+                {i + 1}교시
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.date}>
+              <td style={tdLeft}>
+                {r.date.slice(5)}({r.dow})
+              </td>
+
+              {Array.from({ length: maxP }, (_, i) => {
+                const p = i + 1;
+                const v = r.byPeriod[p] || "—";
+                const isEmpty = v === "—";
+                return (
+                  <td key={p} style={isEmpty ? emptyTd : td}>
+                    {v}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
   /* ------------------------------------------------------------------ */
   /* 🔹 1. 학생 로딩 + 학교 / 학년 목록 만들기 */
   /* ------------------------------------------------------------------ */
@@ -454,6 +602,183 @@ export default function ExamManagePage() {
       return { ...prev, [subKey]: { ...cur, tasks } };
     });
   };
+
+  // ✅ scheduleByDate 요약: "4일 · 10교시" + "03/18(수) : 1교시 국어 · 2교시 수학 ..."
+const summarizeSchedule = (sbd?: ExamScheduleByDate) => {
+  const obj = sbd || {};
+  const dates = Object.keys(obj).sort();
+  const days = dates.length;
+  const totalSlots = dates.reduce((acc, d) => acc + (obj[d]?.length || 0), 0);
+
+  // 날짜별 한 줄 요약
+  const lines = dates.slice(0, 4).map((d) => {
+    const slots = (obj[d] || []).slice().sort((a, b) => (a.period || 0) - (b.period || 0));
+    const slotText =
+      slots.length === 0
+        ? "—"
+        : slots
+            .map((s) => `${s.period}교시 ${s.subName || subjectLabel(s.subKey)}`)
+            .join(" · ");
+
+    return {
+      date: d,
+      dow: ymdToDow(d),
+      text: slotText,
+    };
+  });
+
+  const more = Math.max(0, dates.length - lines.length);
+
+  return { days, totalSlots, lines, more };
+};
+
+const ExamScheduleMiniSummary = ({ exam }: { exam: Exam }) => {
+  const sbd = (exam as any).scheduleByDate || exam.scheduleByDate || {};
+  const dates = Object.keys(sbd || {}).sort();
+
+  if (!dates.length) {
+    return (
+      <div
+        style={{
+          marginTop: 10,
+          padding: "10px 12px",
+          borderRadius: 12,
+          border: "1px dashed #E5E7EB",
+          background: "#FFFFFF",
+          fontSize: 12,
+          color: "#64748B",
+        }}
+      >
+        시간표 없음 (시험일정 탭에서 교시 추가)
+      </div>
+    );
+  }
+
+  // 최대 교시
+  let maxP = 0;
+  dates.forEach((d) => {
+    (sbd[d] || []).forEach((slot: ExamSlot) => {
+      maxP = Math.max(maxP, Number(slot.period || 0));
+    });
+  });
+  maxP = Math.max(maxP, 3); // 최소 3교시
+
+  // 날짜별 period -> 과목명 맵
+  const byDate: Record<string, Record<number, string>> = {};
+  dates.forEach((d) => {
+    const m: Record<number, string> = {};
+    (sbd[d] || []).forEach((slot: ExamSlot) => {
+      const p = Number(slot.period || 0);
+      if (!p) return;
+      m[p] = slot.subName || subjectLabel(slot.subKey);
+    });
+    byDate[d] = m;
+  });
+
+  const wrap: React.CSSProperties = {
+  marginTop: 10,
+  borderRadius: 12,
+  border: "1px solid #E5E7EB",
+  background: "#FFFFFF",
+  overflowY: "auto",     // ✅ 세로만
+  overflowX: "hidden",   // ✅ 가로 스크롤 제거(폭에 맞춰 눌림)
+  maxHeight: 170,        // ✅ "스크롤업 작게" = 요약 높이 줄이기
+};
+
+const table: React.CSSProperties = {
+  width: "100%",
+  borderCollapse: "separate",
+  borderSpacing: 0,
+  tableLayout: "fixed",  // ✅ 폭 강제 고정(열 자동 압축)
+};
+
+  const thBase: React.CSSProperties = {
+    position: "sticky",
+    top: 0,
+    zIndex: 2,
+    background: "#F8FAFC",
+    borderBottom: "1px solid #E5E7EB",
+    fontSize: 11,
+    fontWeight: 900,
+    color: "#334155",
+    padding: "8px 8px",
+    whiteSpace: "nowrap",
+    textAlign: "center",
+  };
+
+  const thLeft: React.CSSProperties = {
+    ...thBase,
+    left: 0,
+    zIndex: 3,
+    textAlign: "center",
+    minWidth: 62,
+  };
+
+  const tdBase: React.CSSProperties = {
+    borderBottom: "1px solid #F1F5F9",
+    fontSize: 11,
+    padding: "8px 8px",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+  };
+
+  const tdLeft: React.CSSProperties = {
+    ...tdBase,
+    position: "sticky",
+    left: 0,
+    zIndex: 1,
+    background: "#FFFFFF",
+    fontWeight: 900,
+    color: "#0F172A",
+    textAlign: "center",
+    borderRight: "1px solid #F1F5F9",
+    minWidth: 62,
+  };
+
+  return (
+    <div style={wrap}>
+      <table style={table}>
+        <thead>
+          <tr>
+            <th style={thLeft}>교시</th>
+            {dates.map((d) => (
+              <th key={d} style={thBase}>
+                {d.slice(5)}({ymdToDow(d)})
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody>
+          {Array.from({ length: maxP }, (_, i) => {
+            const p = i + 1;
+            return (
+              <tr key={p}>
+                <td style={tdLeft}>{p}교시</td>
+                {dates.map((d) => {
+                  const v = byDate[d]?.[p] || "—";
+                  const isEmpty = v === "—";
+                  return (
+                    <td
+                      key={d}
+                      style={{
+                        ...tdBase,
+                        color: isEmpty ? "#94A3B8" : "#111827",
+                        fontWeight: isEmpty ? 600 : 800,
+                      }}
+                    >
+                      {v}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
 
   /* ------------------------------------------------------------------ */
   /* 🔹 4. 폼 리셋 */
@@ -726,49 +1051,58 @@ examEnd,
     }
   };
 
-  const handleDeleteExam = async (examId: string) => {
-    if (!selectedSchool || !selectedGrade) {
-      alert("학교/학년 선택 후 삭제할 수 있어요.");
-      return;
-    }
+const handleDeleteExam = async (examId: string) => {
+  if (!selectedSchool || !selectedGrade) {
+    alert("학교/학년 선택 후 삭제할 수 있어요.");
+    return;
+  }
 
-    const ok = confirm("이 시험을 삭제할까요?\n(해당 학년 학생들에게 반영된 시험도 같이 삭제됩니다)");
-    if (!ok) return;
+  const ok = window.confirm(
+    "이 시험을 완전히 삭제할까요?\n\n- 마스터(exams) 삭제\n- 해당 학년 학생들의 studentExams 사본도 모두 삭제\n\n※ 되돌릴 수 없어요."
+  );
+  if (!ok) return;
 
-    setSaving(true);
+  setSaving(true);
 
-    try {
-      // 1) 마스터 exams 삭제
-      await deleteDoc(doc(db, "exams", examId));
+  try {
+    // 1) 해당 학교/학년 학생 목록
+    const targetStudents = students.filter(
+      (s) => s.school === selectedSchool && s.grade === selectedGrade
+    );
 
-      // 2) 해당 학교/학년 학생들 찾기
-      const targetStudents = students.filter(
-        (s) => s.school === selectedSchool && s.grade === selectedGrade
-      );
-
-      // 3) 학생쪽 사본(studentExams)도 배치로 삭제
+    // 2) 학생쪽 사본(studentExams/{sid}/exams/{examId}) 삭제 (batch 500 제한 처리)
+    const CHUNK = 450; // 여유
+    for (let i = 0; i < targetStudents.length; i += CHUNK) {
+      const slice = targetStudents.slice(i, i + CHUNK);
       const batch = writeBatch(db);
-      targetStudents.forEach((st) => {
-        const ref = doc(db, "studentExams", st.id, "exams", examId);
-        batch.delete(ref);
+
+      slice.forEach((st) => {
+        const stExamRef = doc(db, "studentExams", st.id, "exams", examId);
+        batch.delete(stExamRef);
       });
+
       await batch.commit();
-
-      // 4) 로컬 state 정리
-      setExams((prev) => prev.filter((e) => e.id !== examId));
-      if (selectedExamId === examId) {
-        setSelectedExamId(null);
-        resetForm();
-      }
-
-      alert("삭제 완료!");
-    } catch (e) {
-      console.error(e);
-      alert("삭제 중 오류. 콘솔 확인!");
-    } finally {
-      setSaving(false);
     }
-  };
+
+    // 3) 마스터 exams/{examId} 삭제
+    await deleteDoc(doc(db, "exams", examId));
+
+    // 4) 로컬 state 정리
+    setExams((prev) => prev.filter((e) => e.id !== examId));
+
+    if (selectedExamId === examId) {
+      setSelectedExamId(null);
+      resetForm();
+    }
+
+    alert("삭제 완료! (파이어스토어까지 완전 삭제됨)");
+  } catch (err) {
+    console.error(err);
+    alert("삭제 중 오류 발생! 콘솔 확인해줘.");
+  } finally {
+    setSaving(false);
+  }
+};
 
   const ui = {
     input: {
@@ -1091,9 +1425,13 @@ return (
               <span style={{ marginRight: 4 }}>📅</span>
               {ex.examStart} ~ {ex.examEnd}
             </div>
+
+            {selected && <ExamScheduleMiniSummary exam={ex} />}
           </div>
         );
       })}
+
+  
     </div>
   </div>
     {/* ========== Middle: Editor ========== */}
@@ -1412,7 +1750,7 @@ return (
     style={{
       borderRadius: 16,
       border: "1px solid #E5E7EB",
-      background: "#FFFFFF",
+      background: "#a7b4e7;",
       overflow: "hidden",
       boxShadow: "0 4px 12px rgba(0, 0, 0, 0.05)",
     }}
@@ -1461,49 +1799,76 @@ return (
         </div>
       </div>
 
-      {/* 4. 액션 버튼 (왼쪽 폼의 버튼과 일치시킴) */}
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button
-          onClick={handleSaveExam}
-          disabled={saving}
-          style={{
-            flex: 2,
-            height: 42,
-            borderRadius: 12,
-            border: "none",
-            background: saving ? "#BFDBFE" : "#2e4ca3",
-            color: "#FFFFFF",
-            fontSize: 14,
-            fontWeight: 700,
-            cursor: saving ? "not-allowed" : "pointer",
-            transition: "background 0.2s",
-          }}
-        >
-          {saving ? "저장 중..." : "시험 일정 저장"}
-        </button>
+      {/* 4. 액션 버튼: 저장 / 초기화 / 삭제 */}
+<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+  {/* 저장 */}
+  <button
+    onClick={handleSaveExam}
+    disabled={saving}
+    style={{
+      flex: 2,
+      height: 42,
+      borderRadius: 12,
+      border: "none",
+      background: saving ? "#BFDBFE" : "#2e4ca3",
+      color: "#FFFFFF",
+      fontSize: 14,
+      fontWeight: 800,
+      cursor: saving ? "not-allowed" : "pointer",
+    }}
+  >
+    {saving ? "저장 중..." : "시험일정 저장"}
+  </button>
 
-        <button
-          onClick={() => {
-            if(window.confirm("입력한 내용을 모두 초기화할까요?")) {
-              setSelectedExamId(null);
-              resetForm();
-            }
-          }}
-          style={{
-            flex: 1,
-            height: 42,
-            borderRadius: 12,
-            border: "1px solid #E5E7EB",
-            background: "#FFFFFF",
-            color: "#6B7280",
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          초기화
-        </button>
-      </div>
+  {/* 초기화 */}
+  <button
+    onClick={() => {
+      if (window.confirm("입력한 내용을 모두 초기화할까요?")) {
+        setSelectedExamId(null);
+        resetForm();
+      }
+    }}
+    disabled={saving}
+    style={{
+      flex: 1,
+      height: 42,
+      borderRadius: 12,
+      border: "1px solid #E5E7EB",
+      background: "#FFFFFF",
+      color: "#6B7280",
+      fontSize: 14,
+      fontWeight: 700,
+      cursor: saving ? "not-allowed" : "pointer",
+    }}
+  >
+    초기화
+  </button>
+
+  {/* 삭제 */}
+  <button
+    onClick={() => {
+      if (!selectedExamId) {
+        alert("삭제할 시험을 먼저 선택하세요.");
+        return;
+      }
+      handleDeleteExam(selectedExamId);
+    }}
+    disabled={saving || !selectedExamId}
+    style={{
+      flex: 1,
+      height: 42,
+      borderRadius: 12,
+      border: "1px solid #FCA5A5",
+      background: selectedExamId ? "#FEF2F2" : "#F9FAFB",
+      color: selectedExamId ? "#DC2626" : "#9CA3AF",
+      fontSize: 14,
+      fontWeight: 800,
+      cursor: saving || !selectedExamId ? "not-allowed" : "pointer",
+    }}
+  >
+    삭제
+  </button>
+</div>
     </div>
   </div>
 

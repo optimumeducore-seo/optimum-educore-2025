@@ -294,6 +294,28 @@ const cloneForNextDay = (t: any, fromDate: string) => {
   };
 };
 
+function getExamStatus(start: string, end: string) {
+  const today = new Date();
+  const s = new Date(start);
+  const e = new Date(end);
+
+  today.setHours(0,0,0,0);
+  s.setHours(0,0,0,0);
+  e.setHours(0,0,0,0);
+
+  const diffToStart = Math.ceil((s.getTime() - today.getTime()) / (1000*60*60*24));
+  const diffFromStart = Math.floor((today.getTime() - s.getTime()) / (1000*60*60*24));
+
+  if (today < s) {
+    return `D-${diffToStart}`;
+  }
+
+  if (today >= s && today <= e) {
+    return `시험중 D+${diffFromStart}`;
+  }
+
+  return "종료";
+}
 /* ------------------------------------------------------------------ */
 /* 메인 컴포넌트 */
 /* ------------------------------------------------------------------ */
@@ -1185,64 +1207,103 @@ await setDoc(ref, payload, { merge: true });
 
     const blanks = Array(firstDay).fill(null);
     const today = new Date().toISOString().slice(0, 10);
-
+const selectedExam = myExams.find((x) => x.id === selectedExamId);
+const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam.end) : "";
 
 
     return (
       <div>
-        {/* 월 이동 헤더 + 시험기간 버튼 */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 8,
-            marginBottom: 10,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <button
-              style={navBtn}
-              onClick={() => {
-                if (month === 0) {
-                  setYear(year - 1);
-                  setMonth(11);
-                } else setMonth(month - 1);
-              }}
-            >
-              ←
-            </button>
+    {/* 월 이동 헤더 */}
+{/* 월 이동 헤더 - 세련된 버전 */}
+<div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "24px",
+    padding: "10px 16px",
+    background: "#e2eefd", 
+    borderRadius: "20px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.03)", // 아주 은은한 그림자
+    border: "1px solid #F1F5F9"
+  }}
+>
+  {/* 왼쪽: 이전달 버튼 */}
+  <button
+    style={{
+      width: "40px",
+      height: "40px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "12px",
+      border: "1px solid #E2E8F0",
+      background: "#fff",
+      cursor: "pointer",
+      transition: "all 0.2s"
+    }}
+    onClick={() => {
+      if (month === 0) { setYear(year - 1); setMonth(11); }
+      else { setMonth(month - 1); }
+    }}
+  >
+    <span style={{ fontSize: "16px", color: "#64748B", fontWeight: "800" }}>〈</span>
+  </button>
 
-            <div
-              style={{
-                fontWeight: 800,
-                fontSize: 16,
-                color: "#1E3A8A",
-                minWidth: 140,
-                textAlign: "center",
-              }}
-            >
-              📆 {year}-{String(month + 1).padStart(2, "0")}
-            </div>
+  {/* 중앙: 연도와 월 (계층 구조 강조) */}
+  <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => {
+    // 💡 클릭하면 오늘 날짜로 돌아오는 기능 같은 걸 넣으면 좋아!
+    const now = new Date();
+    setYear(now.getFullYear());
+    setMonth(now.getMonth());
+  }}>
+    <div style={{ 
+      fontSize: "13px", 
+      color: "#29292a", 
+      fontWeight: 700, 
+      letterSpacing: "1px",
+      marginBottom: "2px"
+    }}>
+      {year}
+    </div>
+    <div style={{ 
+      fontSize: "22px", 
+      fontWeight: 900, 
+      color: "#1E293B",
+      display: "flex",
+      alignItems: "center",
+      gap: "6px"
+    }}>
+      {month + 1}월
+      <span style={{ fontSize: "12px", color: "#3B82F6", background: "#EFF6FF", padding: "2px 8px", borderRadius: "20px" }}>
+        Today
+      </span>
+    </div>
+  </div>
 
-            <button
-              style={navBtn}
-              onClick={() => {
-                if (month === 11) {
-                  setYear(year + 1);
-                  setMonth(0);
-                } else setMonth(month + 1);
-              }}
-            >
-              →
-            </button>
-          </div>
+  {/* 오른쪽: 다음달 버튼 */}
+  <button
+    style={{
+      width: "40px",
+      height: "40px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "12px",
+      border: "1px solid #E2E8F0",
+      background: "#fff",
+      cursor: "pointer",
+      transition: "all 0.2s"
+    }}
+    onClick={() => {
+      if (month === 11) { setYear(year + 1); setMonth(0); }
+      else { setMonth(month + 1); }
+    }}
+  >
+    <span style={{ fontSize: "16px", color: "#64748B", fontWeight: "800" }}>〉</span>
+  </button>
+
+
 
           {isTeacher && (
             <button
@@ -1401,7 +1462,8 @@ await setDoc(ref, payload, { merge: true });
   selectedDate ? (plans[selectedDate]?.subjects?.[selectedSubject]?.studentPlans || []) : [];
 
 const hasStudentPlans = studentPlansList.length > 0;
-
+const selectedExam = myExams.find((x) => x.id === selectedExamId);
+const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam.end) : null;
   return (
     <div
       className="sp-container"
@@ -1425,148 +1487,91 @@ const hasStudentPlans = studentPlansList.length > 0;
           marginBottom: 16,
         }}
       >
-        <div style={{ fontSize: 20, fontWeight: 900, color: "#1E3A8A" }}>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "#0d3571" }}>
           {student?.name} 학생 학습 플래너
         </div>
 
         {student && (
-          <div style={{ fontSize: 13, color: "#4B5563", marginTop: 6 }}>
+          <div style={{ fontSize: 13, color: "#363c45", marginTop: 6 }}>
             {student.school} {student.grade} • 총 과제일{" "}
             {Object.keys(plans).length}일
           </div>
         )}
 
-        <div
-          style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: "#6B7280",
-          }}
-        >
-          현재 모드: <b>{currentRoleLabel}</b>
-        </div>
+      
       </div>
 
      {/* 출력/이동 영역 (선생님/학생) */}
+{/* 출력/이동 영역 (선생님/학생) */}
 {!isParent && (
-  <div
-    style={{
-      marginBottom: 16,
-      padding: "14px 16px",
-      background: "#F8FAFC",
-      borderRadius: 16,
-      border: "1px solid #E5E7EB",
-      boxShadow: "0 8px 22px rgba(15,23,42,0.06)",
-    }}
-  >
-    {/* 상단: 시험 선택 + 액션 */}
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
-        flexWrap: "wrap",
-      }}
-    >
-      {/* 왼쪽: 시험 선택 */}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: "#334155" }}>시험</div>
+  <div className="examCard">
+    <div className="examTopRow">
+      <select
+        className="examSelect"
+        value={selectedExamId ?? ""}
+        onChange={(e) => setSelectedExamId(e.target.value)}
+      >
+        <option value="">시험 선택</option>
+        {myExams.map((ex) => (
+          <option key={ex.id} value={ex.id}>
+            {ex.title}
+          </option>
+        ))}
+      </select>
 
-        <select
-          value={selectedExamId ?? ""}
-          onChange={(e) => setSelectedExamId(e.target.value)}
-          style={{
-            height: 38,
-            padding: "0 12px",
-            borderRadius: 12,
-            border: "1px solid #E5E7EB",
-            background: "#fff",
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#0F172A",
-            outline: "none",
-          }}
-        >
-          <option value="">시험 선택</option>
-          {myExams.map((ex) => (
-            <option key={ex.id} value={ex.id}>
-              {ex.title}
-            </option>
-          ))}
-        </select>
-
-        {/* 시험 요약 */}
-        {(() => {
-          const ex = myExams.find((x) => x.id === selectedExamId);
-          if (!ex) return null;
-          return (
-            <div style={{ fontSize: 12, color: "#64748B", fontWeight: 700 }}>
-              {ex.start} ~ {ex.end} · D-{dday(ex.end)} · 과목 {ex.subjects.length}
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* 오른쪽: 버튼들 */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div className="examActions">
         <button
+          className="btnExamMode"
           type="button"
           onClick={() => {
             if (!id) return alert("학생 ID 없음");
             if (!selectedExamId) return alert("시험을 먼저 선택하세요");
             navigate(`/study-plan/term-print/${id}/${selectedExamId}`);
           }}
-          style={{
-            height: 38,
-            padding: "0 14px",
-            borderRadius: 12,
-            border: "none",
-            background: "#e5aaa5",
-            color: "#282424",
-            fontSize: 13,
-            fontWeight: 900,
-            cursor: "pointer",
-            boxShadow: "0 10px 22px rgba(38, 75, 162, 0.18)",
-          }}
         >
-         시험모드
+          시험모드
         </button>
 
         <button
+          className="btnPortfolio"
           type="button"
           onClick={() => navigate(`/study-plan/portfolio-print/${id}`)}
-          style={{
-            height: 38,
-            padding: "0 14px",
-            borderRadius: 12,
-            border: "1px solid #E5E7EB",
-            background: "#fff",
-            color: "#0F172A",
-            fontSize: 13,
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
         >
-          📘 포트폴리오
+          포트폴리오
         </button>
       </div>
     </div>
 
-    {/* 시험이 없을 때 안내 */}
+    {selectedExam && (
+      <div className="examMetaBox">
+        <div className="examMetaLine1">
+          <div className="examTitle">{selectedExam.title}</div>
+
+          <div
+            className={`examBadge ${
+              examStatus === "종료"
+                ? "isEnd"
+                : examStatus === "시험중"
+                ? "isOn"
+                : "isBefore"
+            }`}
+          >
+            {examStatus}
+          </div>
+        </div>
+
+        <div className="examMetaLine2">
+          <span>
+            {selectedExam.start} ~ {selectedExam.end}
+          </span>
+          <span>·</span>
+          <span>과목 {selectedExam.subjects.length}</span>
+        </div>
+      </div>
+    )}
+
     {myExams.length === 0 && (
-      <div
-        style={{
-          marginTop: 12,
-          padding: "10px 12px",
-          borderRadius: 12,
-          border: "1px dashed rgba(15,23,42,0.18)",
-          background: "#FFFFFF",
-          color: "#64748B",
-          fontSize: 12,
-          fontWeight: 800,
-        }}
-      >
+      <div className="examEmpty">
         등록된 시험이 없습니다. (선생님이 시험 관리에서 먼저 입력해야 함)
       </div>
     )}
@@ -1576,20 +1581,7 @@ const hasStudentPlans = studentPlansList.length > 0;
       {/* ---------------- 2컬럼 레이아웃 ---------------- */}
       <div
         className="sp-grid">
-
-        {/* 왼쪽: 달력 */}
-        <div
-          style={{
-            padding: 16,
-            background: "#F9FAFB",
-            borderRadius: 14,
-            border: "1px solid #E5E7EB",
-          }}
-        >
-          {renderCalendar()}
-        </div>
-
-        {/* 오른쪽: 과목 탭 + 입력/체크 */}
+    {/* 오른쪽: 과목 탭 + 입력/체크 */}
         <div
           style={{
             padding: 16,
@@ -1964,7 +1956,7 @@ const hasStudentPlans = studentPlansList.length > 0;
     }}
   >
     <div style={{ fontSize: 12, fontWeight: 800, color: "#047857", marginBottom: 6 }}>
-      ✏️ 내 공부 계획
+     나의 학습 계획
     </div>
 
     <div
@@ -1972,7 +1964,7 @@ const hasStudentPlans = studentPlansList.length > 0;
         padding: "6px 8px",
         borderRadius: 8,
         background: "#FFFFFF",
-        border: "1px dashed #A7F3D0",
+        border: "1px dashed #8de3f8",
       }}
     >
       <textarea
@@ -2050,22 +2042,7 @@ const hasStudentPlans = studentPlansList.length > 0;
           {/* 저장 버튼 */}
           {!isParent && (
             <>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  marginTop: 10,
-                  fontSize: 13,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={done}
-                  onChange={(e) => setDone(e.target.checked)}
-                />
-                이 과목 오늘 계획 완료
-              </label>
+             
 
               <button
                 onClick={handleSave}
@@ -2073,8 +2050,8 @@ const hasStudentPlans = studentPlansList.length > 0;
                   width: "100%",
                   padding: "10px 0",
                   marginTop: 18,
-                  background: "#1E3A8A",
-                  color: "#FFF",
+                  background: "#ddeafc",
+                  color: "#343333",
                   borderRadius: 10,
                   border: "none",
                   fontSize: 14,
@@ -2082,11 +2059,25 @@ const hasStudentPlans = studentPlansList.length > 0;
                   cursor: "pointer",
                 }}
               >
-                💾 저장하기
+                저장하기
               </button>
             </>
           )}
         </div>
+
+        {/* 왼쪽: 달력 */}
+        <div
+          style={{
+            padding: 16,
+            background: "#F9FAFB",
+            borderRadius: 14,
+            border: "1px solid #E5E7EB",
+          }}
+        >
+          {renderCalendar()}
+        </div>
+
+    
       </div>
 
       {/* ---------------- WEEKLY VIEW ---------------- */}
