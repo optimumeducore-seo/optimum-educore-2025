@@ -15,6 +15,7 @@ import { saveAssignmentRules, loadAssignmentRules } from "../services/firestore"
 import { rescheduleDeletedAutoTask } from "../services/firestore";
 import type { MainTask } from "../services/firestore";
 import { useNavigate } from "react-router-dom";
+import { BRAND } from "../config/brand"; 
 
 /* -------------------------------------------------- */
 /* 타입 정의 (간단 버전)                              */
@@ -24,11 +25,12 @@ type Student = {
   id: string;
   name: string;
   grade?: string | number;   // 지금 데이터가 "고1" 같은 문자열이라 이게 안전
-  gradeLevel?: string;       // ✅ "중학교" / "고등학교"
+   gradeLevel?: "초" | "중" | "고" | string;
+  removed?: boolean;    // ✅ "중학교" / "고등학교"
   hidden?: boolean;
   isPaused?: boolean;
   school?: string;
-  removed?: boolean;
+  
 };
 
 type TaskItem = {
@@ -91,6 +93,7 @@ const SUBJECTS = [
   { key: "jp", label: "일본어" },
 ];
 const RULE_SUBJECT = "common";
+
 /* -------------------------------------------------- */
 /* 유틸 함수                                          */
 /* -------------------------------------------------- */
@@ -137,14 +140,14 @@ const calcNetStudyMin = (record: any): number => {
   return Math.max(0, diff - commute - rest);
 };
 
-const minToHM = (m: number) => {
-  const mm = Math.max(0, Math.round(m));
-  const h = Math.floor(mm / 60);
-  const r = mm % 60;
-  if (h <= 0) return `${r}분`;
-  if (r === 0) return `${h}시간`;
-  return `${h}시간 ${r}분`;
-};
+function minToHM(min: number) {
+  const totalMin = Math.floor(min); // 🔥 소수 잘라버림
+
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
 
 const normalizeTasks = (v: any): TaskItem[] => {
   if (!Array.isArray(v)) return [];
@@ -171,7 +174,127 @@ const normalizeTasks = (v: any): TaskItem[] => {
   });
 };
 
+const COMMON = "common" as const;
 
+function QuickInputTable({
+  rows,
+  selectedStudentId,
+  setSelectedStudentId,
+  onAddTeacherTask,
+}: {
+  rows: any[];
+  selectedStudentId: string | null;
+  setSelectedStudentId: (id: string) => void;
+  onAddTeacherTask: (sid: string, text: string) => Promise<void>;
+}) {
+  const [taskInputs, setTaskInputs] = React.useState<Record<string, string>>({});
+
+  return (
+    <div
+      style={{
+        background: "#fff",
+        borderRadius: 14,
+        border: "1px solid #E5E7EB",
+        padding: 12,
+        overflowX: "auto",
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 800 }}>
+        📊 오늘 전체 학생 요약
+      </div>
+
+      <table style={{ width: "100%", fontSize: 12, marginTop: 8 }}>
+        <thead>
+          <tr style={{ background: "#F3F4F6" }}>
+            <th style={{ padding: 8 }}>학생</th>
+            <th style={{ padding: 8 }}>과제 입력</th>
+            <th style={{ padding: 8 }}>액션</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row: any, i: number) => {
+            const sid = row.student.id;
+            const active = sid === selectedStudentId;
+
+            return (
+              <tr
+                key={sid}
+                style={{
+                  background: active ? "#EEF2FF" : i % 2 === 0 ? "#F8FAFC" : "#fff",
+                  cursor: "pointer",
+                }}
+                onClick={() => setSelectedStudentId(sid)}
+              >
+                <td style={{ padding: 8 }}>
+                  <div style={{ fontWeight: 700 }}>
+                    {row.student.name}
+                  </div>
+                </td>
+
+                <td style={{ padding: 8 }}>
+                  <input
+                    value={taskInputs[sid] ?? ""}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) =>
+                      setTaskInputs((prev) => ({
+                        ...prev,
+                        [sid]: e.target.value,
+                      }))
+                    }
+                    onKeyDown={async (e) => {
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      const text = (taskInputs[sid] ?? "").trim();
+                      if (!text) return;
+                      await onAddTeacherTask(sid, text);
+                      setTaskInputs((prev) => ({
+                        ...prev,
+                        [sid]: "",
+                      }));
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: 6,
+                      borderRadius: 6,
+                      border: "1px solid #E5E7EB",
+                    }}
+                  />
+                </td>
+
+                <td style={{ padding: 8 }}>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      const text = (taskInputs[sid] ?? "").trim();
+                      if (!text) return;
+                      await onAddTeacherTask(sid, text);
+                      setTaskInputs((prev) => ({
+                        ...prev,
+                        [sid]: "",
+                      }));
+                    }}
+                    style={{
+                      padding: "6px 10px",
+                      background: "#1E3A8A",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    전송
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 /* -------------------------------------------------- */
 /* 메인 컴포넌트: StudyPlanDashboardPage              */
 /* -------------------------------------------------- */
@@ -194,7 +317,7 @@ const [opsOpen, setOpsOpen] = useState(false);
   // 여러 학생 선택
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
 
-  
+  const [showStats, setShowStats] = useState(false);
 
   // 여러 학생에게 넣을 과제 입력값
   const [multiTaskInput, setMultiTaskInput] = useState("");
@@ -208,6 +331,8 @@ const [opsOpen, setOpsOpen] = useState(false);
     useState<Record<string, boolean>>({});
 
     const [printMode, setPrintMode] = useState<8 | 12>(12);
+    const [searchTerm, setSearchTerm] = useState("");
+    
 
   const getYesterday = (date: string) => {
     const d = new Date(date);
@@ -236,6 +361,28 @@ const navigate = useNavigate();
     const num = parseInt(raw.replace(/[^0-9]/g, ""), 10);
     return Number.isFinite(num) ? num : 99;
   };
+const stats = useMemo(() => {
+  // 숨김/삭제 제외한 현인원
+  const activeStudents = students.filter(
+    (s: any) => s.removed !== true
+  );
+
+  const total = activeStudents.length;
+
+  const count = (lv: string) =>
+    activeStudents.filter((s: any) =>
+      String(s.gradeLevel || "").includes(lv)
+    ).length;
+
+  return {
+    total,
+    elementary: count("초"),
+    middle: count("중"),
+    high: count("고"),
+  };
+}, [students]);
+
+
 
 const sortedStudents = useMemo(() => {
   const visible = students.filter((s: any) => !s.hidden && !s.isPaused && !s.removed);
@@ -558,7 +705,10 @@ setStudents(list);
     }
 
     const day = dayPlans[selectedStudentId];
-    const subj = day?.subjects?.[selectedSubject];
+    const subj =
+  day?.subjects?.[selectedSubject] ??
+  day?.subjects?.["common"] ??
+  {};
 
     setTeacherInput((subj?.teacherTasks || []).map(t => (t.text || t.title || "")).join("\n"));
     setStudentInput((subj?.studentPlans || []).map((t) => t.text).join("\n"));
@@ -980,7 +1130,10 @@ if (dateStr) {
       const netMin = calcNetStudyMin(rec);
 
       const day = dayPlans[s.id];
-      const subj = day?.subjects?.[selectedSubject];
+      const subj =
+  day?.subjects?.[selectedSubject] ??
+  day?.subjects?.["common"] ??
+  {};
 
       let tDone = 0,
         tTotal = 0,
@@ -1016,7 +1169,55 @@ if (dateStr) {
       };
     });
   }, [students, records, dayPlans, selectedSubject]);
+const tableHeaderStyle: React.CSSProperties = {
+  padding: "12px 16px",
+  fontSize: "13px",
+  fontWeight: 700,
+  color: "#475569",
+  textAlign: "left",
+  borderBottom: "2px solid #E2E8F0",
+  whiteSpace: "nowrap",
+};
 
+const tableRowStyle = (isSelected: boolean): React.CSSProperties => ({
+  background: isSelected ? "#F1F5F9" : "#FFFFFF",
+  borderBottom: "1px solid #F1F5F9",
+  transition: "all 0.2s ease",
+  cursor: "pointer",
+});
+
+const tableCellStyle: React.CSSProperties = {
+  padding: "14px 16px",
+  fontSize: "13px",
+  verticalAlign: "middle",
+};
+const statusBadge = (done: number, total: number) => {
+  const percent = total > 0 ? (done / total) * 100 : 0;
+  let bg = "#F1F5F9"; // 미시작
+  let color = "#64748B";
+  
+  if (percent >= 100) { bg = "#DCFCE7"; color = "#166534"; } // 완료
+  else if (percent > 0) { bg = "#DBEAFE"; color = "#1E40AF"; } // 진행중
+  
+  return { bg, color, percent };
+};
+
+const thCell: React.CSSProperties = {
+  padding: "14px 12px",
+  fontSize: "13px",
+  fontWeight: 800,
+  color: "#4B5563",
+  textAlign: "center",
+  background: "#F9FAFB",
+  borderBottom: "2px solid #E5E7EB",
+};
+
+const tdCell: React.CSSProperties = {
+  padding: "16px 12px",
+  fontSize: "14px",
+  textAlign: "center",
+  borderBottom: "1px solid #F3F4F6",
+};
   /* ---------------- 선생님 과제 체크 테이블 rows ---------------- */
 
   type TeacherTask = {
@@ -1218,7 +1419,9 @@ if (todaySnap.exists()) {
       alert("이월에 실패했습니다. 코드를 확인해주세요.");
     }
   };
-
+const [memoModal, setMemoModal] = useState<{show: boolean, studentId: string, studentName: string}>({ 
+  show: false, studentId: '', studentName: '' 
+});
   const deleteMainTask = async (
     sid: string,
     date: string,        // ✅ 반드시 task.date
@@ -1305,6 +1508,12 @@ if (todaySnap.exists()) {
       },
     }));
   };
+// selectedStudents 아래쯤(아무데나 컴포넌트 안이면 됨)
+
+const COMMON_MODE = true;
+
+const COMMON = "common" as const;
+
 
 
   /* ---------------- 렌더 ---------------- */
@@ -1321,350 +1530,499 @@ if (todaySnap.exists()) {
         fontFamily: "Pretendard, -apple-system, BlinkMacSystemFont, system-ui",
       }}
     >
-<OpsModal open={opsOpen} onClose={() => setOpsOpen(false)} />
-      {/* 상단 헤더 */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-          gap: 12,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 20,
-              fontWeight: 900,
-              color: "#1E3A8A",
-              marginBottom: 4,
-            }}
-          >
-            📘 학습 플래너 — 선생님 대시보드
-          </div>
-          <div style={{ fontSize: 13, color: "#6B7280" }}>
-            한 화면에서 오늘 모든 학생의 출결 · 순공 · 과제 진행도를 확인하고
-            바로 수정할 수 있습니다.
-          </div>
-          <button
-  onClick={() => {
-    console.log("운영 버튼 클릭됨");
-    setOpsOpen(true);
-  }}
+{/* 상단 헤더 */}
+<div
   style={{
-    border: "1px solid #ddd",
-    borderRadius: 10,
-    padding: "8px 12px",
-    background: "#fff",
-    cursor: "pointer",
-    fontWeight: 700,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center", 
+    padding: "20px 24px",
+    background: "#FFFFFF",
+    borderRadius: "24px",
+    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+    marginBottom: "24px",
+    border: "1px solid #F1F5F9",
+    flexWrap: "wrap",
+    gap: 16
   }}
 >
-  운영(타임/출결)
-</button>
+  {/* 왼쪽: 브랜드 및 타이틀 영역 */}
+  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {/* 로고 강조: 그라데이션 적용 */}
+      <div style={{ 
+        letterSpacing: "-0.5px", 
+        fontSize: 15, 
+        fontWeight: 900, 
+        background: "linear-gradient(135deg, #8B1E1E 0%, #1d3d86 100%)",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+      }}>
+        OPTIMUM EDUCORE
+      </div>
+      <div style={{ width: 1, height: 14, background: "#E2E8F0" }} />
+      <div style={{ fontSize: 19, fontWeight: 800, color: "#1E293B" }}>
+        선생님 대시보드
+      </div>
+    </div>
+    <div style={{ fontSize: 13, color: "#94A3B8", fontWeight: 500 }}>
+      실시간 출결 및 과제 진행도 통합 관리 시스템
+    </div>
+  </div>
 
-        </div>
+  {/* 오른쪽: 액션 및 상태 영역 */}
+  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+    
+    {/* 운영 버튼 - 캡슐 스타일 */}
+    <OpsModal open={opsOpen} onClose={() => setOpsOpen(false)} />
+    <button
+      onClick={() => setOpsOpen(true)}
+      style={{
+        padding: "10px 18px",
+        borderRadius: "14px",
+        border: "none",
+        background: "#FDF4FF",
+        color: "#A21CAF",
+        fontSize: 13,
+        fontWeight: 800,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        transition: "all 0.2s"
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "#FAE8FF")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "#FDF4FF")}
+    >
+      <span>⚙️</span> 운영/출결
+    </button>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <span style={{ fontSize: 13, color: "#4B5563" }}>날짜</span>
-          <input
-            type="date"
-            value={dateStr}
-            onChange={(e) => setDateStr(e.target.value)}
-            style={{
-              padding: "6px 8px",
-              borderRadius: 8,
-              border: "1px solid #CBD5E1",
-              fontSize: 13,
-              background: "#FFFFFF",
-            }}
-          />
+    {/* 날짜 선택 - 깔끔한 박스 스타일 */}
+    <div style={{ 
+      display: "flex", 
+      alignItems: "center", 
+      gap: 8, 
+      background: "#F8FAFC", 
+      padding: "8px 14px", 
+      borderRadius: "14px",
+      border: "1px solid #E2E8F0"
+    }}>
+      <span style={{ fontSize: 12, color: "#64748B", fontWeight: 700 }}>Date</span>
+      <input
+        type="date"
+        value={dateStr}
+        onChange={(e) => setDateStr(e.target.value)}
+        style={{
+          border: "none",
+          background: "transparent",
+          fontSize: 13,
+          fontWeight: 800,
+          color: "#3B82F6",
+          outline: "none",
+          cursor: "pointer",
+        }}
+      />
+    </div>
+
+    {/* 학생수 - 배지 스타일 */}
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setShowStats((v) => !v)}
+        style={{
+          padding: "10px 18px",
+          borderRadius: "14px",
+          border: "1px solid #E2E8F0",
+          background: showStats ? "#1d3d86" : "#fff",
+          color: showStats ? "#fff" : "#1d3d86",
+          fontSize: 13,
+          fontWeight: 800,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          boxShadow: "0 2px 4px rgba(0,0,0,0.02)"
+        }}
+      >
+        <span>👥</span> {stats.total}명
+      </button>
+
+      {/* 학생수 상세 팝오버 (토글) */}
+      {showStats && (
+        <div style={{ 
+          position: "absolute",
+          top: "52px",
+          right: 0,
+          background: "#fff",
+          padding: "16px",
+          borderRadius: "18px",
+          boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+          border: "1px solid #F1F5F9",
+          whiteSpace: "nowrap",
+          zIndex: 100,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10
+        }}>
+          <div style={{ fontSize: 12, color: "#94A3B8", borderBottom: "1px solid #F1F5F9", paddingBottom: 6 }}>학교급별 현황</div>
+          <div style={{ display: "flex", gap: 16, fontSize: 13, fontWeight: 700 }}>
+            <span style={{ color: "#64748B" }}>초등 <b style={{ color: "#0F172A" }}>{stats.elementary}</b></span>
+            <span style={{ color: "#64748B" }}>중등 <b style={{ color: "#0F172A" }}>{stats.middle}</b></span>
+            <span style={{ color: "#64748B" }}>고등 <b style={{ color: "#0F172A" }}>{stats.high}</b></span>
+          </div>
         </div>
+      )}
+    </div>
+  </div>
+</div>
+     
+
+{/* ✅ 전체 2컬럼 래퍼 */}
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "240px 1fr", // 좌측 고정, 우측 유동
+    gap: 14,
+    alignItems: "start",
+  }}
+>
+  {/* ---------------- 좌측: 학생 리스트 섹션 ---------------- */}
+  <div
+    style={{
+      background: "#FFFFFF",
+      borderRadius: "24px",
+      border: "1px solid #F1F5F9",
+      padding: "20px",
+      maxHeight: "800px",
+      display: "flex",
+      flexDirection: "column",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.02)",
+    }}
+  >
+    {/* 1. 상단 타이틀 & 카운트 */}
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 18 }}>👥</span>
+        <span style={{ fontSize: 16, fontWeight: 900, color: "#1E293B" }}>학생 목록</span>
+      </div>
+     
+    </div>
+
+    {/* 2. 검색바 */}
+    <div style={{ position: "relative", marginBottom: 20 }}>
+      <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }}>
+        🔍
+      </span>
+      <input
+        type="text"
+        placeholder="이름이나 학교로 검색..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "12px 12px 12px 38px",
+          borderRadius: "14px",
+          border: "1px solid #E2E8F0",
+          background: "#F8FAFC",
+          fontSize: "13px",
+          fontWeight: 600,
+          outline: "none",
+        }}
+      />
+    </div>
+
+    {/* 3. 리스트 영역(스크롤) */}
+    <div style={{ flex: 1, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column" }}>
+      {/* 중학생 */}
+      <div style={{
+  fontSize: 11,
+  fontWeight: 900,
+  color: "#64748B",
+  margin: "14px 0 6px 4px",
+  letterSpacing: "1px",
+  textTransform: "uppercase",
+}}>
+        MIDDLE SCHOOL
       </div>
 
-
-      {/* 2컬럼 레이아웃 */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "260px 1fr",
-          gap: 16,
-        }}
-      >
-        {/* 좌측: 학생 리스트 */}
-        <div
-          style={{
-            background: "#FFFFFF",
-            borderRadius: 14,
-            border: "1px solid #E5E7EB",
-            padding: 12,
-            maxHeight: 600,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 800,
-              color: "#111827",
-              marginBottom: 8,
-            }}
-          >
-            👥 학생 목록
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#6B7280",
-              marginBottom: 8,
-            }}
-          >
-            클릭하면 오른쪽 상세 플래너가 전환됩니다.
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              paddingRight: 4,
-            }}
-          >
-          <>
-  {/* 중학생 */}
-  <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
-    🎓 중학생
-  </div>
-
-  {middle.map((s) => {
-    const active = s.id === selectedStudentId;
-    const rec = records[s.id] || {};
-    const net = calcNetStudyMin(rec);
-
-    return (
-      <button
-        key={s.id}
-        onClick={() => setSelectedStudentId(s.id)}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          padding: "8px 10px",
-          borderRadius: 10,
-          border: active
-            ? "1px solid #1E3A8A"
-            : "1px solid transparent",
-          background: active ? "#EEF2FF" : "#F9FAFB",
-          marginBottom: 6,
-          cursor: "pointer",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontWeight: 700 }}>{s.name}</span>
-          <span style={{ fontSize: 11, color: "#6B7280" }}>
-            {s.school} {s.grade}
-          </span>
-        </div>
-        <div style={{ fontSize: 11, color: "#6B7280" }}>
-          순공: <b style={{ color: "#16A34A" }}>{minToHM(net)}</b>
-        </div>
-      </button>
-    );
-  })}
-
-  {/* 고등학생 */}
-  <div style={{ fontSize: 12, fontWeight: 800, margin: "12px 0 6px" }}>
-    🎓 고등학생
-  </div>
-
-  {high.map((s) => {
-    const active = s.id === selectedStudentId;
-    const rec = records[s.id] || {};
-    const net = calcNetStudyMin(rec);
-
-    return (
-      <button
-        key={s.id}
-        onClick={() => setSelectedStudentId(s.id)}
-        style={{
-          width: "100%",
-          textAlign: "left",
-          padding: "8px 10px",
-          borderRadius: 10,
-          border: active
-            ? "1px solid #1E3A8A"
-            : "1px solid transparent",
-          background: active ? "#EEF2FF" : "#F9FAFB",
-          marginBottom: 6,
-          cursor: "pointer",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontWeight: 700 }}>{s.name}</span>
-          <span style={{ fontSize: 11, color: "#6B7280" }}>
-            {s.school} {s.grade}
-          </span>
-        </div>
-        <div style={{ fontSize: 11, color: "#6B7280" }}>
-          순공: <b style={{ color: "#16A34A" }}>{minToHM(net)}</b>
-        </div>
-      </button>
-    );
-  })}
-</>
-          </div>
-        </div>
-
-        {/* 우측: 요약 테이블 + 상세 플래너 */}
-        <div
-          style={{
-            display: "grid",
-
-            gap: 14,
-          }}
-        >
-          {/* 요약 테이블 */}
-          <div
-            style={{
-              background: "#FFFFFF",
-              borderRadius: 14,
-              border: "1px solid #E5E7EB",
-              padding: 12,
-              overflowX: "auto",
-            }}
-          >
-            <div
-            
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 8,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: "#111827",
-                }}
-              >
-                📊 오늘 전체 학생 요약
-              </div>
-              {loading && (
-                <div style={{ fontSize: 11, color: "#6B7280" }}>
-                  불러오는 중…
-                </div>
-              )}
-            </div>
-
-            <table
+      {middle
+        .filter((s) => {
+          const q = searchTerm.trim();
+          if (!q) return true;
+          return s.name.includes(q) || (s.school ?? "").includes(q);
+        })
+        .map((s) => {
+          const active = s.id === selectedStudentId;
+          return (
+            <button
+              key={s.id}
+              onClick={() => setSelectedStudentId(s.id)}
               style={{
                 width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 12,
+                textAlign: "left",
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: active ? "1px solid #1E3A8A" : "1px solid transparent",
+                background: active ? "#EEF2FF" : "#F9FAFB",
+                marginBottom: 6,
+                cursor: "pointer",
               }}
             >
-              <thead>
-                <tr
-                  style={{
-                    background: "#F3F4F6",
-                    borderBottom: "1px solid #E5E7EB",
-                  }}
-                >
-                  <th style={thCell}>학생</th>
-                  <th style={thCell}>학교/학년</th>
-                  <th style={thCell}>등원</th>
-                  <th style={thCell}>하원</th>
-                  <th style={thCell}>순공</th>
-                  <th style={thCell}>선생님 과제</th>
-                  <th style={thCell}>학생 계획</th>
-                  <th style={thCell}>단어 시험</th>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontWeight: 700 }}>{s.name}</span>
+                <span style={{ fontSize: 11, color: "#6B7280" }}>
+                  {s.school} {s.grade}
+                </span>
+              </div>
+            </button>
+          );
+        })}
 
-                </tr>
-              </thead>
-              <tbody>
-                {summaryRows.map((row) => (
-                  <tr
-                    key={row.student.id}
-                    style={{
-                      borderBottom: "1px solid #F3F4F6",
-                      background:
-                        row.student.id === selectedStudentId
-                          ? "#EEF2FF"
-                          : "transparent",
-                    }}
-                    onClick={() => setSelectedStudentId(row.student.id)}
-                  >
-                  <td style={tdCell}>
-  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-    <span>{row.student.name}</span>
+      {/* 고등학생 */}
+      <div style={{
+  fontSize: 11,
+  fontWeight: 900,
+  color: "#64748B",
+  margin: "14px 0 6px 4px",
+  letterSpacing: "1px",
+  textTransform: "uppercase",
+}}>
+        HIGH SCHOOL
+      </div>
 
-    <span
-  onClick={(e) => {
-    e.stopPropagation();
-    navigate(`/study-plan/${row.student.id}?role=teacher`);
-  }}
+      {high
+        .filter((s) => {
+          const q = searchTerm.trim();
+          if (!q) return true;
+          return s.name.includes(q) || (s.school ?? "").includes(q);
+        })
+        .map((s) => {
+          const active = s.id === selectedStudentId;
+          return (
+            <button
+              key={s.id}
+              onClick={() => setSelectedStudentId(s.id)}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: active ? "1px solid #1E3A8A" : "1px solid transparent",
+                background: active ? "#EEF2FF" : "#F9FAFB",
+                marginBottom: 6,
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontWeight: 700 }}>{s.name}</span>
+                <span style={{ fontSize: 11, color: "#6B7280" }}>
+                  {s.school} {s.grade}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+    </div>
+  </div>
+
+
+        {/* 우측: 요약 테이블 + 상세 플래너 */}
+       
+        {/* 요약 테이블 섹션 */}
+<div style={{
+  background: "#FFFFFF",
+  borderRadius: 20,
+  border: "1px solid #E2E8F0",
+  padding: "20px",
+  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+  overflowX: "auto",
+}}>
+  {/* 헤더 부분 생략 (동일) */}
+
+<table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+        <thead>
+          <tr style={{ background: "#F8FAFC" }}>
+            <th style={{ ...tableHeaderStyle, borderRadius: "10px 0 0 10px" }}>학생 정보</th>
+            <th style={tableHeaderStyle}>등/하원</th>
+            <th style={tableHeaderStyle}>순공 시간</th>
+            <th style={tableHeaderStyle}>선생님 과제</th>
+            <th style={tableHeaderStyle}>학생 계획</th>
+            <th style={tableHeaderStyle}>단어 시험</th>
+            <th style={tableHeaderStyle}>상담 기록</th>
+            <th style={{ ...tableHeaderStyle, borderRadius: "0 10px 10px 0" }}>스터디 플랜</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {summaryRows.map((row) => {
+            const isSelected = row.student.id === selectedStudentId;
+            const hasCheckedIn = !!row.inTime; // ✅ 미등원 빨간닷
+            const netMinColor =
+              row.netMin >= 180 ? "#10B981" : row.netMin >= 60 ? "#3B82F6" : "#64748B";
+
+            return (
+              <tr
+                key={row.student.id}
+                style={tableRowStyle(isSelected)}
+                onClick={() => {
+                  // ✅ 클릭 시 오른쪽 패널도 같이 바뀌는지 확인용
+                  console.log("CLICK", row.student.id);
+                  setSelectedStudentId(row.student.id);
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = "#F8FAFC";
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = "#FFFFFF";
+                }}
+              >
+                {/* 1) 학생 정보 */}
+                <td style={tableCellStyle}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {!hasCheckedIn ? (
+                        <div
+                          style={{
+                            width: 8,
+                            height: 8,
+                            background: "#EF4444",
+                            borderRadius: "50%",
+                            flex: "0 0 auto",
+                          }}
+                          title="미등원"
+                        />
+                      ) : (
+                        <div style={{ width: 8, height: 8 }} />
+                      )}
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{ fontWeight: 900, color: "#0F172A", fontSize: 14 }}>
+                          {row.student.name}
+                        </span>
+                        <span style={{ fontSize: 11, color: "#94A3B8", fontWeight: 700 }}>
+                          {row.student.school} · {row.student.grade}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </td>
+
+                {/* 2) 등/하원 */}
+                <td style={tableCellStyle}>
+                  <div style={{ display: "flex", flexDirection: "column", fontSize: 12, gap: 2 }}>
+                    <span style={{ color: row.inTime ? "#3B82F6" : "#CBD5E1", fontWeight: 800 }}>
+                      IN: {row.inTime || "--:--"}
+                    </span>
+                    <span style={{ color: row.outTime ? "#F59E0B" : "#CBD5E1", fontWeight: 700 }}>
+                      OUT: {row.outTime || "--:--"}
+                    </span>
+                  </div>
+                </td>
+
+                {/* 3) 순공 시간 */}
+               <td
   style={{
-    fontSize: 12,
-    color: "#31c176",
-    cursor: "pointer"
+    ...tableCellStyle,
+    padding: "14px 16px",
+    textAlign: "center",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   }}
 >
-  · 시험 .
-</span>
-  </div>
+  <span style={{ fontWeight: 900, fontSize: 14, color: netMinColor }}>
+    {minToHM(row.netMin)}
+  </span>
 </td>
-                    <td style={tdCell}>
-                      {row.student.school} {row.student.grade}
-                    </td>
-                    <td style={tdCell}>{row.inTime || "-"}</td>
-                    <td style={tdCell}>{row.outTime || "-"}</td>
-                    <td style={tdCell}>
-                      <b style={{ color: "#16A34A" }}>
-                        {minToHM(row.netMin)}
-                      </b>
-                    </td>
-                    <td style={tdCell}>
-                      {row.teacherTotal > 0 ? (
-                        <>
-                          {row.teacherDone}/{row.teacherTotal}
-                        </>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
 
-
-
-                    <td style={tdCell}>
-                      {row.studentTotal > 0 ? (
-                        <>
-                          {row.studentDone}/{row.studentTotal}
-                        </>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  <td style={tdCell}>
-  {row.wordTotal != null ? (
-    <>
-      {row.wordCorrect ?? 0}/{row.wordTotal}
-    </>
-  ) : (
-    "-"
-  )}
-</td>
-                  </tr>
+                {/* 4) 선생님 과제 / 5) 학생 계획 */}
+                {[
+                  { done: row.teacherDone, total: row.teacherTotal, color: "#6366F1" }, // indigo
+                  { done: row.studentDone, total: row.studentTotal, color: "#EC4899" }, // pink
+                ].map((task, idx) => (
+                  <td key={idx} style={tableCellStyle}>
+                    {task.total > 0 ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 140 }}>
+                        <div
+                          style={{
+                            flex: 1,
+                            height: 7,
+                            minWidth: 70,
+                            background: "#E2E8F0",
+                            borderRadius: 99,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${Math.min(100, (task.done / task.total) * 100)}%`,
+                              height: "100%",
+                              background: task.color,
+                              borderRadius: 99,
+                              transition: "width 0.25s ease",
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontWeight: 900, color: "#0F172A", minWidth: 44 }}>
+                          {task.done}/{task.total}
+                        </span>
+                      </div>
+                    ) : (
+                      <span style={{ color: "#CBD5E1", fontWeight: 800 }}>-</span>
+                    )}
+                  </td>
                 ))}
-              </tbody>
-            </table>
-          </div>
+
+                {/* 6) 단어 시험 */}
+                <td style={tableCellStyle}>
+                  {row.wordTotal ? (
+                    <div style={{ fontWeight: 900, whiteSpace: "nowrap" }}>
+                      <span style={{ color: "#3B82F6" }}>{row.wordCorrect ?? 0}</span>
+                      <span style={{ color: "#CBD5E1", margin: "0 3px" }}>/</span>
+                      <span style={{ color: "#0F172A" }}>{row.wordTotal}</span>
+                    </div>
+                  ) : (
+                    <span style={{ color: "#CBD5E1", fontWeight: 800 }}>-</span>
+                  )}
+                </td>
+
+                {/* 7) 상담 기록 (모달은 나중 / 지금은 콜백만) */}
+              <td style={tableCellStyle}>
+  <span style={{ 
+    color: "#CBD5E1", 
+    fontWeight: 700,
+    fontSize: 12
+  }}>
+    -
+  </span>
+</td>
+
+                {/* 8) 시험 관리 */}
+                <td style={tableCellStyle}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/study-plan/${row.student.id}?role=teacher`);
+                    }}
+                    style={{
+                      padding: "7px 12px",
+                      borderRadius: 10,
+                      border: isSelected ? "1px solid #6366F1" : "1px solid #E2E8F0",
+                      background: isSelected ? "#EEF2FF" : "#FFFFFF",
+                      color: isSelected ? "#4338CA" : "#64748B",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    STUDY
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
 
           {/* 🔥 다중 과제 + 개인 플래너 한 줄 */}
           <div
@@ -1878,6 +2236,8 @@ if (todaySnap.exists()) {
                   </div>
                 </div>
 
+
+{!COMMON_MODE && (
                 <div
                   style={{
                     display: "flex",
@@ -1904,6 +2264,7 @@ if (todaySnap.exists()) {
                     ))}
                   </select>
                 </div>
+                )}
               </div>
 
               {!currentStudent ? (
@@ -1925,7 +2286,10 @@ if (todaySnap.exists()) {
                     if (!sid) return null;
 
                     const day = dayPlans[sid];
-                    const subj = day?.subjects?.[selectedSubject];
+                    const subj =
+  
+  day?.subjects?.["common"] ??
+  {};
                     const tasks = subj?.teacherTasks || [];
 
                     return (
@@ -1971,7 +2335,7 @@ if (todaySnap.exists()) {
   checked={task.done}
   disabled={isOldDeleted}
   onChange={() =>
-    toggleMainFromDashboard(sid, dateStr, task.subjectKey, i)
+    toggleMainFromDashboard(sid, dateStr, task.subjectKey, task.taskIndex)
   }
 />
 
@@ -2005,7 +2369,7 @@ if (todaySnap.exists()) {
         onClick={async () => {
           if (window.confirm("이 과제를 정말 삭제할까요?")) {
             try {
-              await handleDeleteTeacherTask(sid, dateStr, selectedSubject, i);
+              await handleDeleteTeacherTask(sid, dateStr, "common", i);
               window.location.reload(); 
             } catch (e) {
               alert("삭제 실패");
