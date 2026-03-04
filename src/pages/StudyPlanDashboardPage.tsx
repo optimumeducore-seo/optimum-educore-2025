@@ -199,8 +199,8 @@ function QuickInputTable({
         overflowX: "auto",
       }}
     >
-      <div style={{ fontSize: 14, fontWeight: 800 }}>
-        📊 오늘 전체 학생 요약
+      <div style={{ fontSize: 17, fontWeight: 900 }}>
+        데일리 학생 요약
       </div>
 
       <table style={{ width: "100%", fontSize: 12, marginTop: 8 }}>
@@ -1169,28 +1169,120 @@ if (dateStr) {
       };
     });
   }, [students, records, dayPlans, selectedSubject]);
-const tableHeaderStyle: React.CSSProperties = {
-  padding: "12px 16px",
-  fontSize: "13px",
-  fontWeight: 700,
-  color: "#475569",
-  textAlign: "left",
-  borderBottom: "2px solid #E2E8F0",
+// ✅ table styles (기존 thCell/tdCell 말고 이걸로)
+const cellClamp: React.CSSProperties = {
+  overflow: "hidden",
+  textOverflow: "ellipsis",
   whiteSpace: "nowrap",
 };
 
+const tableHeaderStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#475569",
+  borderBottom: "2px solid #E2E8F0",
+  textAlign: "left", // (원하면 center로 바꿔도 됨)
+  ...cellClamp,
+};
+
 const tableRowStyle = (isSelected: boolean): React.CSSProperties => ({
-  background: isSelected ? "#F1F5F9" : "#FFFFFF",
+  background: isSelected ? "#EEF2FF" : "#FFFFFF",
   borderBottom: "1px solid #F1F5F9",
-  transition: "all 0.2s ease",
+  transition: "all 0.15s ease",
   cursor: "pointer",
 });
 
 const tableCellStyle: React.CSSProperties = {
-  padding: "14px 16px",
-  fontSize: "13px",
+  padding: "12px 14px",
+  fontSize: 13,
   verticalAlign: "middle",
+  ...cellClamp,
 };
+
+const selectedRowAccent: React.CSSProperties = {
+  boxShadow: "inset 4px 0 0 #2563EB",               // ✅ 왼쪽 포인트 바
+};
+const centerCell: React.CSSProperties = {
+  ...tableCellStyle,
+  textAlign: "center",
+};
+const tinyMuted: React.CSSProperties = {
+  fontSize: 11,
+  color: "#3b5579",
+  fontWeight: 700,
+};
+
+const dotRed: React.CSSProperties = {
+  width: 7,
+  height: 7,
+  borderRadius: "50%",
+  background: "#EF4444",
+  flex: "0 0 7px",
+};
+// ✅ 순공 시간: 가운데 정렬 + “숫자만 색”
+const netColor = (netMin: number) => {
+  if (netMin >= 180) return "#14a03e";  // 3시간+
+  if (netMin >= 60) return "#e98936";   // 1시간+
+  return "#3b5579";                     // 그 외
+};
+
+const NetTimeCell = ({ netMin }: { netMin: number }) => {
+  const hm = minToHM(netMin); // "6:47"
+  const color = netColor(netMin);
+
+  return (
+    <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
+      <span style={{ fontWeight: 900, color, fontVariantNumeric: "tabular-nums" }}>
+        {hm}
+      </span>
+    </div>
+  );
+};
+
+// ✅ 진행도 바 (너가 쓰던 바 스타일 유지 + 줄여서 통일)
+const ProgressCell = ({
+  done,
+  total,
+  color,
+}: {
+  done: number;
+  total: number;
+  color: string;
+}) => {
+  if (!total || total <= 0) return <span style={{ color: "#CBD5E1" }}>-</span>;
+
+  const pct = Math.max(0, Math.min(100, (done / total) * 100));
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div
+        style={{
+          flex: 1,
+          height: 6,
+          minWidth: 54,
+          background: "#E2E8F0",
+          borderRadius: 999,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            background: color,
+            borderRadius: 999,
+            transition: "width 0.2s ease",
+          }}
+        />
+      </div>
+      <span style={{ fontWeight: 800, color: "#334155", minWidth: 36, textAlign: "right" }}>
+        {done}/{total}
+      </span>
+    </div>
+  );
+};
+
 const statusBadge = (done: number, total: number) => {
   const percent = total > 0 ? (done / total) * 100 : 0;
   let bg = "#F1F5F9"; // 미시작
@@ -1348,7 +1440,7 @@ const tdCell: React.CSSProperties = {
 
     const subjectKey = task.subjectKey;
     const nextDate = getNextDate(baseDate); // 내일 날짜 계산
-    const firestoreTaskId = task.id ?? task._uiId;
+    const firestoreTaskId = task.id ?? task._uiId ?? task.taskIndex;
 
     try {
       // 1️⃣ 내일(다음날) 문서에 새 과제 추가하기
@@ -1385,8 +1477,8 @@ if (todaySnap.exists()) {
   const todaySubj = todayData?.[subjectKey] || {};
   const todayTasks = Array.isArray(todaySubj.teacherTasks) ? todaySubj.teacherTasks : [];
 
-  const updatedTodayTasks = todayTasks.map((t: any) =>
-    (t.id ?? t._uiId) === firestoreTaskId
+  const updatedTodayTasks = todayTasks.map((t: any, i: number) =>
+  (t.id ?? t._uiId ?? i) === firestoreTaskId
       ? {
           ...t,
           deleted: true,          // ✅ 전날 “이월됨” 표시
@@ -1461,7 +1553,10 @@ const [memoModal, setMemoModal] = useState<{show: boolean, studentId: string, st
       alert("삭제 실패");
     }
   };
-
+const tableHeaderCenter: React.CSSProperties = {
+  ...tableHeaderStyle,
+  textAlign: "center",
+};
   const toggleTeacherTaskDone = async (
     sid: string,
     date: string,
@@ -1825,204 +1920,477 @@ const COMMON = "common" as const;
   </div>
 
 
-        {/* 우측: 요약 테이블 + 상세 플래너 */}
-       
-        {/* 요약 테이블 섹션 */}
-<div style={{
-  background: "#FFFFFF",
-  borderRadius: 20,
-  border: "1px solid #E2E8F0",
-  padding: "20px",
-  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-  overflowX: "auto",
-}}>
-  {/* 헤더 부분 생략 (동일) */}
-
-<table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-        <thead>
-          <tr style={{ background: "#F8FAFC" }}>
-            <th style={{ ...tableHeaderStyle, borderRadius: "10px 0 0 10px" }}>학생 정보</th>
-            <th style={tableHeaderStyle}>등/하원</th>
-            <th style={tableHeaderStyle}>순공 시간</th>
-            <th style={tableHeaderStyle}>선생님 과제</th>
-            <th style={tableHeaderStyle}>학생 계획</th>
-            <th style={tableHeaderStyle}>단어 시험</th>
-            <th style={tableHeaderStyle}>상담 기록</th>
-            <th style={{ ...tableHeaderStyle, borderRadius: "0 10px 10px 0" }}>스터디 플랜</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {summaryRows.map((row) => {
-            const isSelected = row.student.id === selectedStudentId;
-            const hasCheckedIn = !!row.inTime; // ✅ 미등원 빨간닷
-            const netMinColor =
-              row.netMin >= 180 ? "#10B981" : row.netMin >= 60 ? "#3B82F6" : "#64748B";
-
-            return (
-              <tr
-                key={row.student.id}
-                style={tableRowStyle(isSelected)}
-                onClick={() => {
-                  // ✅ 클릭 시 오른쪽 패널도 같이 바뀌는지 확인용
-                  console.log("CLICK", row.student.id);
-                  setSelectedStudentId(row.student.id);
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) e.currentTarget.style.background = "#F8FAFC";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) e.currentTarget.style.background = "#FFFFFF";
-                }}
-              >
-                {/* 1) 학생 정보 */}
-                <td style={tableCellStyle}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {!hasCheckedIn ? (
-                        <div
-                          style={{
-                            width: 8,
-                            height: 8,
-                            background: "#EF4444",
-                            borderRadius: "50%",
-                            flex: "0 0 auto",
-                          }}
-                          title="미등원"
-                        />
-                      ) : (
-                        <div style={{ width: 8, height: 8 }} />
-                      )}
-
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        <span style={{ fontWeight: 900, color: "#0F172A", fontSize: 14 }}>
-                          {row.student.name}
-                        </span>
-                        <span style={{ fontSize: 11, color: "#94A3B8", fontWeight: 700 }}>
-                          {row.student.school} · {row.student.grade}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </td>
-
-                {/* 2) 등/하원 */}
-                <td style={tableCellStyle}>
-                  <div style={{ display: "flex", flexDirection: "column", fontSize: 12, gap: 2 }}>
-                    <span style={{ color: row.inTime ? "#3B82F6" : "#CBD5E1", fontWeight: 800 }}>
-                      IN: {row.inTime || "--:--"}
-                    </span>
-                    <span style={{ color: row.outTime ? "#F59E0B" : "#CBD5E1", fontWeight: 700 }}>
-                      OUT: {row.outTime || "--:--"}
-                    </span>
-                  </div>
-                </td>
-
-                {/* 3) 순공 시간 */}
-               <td
+       {/* ✅ 오늘 전체 학생 요약 테이블 */}
+<div
   style={{
-    ...tableCellStyle,
-    padding: "14px 16px",
-    textAlign: "center",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    background: "#FFFFFF",
+    borderRadius: 20,
+    border: "1px solid #E2E8F0",
+    padding: 16,
+    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.06)",
+
+    overflowX: "hidden",   // ✅ auto → hidden (커서 땡기는거 제거)
+    overflowY: "visible",
+    position: "relative",
+    width: "100%",         // ✅ 안전
+    maxWidth: "100%",      // ✅ 안전
   }}
 >
-  <span style={{ fontWeight: 900, fontSize: 14, color: netMinColor }}>
-    {minToHM(row.netMin)}
-  </span>
+  {/* 헤더 */}
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+      gap: 10,
+    }}
+  >
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <span style={{ fontSize: 18 }}>📊</span>
+      <h2 style={{ fontSize: 15, fontWeight: 900, color: "#0F172A", margin: 0 }}>
+        오늘 전체 학생 요약
+      </h2>
+      <span
+        style={{
+          fontSize: 11,
+          background: "#E2E8F0",
+          padding: "2px 8px",
+          borderRadius: 999,
+          color: "#475569",
+          fontWeight: 800,
+        }}
+      >
+        {summaryRows.length}명
+      </span>
+    </div>
+
+    {loading && (
+      <div style={{ fontSize: 12, color: "#2563EB", fontWeight: 800 }} className="animate-pulse">
+        동기화 중...
+      </div>
+    )}
+  </div>
+
+ <table
+  style={{
+    width: "100%",
+    minWidth: 0,          // ✅ 970 삭제
+    borderCollapse: "separate",
+    borderSpacing: 0,
+    tableLayout: "fixed",
+  }}
+>
+  {/* ✅ 여기! thead 위에 colgroup */}
+  <colgroup>
+    <col style={{ width: 180 }} /> {/* 학생 정보 */}
+    <col style={{ width: 120 }} /> {/* 등/하원 */}
+    <col style={{ width: 90 }} />  {/* 순공 시간 */}
+    <col style={{ width: 170 }} /> {/* 선생님 과제 */}
+    <col style={{ width: 170 }} /> {/* 학생 계획 */}
+    <col style={{ width: 90 }} />  {/* 단어 시험 */}
+    <col style={{ width: 70 }} />  {/* 상담 기록(메모 버튼 칸) */}
+    <col style={{ width: 80 }} />  {/* 시험 관리 */}
+  </colgroup>
+    <thead>
+      <tr>
+      <th style={{ ...tableHeaderStyle, borderRadius: "12px 0 0 12px" }}>학생 정보</th>
+<th style={tableHeaderCenter}>등/하원</th>
+<th style={tableHeaderCenter}>순공 시간</th>
+<th style={tableHeaderCenter}>선생님 과제</th>
+<th style={tableHeaderCenter}>학생 계획</th>
+<th style={tableHeaderCenter}>단어 시험</th>
+<th style={tableHeaderCenter}>메모</th>
+<th style={{ ...tableHeaderCenter, borderRadius: "0 12px 12px 0" }}>시험 관리</th>
+</tr>
+    </thead>
+
+  <tbody>
+  {summaryRows.map((row) => {
+    const sid = row.student.id;
+    const isSelected = sid === selectedStudentId;
+    const hasCheckedIn = !!row.inTime;
+
+    // ✅ 해당 학생의 오늘 공통(common) 과제 데이터 추출
+    const day = dayPlans[sid];
+    const common = day?.subjects?.["common"];
+    const raw = common?.teacherTasks || [];
+
+// ✅ DashboardTask 형태로 맞춰서 렌더링용 만들기
+const teacherTasks = (raw as any[]).map((t, idx) => ({
+  ...t,
+  _uiId: t._uiId ?? `${sid}_${dateStr}_common_${idx}`, // 없으면 생성
+  taskIndex: t.taskIndex ?? idx,                      // 없으면 idx로
+  subjectKey: t.subjectKey ?? "common",               // common 고정
+  date: t.date ?? dateStr,                            // 오늘 날짜로
+}));
+
+    return (
+      <React.Fragment key={sid}>
+        {/* --- [1] 상단 요약 행 --- */}
+        <tr
+          onClick={() => setSelectedStudentId(isSelected ? null : sid)}
+          style={{
+            ...tableRowStyle(isSelected),
+            ...(isSelected ? selectedRowAccent : {}),
+            // 선택 시 하단 테두리를 없애 아코디언과 연결된 느낌 부여
+            borderBottom: isSelected ? "none" : "1px solid #F1F5F9",
+            cursor: "pointer",
+            transition: "background 0.2s",
+          }}
+          onMouseEnter={(e) => {
+            if (!isSelected) e.currentTarget.style.background = "#F8FAFC";
+          }}
+          onMouseLeave={(e) => {
+            if (!isSelected) e.currentTarget.style.background = "#FFFFFF";
+          }}
+        >
+          {/* 1) 학생 정보 */}
+          <td style={tableCellStyle}>
+  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+    {!hasCheckedIn && <span style={dotRed} title="미등원" />}
+
+    <span
+      style={{
+        fontWeight: 900,
+        color: "#0F172A",
+        fontSize: 13,
+        minWidth: 0,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        flex: 1,
+      }}
+      title={row.student.name}
+    >
+      {row.student.name}
+    </span>
+
+    <span style={{ ...tinyMuted, whiteSpace: "nowrap" }}>
+      {row.student.school ?? ""} {row.student.grade ?? ""}
+    </span>
+  </div>
 </td>
 
-                {/* 4) 선생님 과제 / 5) 학생 계획 */}
-                {[
-                  { done: row.teacherDone, total: row.teacherTotal, color: "#6366F1" }, // indigo
-                  { done: row.studentDone, total: row.studentTotal, color: "#EC4899" }, // pink
-                ].map((task, idx) => (
-                  <td key={idx} style={tableCellStyle}>
-                    {task.total > 0 ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 140 }}>
-                        <div
-                          style={{
-                            flex: 1,
-                            height: 7,
-                            minWidth: 70,
-                            background: "#E2E8F0",
-                            borderRadius: 99,
-                            overflow: "hidden",
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: `${Math.min(100, (task.done / task.total) * 100)}%`,
-                              height: "100%",
-                              background: task.color,
-                              borderRadius: 99,
-                              transition: "width 0.25s ease",
-                            }}
-                          />
-                        </div>
-                        <span style={{ fontWeight: 900, color: "#0F172A", minWidth: 44 }}>
-                          {task.done}/{task.total}
-                        </span>
-                      </div>
-                    ) : (
-                      <span style={{ color: "#CBD5E1", fontWeight: 800 }}>-</span>
-                    )}
-                  </td>
-                ))}
+          {/* 2) 등하원 */}
+          <td style={tableCellStyle}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 12 }}>
+              <span style={{ color: row.inTime ? "#2563EB" : "#94A3B8", fontWeight: 900 }}>
+                IN: {row.inTime || "--:--"}
+              </span>
+              <span style={{ color: row.outTime ? "#F59E0B" : "#94A3B8", fontWeight: 800 }}>
+                OUT: {row.outTime || "--:--"}
+              </span>
+            </div>
+          </td>
 
-                {/* 6) 단어 시험 */}
-                <td style={tableCellStyle}>
-                  {row.wordTotal ? (
-                    <div style={{ fontWeight: 900, whiteSpace: "nowrap" }}>
-                      <span style={{ color: "#3B82F6" }}>{row.wordCorrect ?? 0}</span>
-                      <span style={{ color: "#CBD5E1", margin: "0 3px" }}>/</span>
-                      <span style={{ color: "#0F172A" }}>{row.wordTotal}</span>
-                    </div>
-                  ) : (
-                    <span style={{ color: "#CBD5E1", fontWeight: 800 }}>-</span>
-                  )}
-                </td>
+          {/* 3) 순공 시간 */}
+          <td style={centerCell}>
+            <NetTimeCell netMin={row.netMin} />
+          </td>
 
-                {/* 7) 상담 기록 (모달은 나중 / 지금은 콜백만) */}
-              <td style={tableCellStyle}>
-  <span style={{ 
-    color: "#CBD5E1", 
-    fontWeight: 700,
-    fontSize: 12
-  }}>
-    -
-  </span>
-</td>
+          {/* 4) 선생님 과제 진행률 */}
+          <td style={tableCellStyle}>
+            <ProgressCell done={row.teacherDone} total={row.teacherTotal} color="#6366F1" />
+          </td>
 
-                {/* 8) 시험 관리 */}
-                <td style={tableCellStyle}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/study-plan/${row.student.id}?role=teacher`);
-                    }}
-                    style={{
-                      padding: "7px 12px",
-                      borderRadius: 10,
-                      border: isSelected ? "1px solid #6366F1" : "1px solid #E2E8F0",
-                      background: isSelected ? "#EEF2FF" : "#FFFFFF",
-                      color: isSelected ? "#4338CA" : "#64748B",
-                      fontSize: 12,
-                      fontWeight: 900,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    STUDY
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+          {/* 5) 학생 계획 진행률 */}
+          <td style={tableCellStyle}>
+            <ProgressCell done={row.studentDone} total={row.studentTotal} color="#EC4899" />
+          </td>
+
+          {/* 6) 단어 시험 결과 */}
+          <td style={centerCell}>
+            {row.wordTotal ? (
+              <div style={{ fontWeight: 900, fontVariantNumeric: "tabular-nums", fontSize: 13 }}>
+                <span style={{ color: "#2563EB" }}>{row.wordCorrect ?? 0}</span>
+                <span style={{ color: "#CBD5E1", margin: "0 2px" }}>/</span>
+                <span style={{ color: "#0F172A" }}>{row.wordTotal}</span>
+              </div>
+            ) : (
+              <span style={{ color: "#CBD5E1" }}>-</span>
+            )}
+          </td>
+
+          {/* 7) 메모 아이콘 */}
+          <td style={centerCell}>
+            <span 
+              onClick={(e) => { e.stopPropagation(); console.log("메모", sid); }}
+              style={{ fontSize: 18, cursor: "pointer" }}
+            >
+              📝
+            </span>
+          </td>
+
+          {/* 8) 관리 버튼 */}
+          <td style={centerCell}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/study-plan/${sid}?role=teacher`);
+              }}
+              style={{
+                padding: "5px 10px",
+                borderRadius: 8,
+                border: "1px solid #E2E8F0",
+                background: "#FFFFFF",
+                color: "#475569",
+                fontSize: 11,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              관리
+            </button>
+          </td>
+        </tr>
+
+        {/* --- [2] ✅ 아코디언 상세 영역 (펼쳐지는 부분) --- */}
+{isSelected && (
+  <tr>
+   <td
+  colSpan={8}
+  style={{
+    padding: "0 16px 16px",
+    background: "#F8FAFC",
+    overflow: "visible",
+    position: "relative",  // ✅
+    zIndex: 5,             // ✅
+  }}
+>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
+   position: "relative",  
+    zIndex: 5,             
+          background: "#FFFFFF",
+          borderRadius: "0 0 14px 14px",
+          border: "1px solid #E2E8F0",
+          borderTop: "none",
+          padding: 16,
+
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 400px) minmax(0, 400px)", // ✅ 우측 폭 줄임
+          gap: 14,
+
+          // ✅ 핵심: grid에서 삐져나오는 문제는 minWidth:0 로 잡는다
+          minWidth: 0,
+          overflow: "visible", // ✅ 여기서도 hidden 금지
+        }}
+      >
+        {/* 좌측 */}
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 900,
+              color: "#1E293B",
+              marginBottom: 10,
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
+            <span>🎯 선생님 과제 입력</span>
+            <span style={{ fontSize: 11, color: "#3B82F6", whiteSpace: "nowrap" }}>
+              입력 후 바깥 클릭 시 자동저장
+            </span>
+          </div>
+
+          <textarea
+            placeholder="엔터(줄바꿈)로 여러 과제를 한 번에 입력 가능합니다."
+            value={teacherInput}
+            onChange={(e) => setTeacherInput(e.target.value)}
+            onBlur={() => handleSave()}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              height: 100,
+              borderRadius: 12,
+              border: "2px solid #F1F5F9",
+              padding: "12px",
+              fontSize: 12,
+              lineHeight: "1.6",
+              outline: "none",
+              resize: "none",
+              background: "#F9FBFF",
+              fontWeight: 550,
+            }}
+          />
+        </div>
+
+        {/* 우측 */}
+        <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: "#1E293B", marginBottom: 10 }}>
+            📋 오늘 할 일 목록 ({teacherTasks.length})
+          </div>
+
+          <div
+            style={{
+              maxHeight: 160,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              border: "1px solid #E5E7EB",
+              borderRadius: 12,
+              background: "#FFFFFF",
+              minWidth: 0,
+            }}
+          >
+            {teacherTasks.length === 0 && (
+              <div style={{ padding: "18px 0", textAlign: "center", color: "#CBD5E1", fontSize: 12 }}>
+                등록된 과제가 없습니다.
+              </div>
+            )}
+
+           {teacherTasks.map((t: any, idx: number) => {
+  // ✅ 1) 상태 정리
+  const carriedIn = !!t.carriedFrom;      // 어제/이전날에서 '들어온' 과제
+  const carriedOut = t.deleted === true;  // 오늘에서 '이월 보내져서' 줄그어진 과제
+
+  // ✅ 2) carryOverMainTask / deleteMainTask 가 먹게 DashboardTask 형태로 가공
+  const uiId =
+    (t.id ?? t._uiId ?? `common_${sid}_${dateStr}_${idx}`) as string;
+
+  const dashTask = {
+    ...t,
+    _uiId: uiId,
+    id: t.id ?? uiId,
+    subjectKey: "common",
+    taskIndex: idx,
+    date: dateStr,
+    title: t.title ?? "",
+    text: t.text ?? t.title ?? "",
+  };
+
+  // ✅ 3) 버튼 노출 조건(원하는대로 조절 가능)
+  const canCarry =
+    !carriedOut && !t.done; // 이월된건 숨기고 / 완료된건 이월 못하게
+
+  return (
+    <div
+      key={uiId}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+        borderBottom: idx === teacherTasks.length - 1 ? "none" : "1px solid #F1F5F9",
+        minWidth: 0,
+      }}
+    >
+      {/* ✅ 체크 */}
+      <input
+        type="checkbox"
+        checked={!!t.done}
+        disabled={carriedOut}
+        onClick={(e) => e.stopPropagation()}
+        onChange={() => toggleMainFromDashboard(sid, dateStr, "common", idx)}
+        style={{ width: 16, height: 16, cursor: carriedOut ? "not-allowed" : "pointer" }}
+      />
+
+      {/* ✅ 제목 */}
+      <div
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 13,
+          fontWeight: 700,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          color: carriedOut
+            ? "#94A3B8"
+            : carriedIn
+            ? "#9A3412"
+            : "#0F172A",
+          textDecoration: carriedOut ? "line-through" : "none",
+          opacity: carriedOut ? 0.7 : 1,
+        }}
+        title={t.text || t.title}
+      >
+        {carriedIn ? "🕒 " : ""}
+        {t.text || t.title}
+        {carriedOut ? (
+          <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 800, color: "#94A3B8" }}>
+            (이월됨)
+          </span>
+        ) : null}
+      </div>
+
+      {/* ✅ 우측 액션: 이월 + 삭제 */}
+      <div style={{ display: "inline-flex", gap: 6, flex: "0 0 auto" }}>
+        {/* 이월 버튼 (트렌디 캡슐) */}
+        {canCarry && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              // ✅ subtasks 없는 common 과제라 remainingSubs는 빈 배열로
+              carryOverMainTask(sid, dateStr, dashTask as any, []);
+            }}
+            style={{
+              height: 22,
+              padding: "0 10px",
+              borderRadius: 999,
+              border: "1px solid #E2E8F0",
+              background: "#F8FAFC",
+              color: "#334155",
+              fontSize: 11,
+              fontWeight: 900,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+            title="내일로 이월"
+          >
+            이월
+          </button>
+        )}
+
+        {/* 삭제 버튼 */}
+        {!carriedOut && (
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              await deleteMainTask(sid, dateStr, "common", uiId);
+            }}
+            style={{
+              height: 22,
+              padding: "0 10px",
+              borderRadius: 999,
+              border: "1px solid #FECACA",
+              background: "#FFFFFF",
+              color: "#EF4444",
+              fontSize: 11,
+              fontWeight: 900,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+            title="삭제"
+          >
+            삭제
+          </button>
+        )}
+      </div>
+    </div>
+  );
+})}
+          </div>
+        </div>
+      </div>
+    </td>
+  </tr>
+)}
+      </React.Fragment>
+    );
+  })}
+</tbody>
+  </table>
+
 
           {/* 🔥 다중 과제 + 개인 플래너 한 줄 */}
           <div
@@ -2280,159 +2648,8 @@ const COMMON = "common" as const;
                 </div>
               ) : (
                 <>
-                  {/* 🔥 선생님 과제 목록 (개별 삭제 UI) */}
-                  {(() => {
-                    const sid = selectedStudentId;
-                    if (!sid) return null;
+                  
 
-                    const day = dayPlans[sid];
-                    const subj =
-  
-  day?.subjects?.["common"] ??
-  {};
-                    const tasks = subj?.teacherTasks || [];
-
-                    return (
-                      <div style={{ marginBottom: 12 }}>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: "#4B5563",
-                            marginBottom: 6,
-                          }}
-                        >
-                          📘 자동 배정 과제 목록 (삭제 가능)
-                        </div>
-
-                        {tasks.length === 0 && (
-                          <div style={{ fontSize: 12, color: "#9CA3AF" }}>
-                            등록된 과제가 없습니다.
-                          </div>
-                        )}
-
-                        {(() => {
-                          const teacherTasks = tasks as DashboardTask[];
-
-                         return teacherTasks.map((task, i) => {
-  // 1️⃣ 이월 보낸 과제인지 확인하는 '스위치' (1일 날 과제에 deleted: true가 박힘)
-  const isOldDeleted = task.deleted === true;
-
-  return (
-    <div key={task._uiId} style={{ marginBottom: 10 }}>
-      {/* 2️⃣ 정렬을 위해 justifyContent 추가 */}
-      <div style={{ 
-  display: "flex", 
-  alignItems: "center", 
-  justifyContent: "space-between", // ⭐ 1. 양 끝으로 벌려라!
-  width: "100%",                   // ⭐ 2. 가로 길이를 꽉 채워라!
-  gap: 10                          // 3. 제목이랑 버튼 사이 최소 간격
-}}>
-        
-        <label style={{ display: "flex", gap: 6, alignItems: "center", flex: 1, cursor: "pointer" }}>
-          <input
-  type="checkbox"
-  checked={task.done}
-  disabled={isOldDeleted}
-  onChange={() =>
-    toggleMainFromDashboard(sid, dateStr, task.subjectKey, task.taskIndex)
-  }
-/>
-
-<b
-  style={{
-    textDecoration: isOldDeleted ? "line-through" : "none",
-    color: isOldDeleted ? "#999" : "#000",
-    opacity: isOldDeleted ? 0.5 : 1,
-    fontSize: 13
-  }}
->
-  {task.title || task.text}
-  {isOldDeleted && (
-    <span
-      style={{
-        marginLeft: 6,
-        fontSize: 11,
-        color: "#EF4444",
-        fontWeight: 700
-      }}
-    >
-      (이월됨)
-    </span>
-  )}
-</b>
-        </label>
-
-      {/* [오른쪽]: 삭제 버튼 */}
-      <button
-        type="button"
-        onClick={async () => {
-          if (window.confirm("이 과제를 정말 삭제할까요?")) {
-            try {
-              await handleDeleteTeacherTask(sid, dateStr, "common", i);
-              window.location.reload(); 
-            } catch (e) {
-              alert("삭제 실패");
-            }
-          }
-        }}
-        style={{
-          fontSize: 11, padding: "2px 8px", borderRadius: 4,
-          border: "1px solid #FCA5A5", background: "#fff",
-          color: "#EF4444", fontWeight: 600, cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-      >
-        삭제
-      </button>
-    </div>
-
-                                {Array.isArray(task.subtasks) &&
-                                  task.subtasks.map((s, j) => (
-                                    <div
-                                      key={j}
-                                      style={{
-                                        marginLeft: 22,
-                                        display: "flex",
-                                        gap: 6,
-                                        fontSize: 12,
-                                        marginTop: 4,
-                                      }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={s.done}
-                                        onChange={() =>
-                                          toggleSubtaskFromDashboard(
-                                            sid,
-                                            task.date,
-                                            task.subjectKey,
-                                            i,
-                                            j
-                                          )
-                                        }
-                                      />
-                                      <span>{s.text}</span>
-                                    </div>
-                                  ))}
-                              </div>
-
-
-
-                            );
-                          });
-                        })()}
-                      </div>
-                    );
-                  })()}
-                  {/* 선생님 과제 */}
-                  <InputSection
-                    title="선생님 과제"
-                    value={teacherInput}
-                    setValue={setTeacherInput}
-                    readonly={false}
-                    placeholder="예) 수학 문제집 p.132~135, 개념정리, 단원평가 등"
-                  />
 
                   {/* 학생 계획 */}
                   <InputSection
@@ -2496,7 +2713,7 @@ const COMMON = "common" as const;
                     </div>
                   </div>
 
-                  {/* 🔥 집공 인증샷/메모 표시 (읽기 전용) */}
+                  {/* 🔥  인증샷/메모 표시 (읽기 전용) */}
                   {(() => {
                     const currentDay = dayPlans[selectedStudentId || ""] || null;
                     const currentSubj = currentDay?.subjects?.[selectedSubject];
@@ -2514,7 +2731,7 @@ const COMMON = "common" as const;
                             marginBottom: 4,
                           }}
                         >
-                          📸 집공 인증
+                          📸 인증
                         </div>
 
                         {/* 이미지들 */}

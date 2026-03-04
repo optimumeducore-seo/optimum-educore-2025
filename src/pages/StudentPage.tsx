@@ -190,7 +190,7 @@ const loadTodayRec = async (studentId: string) => {
   setTodayRec(all?.[studentId] || null);
 };
 
-const CLOSE_HM = "22:10";
+const CLOSE_HM = "23:00";
 
 const hmToMin = (hm: string) => {
 const [h, m] = hm.split(":").map(Number);
@@ -264,6 +264,15 @@ const EDU = {
       if (target) handleSelectStudent(target);
     }
   }, [students, autoId]);
+
+  useEffect(() => {
+  if (!verified || !selected?.id) return;
+
+  autoCloseAt2300(); // 들어오자마자 1회
+  const t = setInterval(autoCloseAt2300, 60 * 1000);
+  return () => clearInterval(t);
+}, [verified, selected?.id]);
+
 const navigate = useNavigate();
   // 🔹 월간 통계 계산
   const calculateMonthlyStats = (logs: any[]) => {
@@ -969,11 +978,11 @@ await setDoc(
   // 2) 새 세그먼트 시작 (연타 방지: 마지막이 동일 타입+동일 start면 추가 안함)
   const last = segments[segments.length - 1];
     if (!(last && last.type === type && last.start === nowHM)) {
-    segments.push({ type, start: nowHM, end: null, meta: meta ?? undefined });
+    segments.push({ type, start: nowHM, end: null });
   }
 
   const ip = await getPublicIP();
-
+try {
   await setDoc(
     ref,
     {
@@ -987,7 +996,9 @@ await setDoc(
     },
     { merge: true }
   );
-
+} catch(e){
+ console.error("SEG SAVE ERROR", e)
+}
   return segments;
 }
 

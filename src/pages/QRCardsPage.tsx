@@ -74,12 +74,12 @@ const isHiddenStudent = (s: any) => {
   const sideGroups = useMemo(() => chunk(selectedStudents, 3), [selectedStudents]);
 
   // ✅ 이름카드(9cm×3.5cm)용 폰트 자동 조절
-  const getNameFontSize = (name: string) => {
+const getNameFontSize = (name: string) => {
     const len = (name || "").replace(/\s+/g, "").length;
-    if (len <= 2) return 80;
-    if (len === 3) return 52;
-    if (len === 4) return 46;
-    return 40;
+    if (len <= 2) return 120; // 2글자 (매우 크게)
+    if (len === 3) return 100; // 3글자 (꽉 차게)
+    if (len === 4) return 85;  // 4글자
+    return 70;                 // 5글자 이상
   };
 
   // ✅ (중요) 네가 만든 QR카드 “그대로” 재사용 컴포넌트
@@ -342,55 +342,56 @@ const isHiddenStudent = (s: any) => {
               }}
             >
               {/* ✅ 왼쪽: 이름카드 10cm × 3.9cm */}
-              <div
-                style={{
-                  width: "100mm",
-                  height: "39mm",
-                  border: "0.7px solid #000",
-                  borderRadius: "4mm",
-                  overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  background: "#fff",
-                  flexShrink: 0,
-                }}
-              >
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: getNameFontSize(s.name),
-                    fontWeight: 900,
-                    color: "#111",
-                    paddingTop: "1mm",
-                    paddingLeft: "4mm",
-                    paddingRight: "4mm",
-                    lineHeight: 1,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {s.name.split("").join(" ")}
-                </div>
+             <div
+  style={{
+    width: "100mm",
+    height: "39mm",
+    border: "0.7px solid #000",
+    borderRadius: "4mm",
+    overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    background: "#fff",
+    flexShrink: 0,
+  }}
+>
+               <div
+    style={{
+      flex: 1,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      // 폰트 크기를 키우고, letterSpacing으로 자간 조절
+      fontSize: `${getNameFontSize(s.name)}px`, 
+      fontWeight: 800,
+      color: "#111",
+      lineHeight: 0.8, // 줄간격을 줄여서 글자가 더 꽉 차 보이게
+      whiteSpace: "nowrap",
+      padding: "0 4mm",
+      letterSpacing: "-1mm", // 글자가 너무 벌어지지 않게 약간 조임 (취향껏 조절)
+    }}
+  >
+    {/* split().join(" ")을 제거하여 글자 본연의 크기를 키움 */}
+    {s.name}
+  </div>
 
-                <div
-                  style={{
-                    height: "7mm",
-                    background: "#1E3A8A",
-                    color: "#fff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 11,
-                    letterSpacing: 1.0,
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
-                >
-                  OPTIMUM EDUCORE
-                </div>
+              <div
+    style={{
+      height: "8mm", // 하단 띠지를 조금 더 두껍게 (안정감)
+      background: "#1E3A8A",
+      color: "#fff",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 12,
+      letterSpacing: "1.5px",
+      fontWeight: 800,
+      flexShrink: 0,
+    }}
+  >
+    OPTIMUM EDUCORE
+  </div>
               </div>
 
               {/* ✅ 오른쪽: QR카드 (네가 만든 그대로) */}
