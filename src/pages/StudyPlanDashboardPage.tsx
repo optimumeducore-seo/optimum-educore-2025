@@ -1194,10 +1194,14 @@ const tableRowStyle = (isSelected: boolean): React.CSSProperties => ({
 });
 
 const tableCellStyle: React.CSSProperties = {
-  padding: "12px 14px",
+  padding: "8px 12px",
   fontSize: 13,
   verticalAlign: "middle",
   ...cellClamp,
+
+  // ✅ 행 구분선 (td에 줘야 보임)
+  borderBottom: "1px solid #c3cfe0",
+  backgroundClip: "padding-box",
 };
 
 const selectedRowAccent: React.CSSProperties = {
@@ -1213,12 +1217,17 @@ const tinyMuted: React.CSSProperties = {
   fontWeight: 700,
 };
 
+const inoutCell: React.CSSProperties = {
+  ...tableCellStyle,
+  verticalAlign: "middle",
+};
+
 const dotRed: React.CSSProperties = {
-  width: 7,
-  height: 7,
+  width: 5,
+  height: 5,
   borderRadius: "50%",
   background: "#EF4444",
-  flex: "0 0 7px",
+  flex: "0 0 5px",
 };
 // ✅ 순공 시간: 가운데 정렬 + “숫자만 색”
 const netColor = (netMin: number) => {
@@ -1309,6 +1318,11 @@ const tdCell: React.CSSProperties = {
   fontSize: "14px",
   textAlign: "center",
   borderBottom: "1px solid #F3F4F6",
+};
+
+const tdMid: React.CSSProperties = {
+  ...tableCellStyle,
+  verticalAlign: "middle",
 };
   /* ---------------- 선생님 과제 체크 테이블 rows ---------------- */
 
@@ -1609,7 +1623,27 @@ const COMMON_MODE = true;
 
 const COMMON = "common" as const;
 
+const filteredSummaryRows = summaryRows.filter((row) => {
+  const q = (searchTerm || "").trim().toLowerCase();
+  if (!q) return true;
 
+  const name = (row.student.name || "").toLowerCase();
+  const school = (row.student.school || "").toLowerCase();
+  const grade = String(row.student.grade || "").toLowerCase();
+
+  // ✅ "중2", "고1" 같은 검색
+  if (q.includes("중") || q.includes("고")) {
+    return grade.includes(q);
+  }
+
+  // ✅ 학교 검색 (율하, 수남 등)
+  if (school.includes(q)) return true;
+
+  // ✅ 이름 검색
+  if (name.includes(q)) return true;
+
+  return false;
+});
 
   /* ---------------- 렌더 ---------------- */
 
@@ -1809,13 +1843,13 @@ const COMMON = "common" as const;
       </span>
       <input
         type="text"
-        placeholder="이름이나 학교로 검색..."
+        placeholder="이름 · 학교 · 학년 검색 (예: 김, 율하, 중2)"
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
         style={{
           width: "100%",
           padding: "12px 12px 12px 38px",
-          borderRadius: "14px",
+          borderRadius: "12px",
           border: "1px solid #E2E8F0",
           background: "#F8FAFC",
           fontSize: "13px",
@@ -1947,9 +1981,9 @@ const COMMON = "common" as const;
     }}
   >
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ fontSize: 18 }}>📊</span>
-      <h2 style={{ fontSize: 15, fontWeight: 900, color: "#0F172A", margin: 0 }}>
-        오늘 전체 학생 요약
+      <span style={{ fontSize: 18 }}></span>
+      <h2 style={{ fontSize: 18, fontWeight: 900, color: "#1c397a", margin: 0 }}>
+        EDUCORE 학생 요약
       </h2>
       <span
         style={{
@@ -1961,7 +1995,6 @@ const COMMON = "common" as const;
           fontWeight: 800,
         }}
       >
-        {summaryRows.length}명
       </span>
     </div>
 
@@ -1983,30 +2016,38 @@ const COMMON = "common" as const;
 >
   {/* ✅ 여기! thead 위에 colgroup */}
   <colgroup>
-    <col style={{ width: 180 }} /> {/* 학생 정보 */}
+    <col style={{ width: 150 }} /> {/* 학생 정보 */}
     <col style={{ width: 120 }} /> {/* 등/하원 */}
     <col style={{ width: 90 }} />  {/* 순공 시간 */}
-    <col style={{ width: 170 }} /> {/* 선생님 과제 */}
-    <col style={{ width: 170 }} /> {/* 학생 계획 */}
-    <col style={{ width: 90 }} />  {/* 단어 시험 */}
+    <col style={{ width: 130 }} /> {/* 선생님 과제 */}
+    <col style={{ width: 130 }} /> {/* 학생 계획 */}
+    <col style={{ width: 60 }} />  {/* 단어 시험 */}
     <col style={{ width: 70 }} />  {/* 상담 기록(메모 버튼 칸) */}
     <col style={{ width: 80 }} />  {/* 시험 관리 */}
   </colgroup>
     <thead>
       <tr>
-      <th style={{ ...tableHeaderStyle, borderRadius: "12px 0 0 12px" }}>학생 정보</th>
+      <th
+  style={{
+    ...tableHeaderCenter,
+    verticalAlign: "middle",
+    borderRadius: "12px 0 0 12px",
+  }}
+>
+  학생 정보
+</th>
 <th style={tableHeaderCenter}>등/하원</th>
-<th style={tableHeaderCenter}>순공 시간</th>
-<th style={tableHeaderCenter}>선생님 과제</th>
-<th style={tableHeaderCenter}>학생 계획</th>
-<th style={tableHeaderCenter}>단어 시험</th>
+<th style={tableHeaderCenter}>순공시간</th>
+<th style={tableHeaderCenter}>선생님과제</th>
+<th style={tableHeaderCenter}>학생계획</th>
+<th style={tableHeaderCenter}>단어</th>
 <th style={tableHeaderCenter}>메모</th>
-<th style={{ ...tableHeaderCenter, borderRadius: "0 12px 12px 0" }}>시험 관리</th>
+<th style={{ ...tableHeaderCenter, borderRadius: "0 12px 12px 0" }}>플랜</th>
 </tr>
     </thead>
 
   <tbody>
-  {summaryRows.map((row) => {
+  {filteredSummaryRows.map((row) => {
     const sid = row.student.id;
     const isSelected = sid === selectedStudentId;
     const hasCheckedIn = !!row.inTime;
@@ -2073,16 +2114,27 @@ const teacherTasks = (raw as any[]).map((t, idx) => ({
 </td>
 
           {/* 2) 등하원 */}
-          <td style={tableCellStyle}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 12 }}>
-              <span style={{ color: row.inTime ? "#2563EB" : "#94A3B8", fontWeight: 900 }}>
-                IN: {row.inTime || "--:--"}
-              </span>
-              <span style={{ color: row.outTime ? "#F59E0B" : "#94A3B8", fontWeight: 800 }}>
-                OUT: {row.outTime || "--:--"}
-              </span>
-            </div>
-          </td>
+        <td style={tdMid}>
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center", // ✅ 세로 가운데
+      alignItems: "center",     // ✅ 가로 가운데 (원하면 left로 바꿔도 됨)
+      gap: 2,
+      fontSize: 12,
+      minHeight: 44,            // ✅ 행 높이 기준
+      lineHeight: 1.15,
+    }}
+  >
+    <span style={{ color: row.inTime ? "#2563EB" : "#94A3B8", fontWeight: 900 }}>
+      IN: {row.inTime || "--:--"}
+    </span>
+    <span style={{ color: row.outTime ? "#F59E0B" : "#94A3B8", fontWeight: 800 }}>
+      OUT: {row.outTime || "--:--"}
+    </span>
+  </div>
+</td>
 
           {/* 3) 순공 시간 */}
           <td style={centerCell}>
@@ -2305,7 +2357,7 @@ const teacherTasks = (raw as any[]).map((t, idx) => ({
           color: carriedOut
             ? "#94A3B8"
             : carriedIn
-            ? "#9A3412"
+            ? "#1a8423"
             : "#0F172A",
           textDecoration: carriedOut ? "line-through" : "none",
           opacity: carriedOut ? 0.7 : 1,
@@ -2491,7 +2543,7 @@ const teacherTasks = (raw as any[]).map((t, idx) => ({
                       display: "flex",
                       flexWrap: "wrap",
                       gap: 10,
-                      maxHeight: 120,
+                      maxHeight:120,
                       overflowY: "auto",
                       padding: 6,
                       border: "1px solid #E5E7EB",

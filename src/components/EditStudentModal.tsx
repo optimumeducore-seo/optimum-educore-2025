@@ -1092,71 +1092,67 @@ const baseSchedule = sched.current ?? {};
 </div>
 
       {/* 🗓️ 주간 시간표 미리보기 */}
-{/* 🗓️ 주간 시간표 미리보기 */}
+{/* 🗓️ 주간 시간표 미리보기 섹션 시작 */}
 <div style={{ marginTop: 30 }}>
   <div
     id="schedule-container"
     style={{
       width: "100%",
       background: "#fff",
-      padding: 20,
-      borderRadius: 10,
+      padding: "25px 20px",
+      borderRadius: 12,
       textAlign: "center",
+      boxShadow: "0 4px 15px rgba(0,0,0,0.05)",
     }}
   >
-    {/* Optimum 헤더 */}
-   <div
-  style={{
-    marginBottom: 28,
-    textAlign: "center",
-    letterSpacing: "1px",
-  }}
->
-  <div
-    style={{
-      display: "inline-block",
-      paddingBottom: 8,
-      borderBottom: "2px solid #E5E7EB",
-    }}
-  >
-    <span
-    style={{
-      fontSize: 23,
-      fontWeight: 700,
-      letterSpacing: "1px",
-      color: "#C53030",
-      marginRight: 6,
-    }}
-  >
-    OPTIMUM
-  </span>
+    {/* ✅ 헤더 영역: '관' 제외 소속 정보 + 이름 + 로고 */}
+    <div style={{ 
+      display: "flex", 
+      justifyContent: "space-between", 
+      alignItems: "flex-end", 
+      paddingBottom: 15,
+      marginBottom: 20,
+      borderBottom: "2px solid #1E3A8A", 
+    }}>
+      <div style={{ textAlign: "left" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+          <span style={{
+            background: "#1E3A8A",
+            color: "#fff",
+            padding: "2px 6px",
+            borderRadius: 4,
+            fontSize: "10px",
+            fontWeight: 800,
+          }}>
+            {/* '관' 글자를 제거하고 출력 */}
+            {(form.hall || student.hall || "").replace("관", "")}
+          </span>
+          <span style={{ fontSize: 13, color: "#64748B", fontWeight: 600 }}>
+            {form.school || student.school} {form.grade || student.grade}
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontSize: 28, fontWeight: 800, color: "#0F172A", letterSpacing: "-0.5px" }}>
+            {student.name}
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#1E3A8A", letterSpacing: "1px" }}>
+            WEEKLY SCHEDULE
+          </span>
+        </div>
+      </div>
 
-  <span
-    style={{
-      fontSize: 23,
-      fontWeight: 700,
-      letterSpacing: "1px",
-      color: "#1E3A8A",
-    }}
-  >
-    EDUCORE
-  </span>
+      <div style={{ textAlign: "right" }}>
+        <div style={{ fontSize: 10, color: "#94A3B8", fontWeight: 600, marginBottom: 2 }}>
+          Design Your Routine, Own the Result
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 800 }}>
+          <span style={{ color: "#C53030" }}>OPTIMUM</span>
+          <span style={{ color: "#1E3A8A", marginLeft: 4 }}>EDUCORE</span>
+        </div>
+      </div>
+    </div>
 
-  <span
-    style={{
-      marginLeft: 12,
-      fontSize: 14,
-      color: "#414243",
-      fontWeight: 500,
-      letterSpacing: "2px",
-    }}
-  >
-    WEEKLY SCHEDULE
-  </span>
-  </div>
-</div>
-
-    {/* 실제 시간표 grid */}
+    {/* ✅ 시간표 Grid 영역 */}
     <div
       style={{
         display: "grid",
@@ -1165,7 +1161,7 @@ const baseSchedule = sched.current ?? {};
         fontSize: 11,
       }}
     >
-      {/* 헤더 */}
+      {/* 요일 헤더 */}
       {["시간", "월", "화", "수", "목", "금", "토", "일"].map((h, i) => (
         <div
           key={i}
@@ -1181,7 +1177,7 @@ const baseSchedule = sched.current ?? {};
         </div>
       ))}
 
-      {/* 시간표 본문 */}
+      {/* 시간표 본문 (기존 맵핑 로직 동일) */}
       {Array.from({ length: 27 }).map((_, i) => {
         const hour = 9 + Math.floor(i / 2);
         const minute = i % 2 === 0 ? "00" : "30";
@@ -1189,111 +1185,26 @@ const baseSchedule = sched.current ?? {};
 
         return (
           <React.Fragment key={i}>
-            {/* 왼쪽 시간축 */}
-       <div
-  style={{
-    textAlign: "right",
-    padding: "2px 8px",
-    background: "#fafafa",
-
-    // 선은 구분되게
-    borderTop:
-      minute === "00"
-        ? "1px solid #d1d5db"
-        : "1px dashed #e5e7eb",
-
-    borderRight: "1px solid #d1d5db",
-
-    // 글자 크기는 동일
-    fontSize: 11,
-
-    // 대신 색과 굵기로만 차이
-    color: minute === "00" ? "#1f2937" : "#6b7280",
-    fontWeight: minute === "00" ? 700 : 700,
-
-    whiteSpace: "nowrap",
-  }}
->
-  {label.replace(/^0/, "")}
-</div>
-
-            {/* 요일별 칸 */}
+            <div style={{
+              textAlign: "right", padding: "2px 8px", background: "#fafafa",
+              borderTop: minute === "00" ? "1px solid #d1d5db" : "1px dashed #e5e7eb",
+              borderRight: "1px solid #d1d5db", fontSize: 11,
+              color: minute === "00" ? "#1f2937" : "#6b7280", fontWeight: 700, whiteSpace: "nowrap",
+            }}>
+              {label.replace(/^0/, "")}
+            </div>
             {["월", "화", "수", "목", "금", "토", "일"].map((day, idx) => {
-              // 공통 변수 (한 번만 선언)
-              const dayIndex = (idx + 1) % 7; // ✅ 그대로 사용 (보정하지 않음)
-             const colorMap: Record<string, string> = {
- 영어: "#6C8EBF",   // 부드러운 블루
-  수학: "#7BBE9E",   // 세이지 민트
-  국어: "#D4A373",   // 웜 베이지
-  과학: "#A68BC2",   // 라벤더 플럼
-  기타: "#C8C8C8",   
-  학교: "#E3E8F0",
-};
-
-              // 시간 범위 판별 함수
-              const hmToMinSafe = (v?: string) => {
-  const hhmm = normalizeHM(v || "");
-  if (!hhmm) return null;
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-};
-
-const inRange = (t: string, from?: string, to?: string) => {
-  const T = hmToMinSafe(t);
-  const F = hmToMinSafe(from);
-  const E = hmToMinSafe(to);
-  if (T == null || F == null || E == null) return false;
-  return F <= T && T < E;
-};
-
-              // 기존 스케줄 병합
+              const dayIndex = (idx + 1) % 7;
+              const colorMap: Record<string, string> = { 영어: "#6C8EBF", 수학: "#7BBE9E", 국어: "#D4A373", 과학: "#A68BC2", 기타: "#C8C8C8", 학교: "#E3E8F0" };
+              const hmToMinSafe = (v?: string) => { const hhmm = normalizeHM(v || ""); if (!hhmm) return null; const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
+              const inRange = (t: string, from?: string, to?: string) => { const T = hmToMinSafe(t); const F = hmToMinSafe(from); const E = hmToMinSafe(to); if (T == null || F == null || E == null) return false; return F <= T && T < E; };
               const baseForGrid = sched.current || {};
-
-              // 기본 스케줄에서 해당 시간대 과목 찾기
-              const matchSubject = Object.entries(baseForGrid).find(
-  ([sub, data]) =>
-    (data?.slots || []).some(
-      (s: any) =>
-        Number(s.day) === Number(dayIndex) && inRange(label, s.from, s.to)
-    )
-);
-
-              // 개별 시간 블록 확인
-              const customBlock = timeBlocks.find((b) => {
-  const days = Array.isArray(b.days)
-    ? b.days
-    : b.day != null
-    ? [String(b.day)]
-    : [];
-
-  const matchDay = days.includes(String(dayIndex));
-  return matchDay && inRange(label, b.start, b.end);
-});
-
-              // 우선순위: 개인 블록 > 기본 스케줄
-             const subjectName =
-  customBlock?.customSubject ||
-  customBlock?.subject ||
-  matchSubject?.[0];
-              const background = subjectName
-                ? colorMap[subjectName] ?? "#b0bec5"
-                : "#fff";
-              const isFilled = !!subjectName;
-
+              const matchSubject = Object.entries(baseForGrid).find(([sub, data]) => (data?.slots || []).some((s: any) => Number(s.day) === Number(dayIndex) && inRange(label, s.from, s.to)));
+              const customBlock = timeBlocks.find((b) => { const days = Array.isArray(b.days) ? b.days : b.day != null ? [String(b.day)] : []; return days.includes(String(dayIndex)) && inRange(label, b.start, b.end); });
+              const subjectName = customBlock?.customSubject || customBlock?.subject || matchSubject?.[0];
+              const background = subjectName ? colorMap[subjectName] ?? "#b0bec5" : "#fff";
               return (
-                <div
-                  key={`${day}-${label}`}
-                  style={{
-                    height: 20,
-                    borderTop: "1px solid #eee",
-                    borderRight: "1px solid #ddd",
-                    textAlign: "center",
-                    fontSize: 10,
-                    color: "#000",
-fontWeight: 700,
-                    background,
-                  }}
-                >
+                <div key={`${day}-${label}`} style={{ height: 20, borderTop: "1px solid #eee", borderRight: "1px solid #ddd", textAlign: "center", fontSize: 10, color: "#000", fontWeight: 700, background }}>
                   {subjectName ?? ""}
                 </div>
               );
@@ -1302,8 +1213,32 @@ fontWeight: 700,
         );
       })}
     </div>
+
+    {/* ✅ 하단 특이사항 메모 섹션 */}
+    <div style={{ marginTop: 20, textAlign: "left" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: "#1E3A8A", marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: 14 }}>📝</span> 특이사항 및 안내문구
+      </div>
+      <textarea 
+        placeholder="이곳에 학생에게 전달할 메시지나 주간 주의사항을 입력하세요."
+        style={{
+          width: "100%",
+          minHeight: "80px",
+          padding: "10px",
+          fontSize: "12px",
+          border: "1px solid #E2E8F0",
+          borderRadius: "8px",
+          background: "#F8FAFC",
+          color: "#475569",
+          resize: "none",
+          lineHeight: "1.5",
+          outline: "none"
+        }}
+      />
+    </div>
   </div>
 </div>
+{/* 🗓️ 주간 시간표 미리보기 섹션 종료 */}
 
 {/* 버튼 영역 */}
 <div
