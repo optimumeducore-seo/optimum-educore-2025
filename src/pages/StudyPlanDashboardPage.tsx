@@ -4,9 +4,15 @@ import {
   collection,
   doc,
   getDoc,
+  
   getDocs,
   setDoc,
   serverTimestamp,
+  onSnapshot,
+  updateDoc,
+  arrayUnion,
+  Timestamp,
+
 } from "firebase/firestore";
 import OpsModal from "../components/admin/OpsModal";
 import { db } from "../firebase";
@@ -50,19 +56,14 @@ type SubjectPlan = {
   teacherTasks: TaskItem[];
   studentPlans: TaskItem[];
   memo?: string;
+  teacherComment?: string;
   done?: boolean;
   updatedAt?: any;
-
-  // 🔥 집공 인증용
   proofImages?: string[];
   proofMemo?: string;
-
-  // 🔥 추가! 단어 시험 기록
-  wordTest?: {
-    correct?: number;
-    total?: number;
-  };
+  wordTest?: { correct?: number; total?: number };
 };
+
 
 type DayPlan = {
   date: string;
@@ -332,7 +333,8 @@ const [opsOpen, setOpsOpen] = useState(false);
 
     const [printMode, setPrintMode] = useState<8 | 12>(12);
     const [searchTerm, setSearchTerm] = useState("");
-    
+
+const [teacherComment, setTeacherComment] = useState("");
 
   const getYesterday = (date: string) => {
     const d = new Date(date);
@@ -356,6 +358,8 @@ const navigate = useNavigate();
     return 9;
   };
 
+  const [wordCorrectBySid, setWordCorrectBySid] = useState<Record<string, number>>({});
+const [wordTotalBySid, setWordTotalBySid] = useState<Record<string, number>>({});
   const getGradeNumber = (s: any) => {
     const raw = `${s.grade ?? ""}`;
     const num = parseInt(raw.replace(/[^0-9]/g, ""), 10);
@@ -455,6 +459,44 @@ const high = sortedStudents.filter((s: any) => getSchoolGroup(s) === 1);
   alert("✔ 선택한 학생들에게 과제가 저장되었습니다!");
 };
 
+const saveWordTestToCommon = async (
+  sid: string,
+  dateStr: string,
+  correct: number,
+  total: number
+) => {
+
+  const ref = doc(db, "studyPlans", sid, "days", dateStr);
+
+ await setDoc(
+  ref,
+  {
+    date: dateStr,
+    common: {
+      wordTest: { correct, total, updatedAt: serverTimestamp() },
+    },
+  },
+  { merge: true }
+);
+setDayPlans((prev:any)=>({
+  ...prev,
+  [sid]:{
+    ...(prev[sid]||{}),
+    subjects:{
+      ...(prev[sid]?.subjects||{}),
+      common:{
+        ...(prev[sid]?.subjects?.common||{}),
+        wordTest:{correct,total}
+      }
+    }
+  }
+}))
+  // 🔥 화면 즉시 반영
+  setWordCorrectBySid((prev) => ({ ...prev, [sid]: correct }));
+  setWordTotalBySid((prev) => ({ ...prev, [sid]: total }));
+};
+
+
   // 🔽 여기!
   type DashboardSubTask = {
     text: string;
@@ -533,7 +575,7 @@ const high = sortedStudents.filter((s: any) => getSchoolGroup(s) === 1);
   const [studentInput, setStudentInput] = useState("");
   const [memo, setMemo] = useState("");
   const [done, setDone] = useState(false);
-
+ 
   const [loading, setLoading] = useState(false);
   // 1) 선택된 학생
   const [selectedRuleStudentId, setSelectedRuleStudentId] = useState("");
@@ -567,7 +609,6 @@ const high = sortedStudents.filter((s: any) => getSchoolGroup(s) === 1);
     await saveAssignmentRules(selectedRuleStudentId, ruleState);
     alert("저장 완료!");
   };
-
 
 
   /* ---------------- 학생 목록 로드 ---------------- */
@@ -652,16 +693,17 @@ setStudents(list);
               const sRaw = raw[key];
               if (!sRaw) return;
 
-              subjects[key] = {
-                teacherTasks: normalizeTasks(sRaw.teacherTasks),
-                studentPlans: normalizeTasks(sRaw.studentPlans),
-                memo: sRaw.memo || "",
-                done: !!sRaw.done,
-                updatedAt: sRaw.updatedAt,
-                proofImages: sRaw.proofImages || [],
-                proofMemo: sRaw.proofMemo || "",
-                wordTest: sRaw.wordTest || { correct: 0, total: 0 },
-              };
+            subjects[key] = {
+  teacherTasks: normalizeTasks(sRaw.teacherTasks),
+  studentPlans: normalizeTasks(sRaw.studentPlans),
+  memo: sRaw.memo || "",
+  teacherComment: sRaw.teacherComment || "",
+  done: !!sRaw.done,
+  updatedAt: sRaw.updatedAt,
+  proofImages: sRaw.proofImages || [],
+  proofMemo: sRaw.proofMemo || "",
+  wordTest: sRaw.wordTest || { correct: 0, total: 0 },
+};
             });
           }
 
@@ -676,13 +718,20 @@ setStudents(list);
       // ✅ 여기서만 setDayPlans
       setDayPlans(planMap);
 
-      console.log("✅ DayPlans Loaded", planMap);
+    
     } finally {
       setLoading(false);
     }
   };
 
 
+useEffect(() => {
+  if (!selectedStudentId) return;
+  const d = dayPlans[selectedStudentId];
+  const wt = d?.subjects?.common?.wordTest;
+  setWordCorrect(wt?.correct ?? 0);
+  setWordTotal(wt?.total ?? 0);
+}, [selectedStudentId, dayPlans]);
 
 
   /* ---------------- 우측 하단 상세 입력 동기화 ------- */
@@ -695,116 +744,127 @@ setStudents(list);
 
   const [wordCorrect, setWordCorrect] = useState<number>(0);
   const [wordTotal, setWordTotal] = useState<number>(0);
-  useEffect(() => {
-    if (!selectedStudentId || !dateStr) {
-      setTeacherInput("");
-      setStudentInput("");
-      setMemo("");
-      setDone(false);
-      return;
-    }
+useEffect(() => {
+  if (!selectedStudentId || !dateStr) {
+    setTeacherInput("");
+    setStudentInput("");
+    setMemo("");
+    setDone(false);
+    setTeacherComment("");
+    setWordCorrect(0);
+    setWordTotal(0);
+    return;
+  }
 
-    const day = dayPlans[selectedStudentId];
-    const subj =
-  day?.subjects?.[selectedSubject] ??
-  day?.subjects?.["common"] ??
-  {};
+  const day = dayPlans[selectedStudentId];
 
-    setTeacherInput((subj?.teacherTasks || []).map(t => (t.text || t.title || "")).join("\n"));
-    setStudentInput((subj?.studentPlans || []).map((t) => t.text).join("\n"));
-    setMemo(subj?.memo || "");
-    setDone(!!subj?.done);
+  const subj =
+    day?.subjects?.[selectedSubject] ??
+    day?.subjects?.["common"] ??
+    {};
 
-    // 🔥 추가: 단어 시험 불러오기
-    setWordCorrect(subj?.wordTest?.correct ?? 0);
-    setWordTotal(subj?.wordTest?.total ?? 0);
-  }, [selectedStudentId, selectedSubject, dayPlans, dateStr]);
+  setTeacherInput(
+    (subj?.teacherTasks || [])
+      .map((t: any) => t.text || t.title || "")
+      .join("\n")
+  );
+
+  setStudentInput(
+    (subj?.studentPlans || [])
+      .map((t: any) => t.text || "")
+      .join("\n")
+  );
+
+  setMemo(subj?.memo || "");
+  setDone(!!subj?.done);
+  setTeacherComment((subj as any)?.teacherComment || "");
+  setWordCorrect(subj?.wordTest?.correct ?? 0);
+  setWordTotal(subj?.wordTest?.total ?? 0);
+}, [selectedStudentId, selectedSubject, dayPlans, dateStr]);
+
   /* ---------------- 저장 (선생님/학생 계획 통합) ---- */
 
   const handleSave = async () => {
-    if (!selectedStudentId || !dateStr) return;
-    const sid = selectedStudentId;
-    const prevDay = dayPlans[sid];
-    const prevSubj = prevDay?.subjects?.[selectedSubject];
+  if (!selectedStudentId || !dateStr) return;
 
-    const ref = doc(db, "studyPlans", sid, "days", dateStr);
-   const stripUndefinedDeep = (obj: any): any => {
-  if (Array.isArray(obj)) return obj.map(stripUndefinedDeep);
-  if (obj && typeof obj === "object") {
-    const out: any = {};
-    Object.keys(obj).forEach((k) => {
-      const v = obj[k];
-      if (v === undefined) return;      // ✅ undefined 제거
-      out[k] = stripUndefinedDeep(v);
-    });
-    return out;
-  }
-  return obj;
-};
-    // 🔥 기존 데이터를 완전 무시하고 새로 구성 (덮어쓰기)
-   const teacherTasks: TaskItem[] = teacherInput
-  .split("\n")
-  .map(t => t.trim())
-  .filter(Boolean)
-  .map((text, idx) => {
-  const prev = prevSubj?.teacherTasks?.[idx];
-  const t: any = {
-    id: prev?.id ?? crypto.randomUUID(),
-    text,
-    done: prev?.done ?? false,
-    deleted: prev?.deleted ?? false,
-    carriedFrom: prev?.carriedFrom ?? "",
+  const sid = selectedStudentId;
+  const prevDay = dayPlans[sid];
+  const prevSubj = prevDay?.subjects?.[selectedSubject];
+
+  const ref = doc(db, "studyPlans", sid, "days", dateStr);
+
+  const stripUndefinedDeep = (obj: any): any => {
+    if (Array.isArray(obj)) return obj.map(stripUndefinedDeep);
+    if (obj && typeof obj === "object") {
+      const out: any = {};
+      Object.keys(obj).forEach((k) => {
+        const v = obj[k];
+        if (v === undefined) return;
+        out[k] = stripUndefinedDeep(v);
+      });
+      return out;
+    }
+    return obj;
   };
-  if (prev?.subtasks) t.subtasks = prev.subtasks; // ✅ 있을 때만
-  return t as TaskItem;
-});
-    const studentPlans: TaskItem[] = studentInput
-      .split("\n")
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((text) => ({
+
+  const teacherTasks: TaskItem[] = teacherInput
+    .split("\n")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((text, idx) => {
+      const prev = prevSubj?.teacherTasks?.[idx];
+      const task: any = {
+        id: prev?.id ?? crypto.randomUUID(),
         text,
-        done: false,
-      }));
+        done: prev?.done ?? false,
+        deleted: prev?.deleted ?? false,
+        carriedFrom: prev?.carriedFrom ?? "",
+      };
+      if (prev?.subtasks) task.subtasks = prev.subtasks;
+      return task as TaskItem;
+    });
 
-    const mergedSubject: SubjectPlan = {
-      teacherTasks,
-      studentPlans: studentPlans,
-      memo: memo.trim(),
-      done: done,
-      updatedAt: serverTimestamp(),
-      proofImages: prevSubj?.proofImages || [],
-      proofMemo: prevSubj?.proofMemo || "",
-      wordTest: {
-        correct: wordCorrect ?? prevSubj?.wordTest?.correct ?? 0,
-        total: wordTotal ?? prevSubj?.wordTest?.total ?? 0,
-      },
-    };
+  // ✅ 학생계획은 덮지 말고 기존값 유지
+  const studentPlans: TaskItem[] = (prevSubj?.studentPlans || []).map((t) => ({
+    ...t,
+  }));
 
-    // 🔥 기존 문서 항목과 병합하지 않고, 해당 과목 필드만 깔끔하게 덮어씀
-    await setDoc(
-      ref,
-      {
-        date: dateStr,
+  const mergedSubject: SubjectPlan = {
+    teacherTasks,
+    studentPlans,
+    memo: memo.trim(),
+    teacherComment: teacherComment.trim(),
+    done,
+    updatedAt: serverTimestamp(),
+    proofImages: prevSubj?.proofImages || [],
+    proofMemo: prevSubj?.proofMemo || "",
+    wordTest: {
+      correct: wordCorrect ?? prevSubj?.wordTest?.correct ?? 0,
+      total: wordTotal ?? prevSubj?.wordTest?.total ?? 0,
+    },
+  };
+
+  const payload = stripUndefinedDeep({
+    date: dateStr,
+    [selectedSubject]: mergedSubject,
+  });
+
+  await setDoc(ref, payload, { merge: true });
+
+  setDayPlans((prev) => ({
+    ...prev,
+    [sid]: {
+      date: dateStr,
+      subjects: {
+        ...(prev[sid]?.subjects || {}),
         [selectedSubject]: mergedSubject,
       },
-      { merge: true }
-    );
+    },
+  }));
 
-    // 로컬 state 업데이트
-    setDayPlans((prev) => ({
-      ...prev,
-      [sid]: {
-        date: dateStr,
-        subjects: {
-          ...(prev[sid]?.subjects || {}),
-          [selectedSubject]: mergedSubject,
-        },
-      },
-    }));
+  alert("저장 완료! (선생님 대시보드)");
+};
 
-    alert("저장 완료! (선생님 대시보드)");
-  };
 
   // 🔥 선생님 과제 1개 삭제 + 자동 이월
   const handleDeleteTeacherTask = async (
@@ -874,7 +934,7 @@ setStudents(list);
       alert("삭제가 완료되었습니다.");
 
     } catch (e) {
-      console.error("삭제 실패 원인:", e);
+     
       alert("삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     }
   };
@@ -1521,7 +1581,6 @@ if (todaySnap.exists()) {
       await loadDayPlans();
 
     } catch (e) {
-      console.error("이월 중 에러:", e);
       alert("이월에 실패했습니다. 코드를 확인해주세요.");
     }
   };
@@ -1563,7 +1622,6 @@ const [memoModal, setMemoModal] = useState<{show: boolean, studentId: string, st
       alert("✅ 삭제 완료");
       await loadDayPlans(); // 🔥 화면 즉시 갱신
     } catch (e) {
-      console.error("❌ deleteMainTask failed", e);
       alert("삭제 실패");
     }
   };
@@ -1681,7 +1739,7 @@ const filteredSummaryRows = summaryRows.filter((row) => {
       {/* 로고 강조: 그라데이션 적용 */}
       <div style={{ 
         letterSpacing: "-0.5px", 
-        fontSize: 15, 
+        fontSize: 30, 
         fontWeight: 900, 
         background: "linear-gradient(135deg, #8B1E1E 0%, #1d3d86 100%)",
         WebkitBackgroundClip: "text",
@@ -1701,32 +1759,7 @@ const filteredSummaryRows = summaryRows.filter((row) => {
 
   {/* 오른쪽: 액션 및 상태 영역 */}
   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-    
-    {/* 운영 버튼 - 캡슐 스타일 */}
-    <OpsModal open={opsOpen} onClose={() => setOpsOpen(false)} />
-    <button
-      onClick={() => setOpsOpen(true)}
-      style={{
-        padding: "10px 18px",
-        borderRadius: "14px",
-        border: "none",
-        background: "#FDF4FF",
-        color: "#A21CAF",
-        fontSize: 13,
-        fontWeight: 800,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        transition: "all 0.2s"
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "#FAE8FF")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "#FDF4FF")}
-    >
-      <span>⚙️</span> 운영/출결
-    </button>
-
-    {/* 날짜 선택 - 깔끔한 박스 스타일 */}
+      {/* 날짜 선택 - 깔끔한 박스 스타일 */}
     <div style={{ 
       display: "flex", 
       alignItems: "center", 
@@ -1753,6 +1786,53 @@ const filteredSummaryRows = summaryRows.filter((row) => {
       />
     </div>
 
+    
+    {/* 운영 버튼 - 캡슐 스타일 */}
+    <OpsModal open={opsOpen} onClose={() => setOpsOpen(false)} />
+    <button
+      onClick={() => setOpsOpen(true)}
+      style={{
+        padding: "10px 18px",
+        borderRadius: "14px",
+        border: "none",
+        background: "#FDF4FF",
+        color: "#A21CAF",
+        fontSize: 13,
+        fontWeight: 800,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        transition: "all 0.2s"
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "#FAE8FF")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "#FDF4FF")}
+    >
+      <span>⚙️</span> 운영/출결
+    </button>
+    <button
+  onClick={() => navigate("/exam-manage")}
+  style={{
+    padding: "10px 18px",
+    borderRadius: "14px",
+    border: "none",
+    background: "#EEF2FF",
+    color: "#121f66",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    transition: "all 0.2s"
+  }}
+  onMouseEnter={(e) => (e.currentTarget.style.background = "#E0E7FF")}
+  onMouseLeave={(e) => (e.currentTarget.style.background = "#EEF2FF")}
+>
+  <span>📝</span> 시험관리
+</button>
+
+  
     {/* 학생수 - 배지 스타일 */}
     <div style={{ position: "relative" }}>
       <button
@@ -1981,7 +2061,7 @@ const filteredSummaryRows = summaryRows.filter((row) => {
     }}
   >
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ fontSize: 18 }}></span>
+      <span style={{ fontSize: 18 }}>📊</span>
       <h2 style={{ fontSize: 18, fontWeight: 900, color: "#1c397a", margin: 0 }}>
         EDUCORE 학생 요약
       </h2>
@@ -2015,16 +2095,7 @@ const filteredSummaryRows = summaryRows.filter((row) => {
   }}
 >
   {/* ✅ 여기! thead 위에 colgroup */}
-  <colgroup>
-    <col style={{ width: 150 }} /> {/* 학생 정보 */}
-    <col style={{ width: 120 }} /> {/* 등/하원 */}
-    <col style={{ width: 90 }} />  {/* 순공 시간 */}
-    <col style={{ width: 130 }} /> {/* 선생님 과제 */}
-    <col style={{ width: 130 }} /> {/* 학생 계획 */}
-    <col style={{ width: 60 }} />  {/* 단어 시험 */}
-    <col style={{ width: 70 }} />  {/* 상담 기록(메모 버튼 칸) */}
-    <col style={{ width: 80 }} />  {/* 시험 관리 */}
-  </colgroup>
+  <colgroup><col style={{ width: 150 }} /><col style={{ width: 120 }} /><col style={{ width: 90 }} /><col style={{ width: 130 }} /><col style={{ width: 130 }} /><col style={{ width: 60 }} /><col style={{ width: 70 }} /><col style={{ width: 80 }} /></colgroup>
     <thead>
       <tr>
       <th
@@ -2041,7 +2112,7 @@ const filteredSummaryRows = summaryRows.filter((row) => {
 <th style={tableHeaderCenter}>선생님과제</th>
 <th style={tableHeaderCenter}>학생계획</th>
 <th style={tableHeaderCenter}>단어</th>
-<th style={tableHeaderCenter}>메모</th>
+<th style={tableHeaderCenter}>상담</th>
 <th style={{ ...tableHeaderCenter, borderRadius: "0 12px 12px 0" }}>플랜</th>
 </tr>
     </thead>
@@ -2051,11 +2122,30 @@ const filteredSummaryRows = summaryRows.filter((row) => {
     const sid = row.student.id;
     const isSelected = sid === selectedStudentId;
     const hasCheckedIn = !!row.inTime;
-
-    // ✅ 해당 학생의 오늘 공통(common) 과제 데이터 추출
     const day = dayPlans[sid];
-    const common = day?.subjects?.["common"];
-    const raw = common?.teacherTasks || [];
+
+const wordTest = day?.subjects?.common?.wordTest || { correct: 0, total: 0 };
+
+const wordText = wordTest.total
+  ? `${wordTest.correct}/${wordTest.total}`
+  : "";
+
+const common = day?.subjects?.["common"];
+const raw = common?.teacherTasks || [];
+
+
+    const subjects = day?.subjects || {};
+
+const studentPlansAll = Object.entries(subjects).flatMap(([subjectKey, sp]: any) => {
+  const arr = sp?.studentPlans || [];
+  return arr.map((p: any, idx: number) => ({
+    subjectKey,
+    idx,
+    text: p?.text || p?.title || "",
+    done: !!p?.done,
+  }));
+}).filter((x) => x.text);
+
 
 // ✅ DashboardTask 형태로 맞춰서 렌더링용 만들기
 const teacherTasks = (raw as any[]).map((t, idx) => ({
@@ -2204,7 +2294,7 @@ const teacherTasks = (raw as any[]).map((t, idx) => ({
   colSpan={8}
   style={{
     padding: "0 16px 16px",
-    background: "#F8FAFC",
+    background: "#b2cbe1",
     overflow: "visible",
     position: "relative",  // ✅
     zIndex: 5,             // ✅
@@ -2260,7 +2350,7 @@ const teacherTasks = (raw as any[]).map((t, idx) => ({
             style={{
               width: "100%",
               boxSizing: "border-box",
-              height: 100,
+              height: 200,
               borderRadius: 12,
               border: "2px solid #F1F5F9",
               padding: "12px",
@@ -2272,12 +2362,59 @@ const teacherTasks = (raw as any[]).map((t, idx) => ({
               fontWeight: 550,
             }}
           />
+          {/* ✅ 단어 시험 입력 (맞은/총) */}
+<div style={{ marginTop: 10 }}>
+  <div style={{ fontSize: 12, fontWeight: 900, color: "#1E293B", marginBottom: 6 }}>
+    🧠 단어 시험 (맞은 개수 / 총 문제)
+  </div>
+
+  <div style={{ display: "flex", gap: 10 }}>
+    <input
+      type="number"
+      value={wordCorrect}
+      onChange={(e) => setWordCorrect(Number(e.target.value || 0))}
+      onBlur={() => saveWordTestToCommon(sid, dateStr, wordCorrect, wordTotal)}
+      placeholder="맞은 개수"
+      style={{
+        width: 110,
+        borderRadius: 10,
+        border: "1px solid #E5E7EB",
+        padding: "8px 10px",
+        fontSize: 12,
+        background: "#fff",
+      }}
+    />
+
+    <input
+      type="number"
+      value={wordTotal}
+      onChange={(e) => setWordTotal(Number(e.target.value || 0))}
+      onBlur={() => saveWordTestToCommon(sid, dateStr, wordCorrect, wordTotal)}
+      placeholder="총 문제"
+      style={{
+        width: 110,
+        borderRadius: 10,
+        border: "1px solid #E5E7EB",
+        padding: "8px 10px",
+        fontSize: 12,
+        background: "#fff",
+      }}
+    />
+
+    {/* 표시용 */}
+    <div style={{ alignSelf: "center", fontSize: 12, color: "#64748B", fontWeight: 800 }}>
+      {wordTotal > 0 ? `${wordCorrect}/${wordTotal}` : "—"}
+    </div>
+  </div>
+</div>
         </div>
+        
+        
 
         {/* 우측 */}
         <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ fontSize: 13, fontWeight: 900, color: "#1E293B", marginBottom: 10 }}>
-            📋 오늘 할 일 목록 ({teacherTasks.length})
+            📋 선생님 과제목록 ({teacherTasks.length})
           </div>
 
           <div
@@ -2429,11 +2566,113 @@ const teacherTasks = (raw as any[]).map((t, idx) => ({
         )}
       </div>
     </div>
+    
   );
 })}
+
           </div>
+          
+
+          {/* ✅ 학생 계획 (읽기 전용) */}
+<div
+  style={{
+    marginTop: 12,
+    border: "1px solid #E5E7EB",
+    borderRadius: 12,
+    background: "#FFFFFF",
+    padding: 12,
+  }}
+>
+  <div style={{ fontSize: 13, fontWeight: 900, color: "#1E293B", marginBottom: 8 }}>
+    🧩 학생 계획 ({studentPlansAll.length})
+  </div>
+
+  {studentPlansAll.length === 0 ? (
+    <div style={{ fontSize: 12, color: "#94A3B8" }}>학생이 입력한 계획이 없습니다.</div>
+  ) : (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {studentPlansAll.slice(0, 8).map((p) => (
+        <div
+          key={`${p.subjectKey}_${p.idx}`}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            color: p.done ? "#94A3B8" : "#0F172A",
+            textDecoration: p.done ? "line-through" : "none",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: "#F1F5F9",
+              color: "#334155",
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {p.subjectKey}
+          </span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {p.text}
+          </span>
+        </div>
+      ))}
+      {studentPlansAll.length > 8 && (
+        <div style={{ fontSize: 11, color: "#94A3B8" }}>
+          + {studentPlansAll.length - 8}개 더 있음 (상세는 학생 플래너에서)
+        </div>
+      )}
+    </div>
+  )}
+</div>
         </div>
       </div>
+      {/* ✅ 티키타카 대화창 (2열 전체폭) */}
+<div
+  style={{
+    marginTop: 12,
+    background: "#fff",
+    border: "1px solid #dbe4f0",
+    borderRadius: 12,
+    padding: 12,
+  }}
+>
+  <div
+    style={{
+      fontSize: 13,
+      fontWeight: 800,
+      color: "#475569",
+      marginBottom: 8,
+    }}
+  >
+    선생님 코멘트
+  </div>
+
+<textarea
+  value={teacherComment}
+  onChange={(e) => setTeacherComment(e.target.value)}
+  onBlur={handleSave}
+  placeholder="학생에게 남길 코멘트를 입력하세요"
+  style={{
+    width: "100%",
+    minHeight: 72,
+    resize: "vertical",
+    borderRadius: 10,
+    border: "1px solid #CBD5E1",
+    padding: "10px 12px",
+    fontSize: 13,
+    outline: "none",
+    boxSizing: "border-box",
+    background: "#fff",
+  }}
+/>
+</div>
+
+
     </td>
   </tr>
 )}
@@ -2981,14 +3220,6 @@ return (
                   {tasks.map((task, i) => {
                     const baseDate = task.date ?? assignDate;
                     const isCarried = task.deleted === true;
-                    console.log(
-                      "[RENDER TASK]",
-                      task.text,
-                      task.deleted,
-                      task
-                    );
-
-
                     const key = task._uiId;
                     const isDone = task.done;
                     const renderedSubtasks = (task.subtasks ?? []).map((s, j) => {
@@ -3016,12 +3247,7 @@ return (
                     const progress =
                       totalSubs > 0 ? (studentDoneCount / totalSubs) * 100 : 0;
 
-                    console.log(
-                      "[PROGRESS]",
-                      studentDoneCount,
-                      totalSubs,
-                      progress
-                    );
+                    
 
  const studentDone =
                       totalSubs > 0 && studentDoneCount === totalSubs;
@@ -3042,12 +3268,7 @@ return (
                       hasSubtasks
                         ? task.subtasks!.filter(s => !s.done)
                         : [];
-console.log(`[버튼 체크 - ${task.text}]`, {
-    isDeleted: task.deleted,          // 이게 true면 안 나옴
-    dateMatch: task.date === baseDate, // 이게 false면 안 나옴
-    isTeacherDone: teacherDone,        // 이게 true면 안 나옴 (선생님이 완료하면 이월 불가)
-    hasIncompleteSub: !hasSubtasks || (task.subtasks && task.subtasks.some(s => !s.done))
-  });
+
   const isCarryOver = isCarried; // = task.deleted === true (이월로 사용)
 
 const bg = isCarryOver

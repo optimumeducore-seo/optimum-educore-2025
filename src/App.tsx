@@ -23,9 +23,9 @@ import {
 async function deleteStudentFromFS(studentId: string) {
   try {
     await deleteDoc(doc(db, "students", studentId));
-    console.log("🗑️ Firestore에서 학생 완전 삭제됨:", studentId);
+
   } catch (e) {
-    console.error("❌ Firestore 학생 삭제 실패:", e);
+
   }
 }
 
@@ -581,8 +581,6 @@ async function handleCheckIn(studentId: string, inputTime: string) {
   [`${studentId}.outTime`]: null,
 }, { merge: true });
 
-
-  console.log("등원 저장 완료", date, studentId);
 }
 
 // =============================
@@ -616,7 +614,6 @@ async function handleCheckOut(studentId: string, inputTime: string) {
   [`${studentId}.outTime`]: inputTime,
 }, { merge: true });
 
-  console.log("하원 저장 완료", date, studentId);
 }
 
   async function saveStudentToFS(groupId: string, s: any) {
@@ -643,9 +640,8 @@ async function handleCheckOut(studentId: string, inputTime: string) {
   { merge: true }
 );
 
-      console.log("✅ Firestore에 학생 저장 완료:", s.name || "(이름 없음)");
     } catch (e) {
-      console.error("❌ Firestore 학생 저장 실패:", e);
+
     }
   }
 const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -726,7 +722,7 @@ useEffect(() => {
   async function upsertAssignmentFS(a: AssignmentFS) {
     const payload = sanitize({ ...a, createdAt: a.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
     await setDoc(doc(db, "assignments", a.id), payload, { merge: true });
-    console.log("✅ 과제 저장/업데이트:", a.title, a.status);
+
   }
 
   async function toggleAssignmentFS(id: string, next: AssignmentStatus) {
@@ -789,7 +785,6 @@ useEffect(() => {
   }
 }, []);
 
-  console.log("📦 현재 그룹 ID:", store.currentGroupId);
 
   // ✅ Firestore 실시간 학생 반영 (완전 안정 버전)
   useEffect(() => {
@@ -818,8 +813,6 @@ useEffect(() => {
           };
         });
 
-        console.log("🔥 Firestore 실시간 학생 데이터:", list.length, list);
-
         setStore((prev) => {
           // ✅ 기존 그룹 유지, 없으면 기본 생성
           const baseGroups =
@@ -845,7 +838,7 @@ useEffect(() => {
           };
         });
       },
-      (err) => console.error("❌ Firestore 실시간 구독 오류:", err)
+
     );
 
     return () => unsub();
@@ -871,9 +864,7 @@ useEffect(() => {
 
     try {
       const groupId = store.currentGroupId || "default"; // ✅ 미리 변수 저장
-      console.log("📦 현재 그룹 ID:", groupId);
 
-      // 1️⃣ 로컬에 즉시 반영 (UI 업데이트)
       setStore((prev) => ({
         ...prev,
         students: [...(prev.students || []), student],
@@ -890,8 +881,6 @@ useEffect(() => {
   },
   { merge: true }
 );
-
-      console.log("✅ Firestore 저장 완료:", student.name);
       alert(`${student.name} 학생이 등록되었습니다.`);
 
       // 3️⃣ 입력칸 초기화
@@ -903,7 +892,6 @@ useEffect(() => {
         parentPhone: "",
       });
     } catch (err) {
-      console.error("❌ Firestore 저장 실패:", err);
     }
   };
 
@@ -1076,9 +1064,7 @@ useEffect(() => {
         const list: AssignmentFS[] = [];
         snap.forEach((d) => list.push({ id: d.id, ...(d.data() as any) }));
         setAssignments(list);
-        console.log("📡 과제 실시간 수신:", list.length);
       },
-      (err) => console.error("❌ 과제 구독 오류:", err)
     );
 
     return () => unsub();
@@ -1127,10 +1113,6 @@ const students = useMemo(() => {
   // 🔥 Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조)
 // ✅ 1) (추가) students/currentGroup 상태 찍는 용도 — 독립 useEffect
 useEffect(() => {
-  console.log("ALL currentGroup.students:", currentGroup?.students?.length ?? 0);
-  console.log("ALL students (after useMemo):", students?.length ?? 0);
-  console.log("removed count:", (students || []).filter((s: any) => s?.removed).length);
-  console.log("showRemoved:", showRemoved);
 }, [students, currentGroup, showRemoved]);
 
 // ✅ 2) Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조) — 기존 useEffect 유지
@@ -1770,7 +1752,6 @@ const saveRecordToFS = async (date: string, sid: string, cell: DayCell) => {
       { merge: true }
     );
 
-    console.log("🔥 Firestore 저장 완료:", date, sid);
 
     // =====================================
     // 🔥🔥🔥 제일 중요한 부분: 메인 화면 즉시 업데이트!
@@ -1787,7 +1768,6 @@ const saveRecordToFS = async (date: string, sid: string, cell: DayCell) => {
     // =====================================
 
   } catch (err) {
-    console.error("❌ Firestore 저장 실패:", err);
   }
 };
 
@@ -1832,10 +1812,8 @@ const updateDayCell = (
 
       // 🔹 Firestore 저장
       setDoc(doc(db, "students", sid), safe, { merge: true })
-        .then(() => console.log("✅ Firestore 학생 업데이트 성공"))
-        .catch((e) => console.error("❌ Firestore 학생 업데이트 실패:", e));
     } catch (e) {
-      console.error("⚠️ Firestore 저장 중 오류:", e);
+
     }
 
     // 🔹 로컬 업데이트
@@ -1894,18 +1872,14 @@ const updateDayCell = (
     try {
       const ref = doc(db, "students", sid);
       await setDoc(ref, { removed: true }, { merge: true });
-      console.log(`🗑️ 학생 ${sid} 숨김 처리 완료`);
     } catch (err) {
-      console.error("❌ Firestore 숨김 실패:", err);
     }
   };
 
 const restoreStudent = async (sid: string) => {
   try {
     await setDoc(doc(db, "students", sid), { removed: false }, { merge: true });
-    console.log("✅ restored in Firestore", sid);
   } catch (e) {
-    console.error("❌ restore failed", e);
   }
 };
 
@@ -1936,7 +1910,6 @@ const restoreStudent = async (sid: string) => {
     const removedLocal = localStudents.filter((s) => !fsIds.has(s.id));
 
     if (removedLocal.length > 0) {
-      console.log("🗑️ Firestore에 없어 삭제되는 로컬 학생:", removedLocal);
     }
 
     // 5️⃣ 로컬 store 정리 + Firestore에서 가져온 것으로 세팅
@@ -2346,10 +2319,10 @@ const restoreStudent = async (sid: string) => {
                         name: name,
                         createdAt: serverTimestamp(),
                       });
-                      console.log("✅ Firestore 그룹 등록 완료:", name);
+
                       alert(`그룹 '${name}'이(가) 추가되었습니다.`);
                     } catch (err) {
-                      console.error("❌ Firestore 그룹 저장 실패:", err);
+
                       alert("그룹 추가 중 오류가 발생했습니다.");
                     }
                   }}

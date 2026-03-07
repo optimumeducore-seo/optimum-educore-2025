@@ -96,12 +96,50 @@ function isLateStatus(raw: any) {
   return canonStatus(raw) === "late";
 }
 
+const getTodayPersonalTimeBlocks = (s: any) => {
+  const tb =
+    s?.personalSchedule?.timeBlocks ||
+    s?.timeBlocks || // 혹시 학생객체에 직접 붙어있으면 대비
+    [];
+
+  if (!Array.isArray(tb)) return [];
+
+  const todayIdx = new Date().getDay(); // 0~6 (일~토)
+
+  return tb
+    .filter((b: any) => {
+      const days = Array.isArray(b?.days)
+        ? b.days.map(String)
+        : b?.day != null
+        ? [String(b.day)]
+        : [];
+      return days.includes(String(todayIdx));
+    })
+    .map((b: any) => ({
+      start: b?.start,
+      end: b?.end,
+      startHHMM: b?.start,
+      endHHMM: b?.end,
+
+      // ✅ "학원 시간"처럼 면책 대상으로 만들기 (지각면책에 쓰려고)
+      type: "OTHER_ACADEMY",
+
+      // 표시용
+      label: b?.customSubject || b?.subject || "개별시간",
+    }))
+    .filter((x: any) => x.start && x.end);
+};
+
 export default function OpsModal({ open, onClose }: Props) {
   const [tab, setTab] = useState<"timetable" | "attendance">("timetable");
   const [students, setStudents] = useState<StudentLite[]>([]);
   const [records, setRecords] = useState<Record<string, any>>({});
   const [hall, setHall] = useState<"ms" | "hs">("ms");
-  const [vacationMode, setVacationMode] = useState(true);
+  const [vacationMode, setVacationMode] = useState<boolean>(() => {
+  const saved = localStorage.getItem("ops_vacationMode");
+  
+  return saved === "1";
+});
   const [filterType, setFilterType] = useState<"none" | "noShow" | "noReturn">("none");
   // "HH:MM" -> minutes
   const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
@@ -110,25 +148,32 @@ export default function OpsModal({ open, onClose }: Props) {
 // ✅ 13:00~13:15(또는 expectedHHMM~expectedHHMM+15) 사이에 학원블록이 있으면 면책
 const hasAcademyDuringLateWindow = (s: any, expectedHHMM: string) => {
   const acadArr = Array.isArray(s?.academyBlocks) ? s.academyBlocks : [];
-  const todayBlocks = pickTodayAcademyBlocks(acadArr);
+  const todayAcadBlocks = pickTodayAcademyBlocks(acadArr);
+
+  // ✅ 추가: 오늘의 개별시간 블록
+ const todayPersonal = getTodayPersonalTimeBlocks(s);
+console.log("✅ personal blocks", s?.name, todayPersonal);
+
+  const allTodayBlocks = [...(todayAcadBlocks || []), ...(todayPersonal || [])];
 
   const winStart = toMin(expectedHHMM);
   const winEnd = winStart != null ? winStart + 15 : null;
   if (winStart == null || winEnd == null) return false;
 
-  return (todayBlocks || []).some((b: any) => {
+  return allTodayBlocks.some((b: any) => {
     const st = toMin(b?.start || b?.startHHMM);
     const en = toMin(b?.end || b?.endHHMM);
     if (st == null || en == null) return false;
-
-    // ✅ 학원 판별(너 블록들은 이미 academyBlocks라서 사실 이 조건 없어도 됨)
     return overlaps(st, en, winStart, winEnd);
   });
 };
+
 const toMin = (hhmm?: string) => {
   if (!hhmm || typeof hhmm !== "string") return null;
-  const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+
+  const m = hhmm.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/); // ✅ 초 허용
   if (!m) return null;
+
   const h = Number(m[1]);
   const mm = Number(m[2]);
   if (!Number.isFinite(h) || !Number.isFinite(mm)) return null;
@@ -149,7 +194,7 @@ const isLate15 = (expectedHHMM?: string, actualHHMM?: string) => {
   if (!open) return;
 
   // ✅ 여기서 한 번만 계산 (중복 제거)
-  const openStart = vacationMode ? "13:00" : "15:30";
+  const openStart = vacationMode ? "13:00" : "17:00";
   const openEnd = "22:00";
 
   const unsubStudents = onSnapshot(collection(db, "students"), (snap: any) => {
@@ -173,6 +218,7 @@ const isLate15 = (expectedHHMM?: string, actualHHMM?: string) => {
           id: docSnap.id,
           name: d?.name ?? "",
           blocks,
+           personalSchedule: d?.personalSchedule ?? null, 
           academyBlocks,
 
           school: d?.school ?? "",
@@ -218,28 +264,23 @@ useEffect(() => {
       const actual = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
       if (actual) return;
 
-      const expected = getLastAcademyEnd(s);
-      const expectedMin = toMin(expected || "");
-      if (!expectedMin) return;
+      const expectedHHMM = vacationMode ? "13:00" : "17:00";
+const expectedMin = toMin(expectedHHMM);
+if (expectedMin == null) return;
 
-      const now = new Date();
-      const nowMin = now.getHours() * 60 + now.getMinutes();
+const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
 
-      // ✅ 학원 가는 애는 late 저장 금지
-      const exemptLate = hasAcademyDuringLateWindow(
-        s,
-        vacationMode ? "13:00" : "15:30"
-      );
-      if (exemptLate) return;
-
-     const isAbsent =
-  rec?.status === "absent" || rec?.status === "A";
-const hasReason = (rec?.comment || "").trim().length > 0;
+// ✅ 학원 블록이 그 시간대에 겹치면 지각 자동저장 금지
+const exemptLate = hasAcademyDuringLateWindow(s, expectedHHMM);
+if (exemptLate) return;
 
 // ✅ 결석/사유 있으면 late 자동저장 금지
+const isAbsent = rec?.status === "absent" || rec?.status === "A";
+const hasReason = (rec?.comment || "").trim().length > 0;
 if (isAbsent || hasReason) return;
 
-if (!actual && nowMin - expectedMin > 15 && rec?.status !== "late") {
+// ✅ (중요) 기준시간+15 지나면 late 저장 (아직 체크인 없을 때만)
+if (nowMin > expectedMin + 15 && rec?.status !== "late") {
   await setStatus(s.id, "late");
 }
     });
@@ -302,6 +343,13 @@ const setSeatNo = async (studentId: string, seatNo: number | null) => {
   // ✅ studentId 전체를 덮지 말고 seatNo만 수정
   await updateDoc(ref, {
     [`${studentId}.seatNo`]: seatNo,
+  });
+};
+const toggleVacationMode = () => {
+  setVacationMode((prev) => {
+    const next = !prev;
+    localStorage.setItem("ops_vacationMode", next ? "1" : "0");
+    return next;
   });
 };
 
@@ -372,9 +420,9 @@ const pickLastEndedSeg = (rec: any) => {
   return ended[0] || null;
 };
 
-const isAcademySeg = (seg: any) => {
-  const label = String(seg?.label || seg?.title || seg?.subject || seg?.type || "").toLowerCase();
-  return label.includes("academy") || label.includes("학원");
+const isAcademySeg = (seg:any) => {
+  const t = String(seg?.type || "").toUpperCase();
+  return t === "OTHER_ACADEMY";
 };
 
 const minutesSinceSegEnd = (seg: any) => {
@@ -389,7 +437,7 @@ const minutesSinceSegEnd = (seg: any) => {
 const { noShowList, noReturnList } = useMemo(() => {
   const isSunday = new Date().getDay() === 0;
 
-  const expectedHHMM = vacationMode ? "13:00" : "15:30";
+  const expectedHHMM = vacationMode ? "13:00" : "17:00";
   const expectedMin = toMin(expectedHHMM || "");
 
   const calcNoShow = () => {
@@ -399,13 +447,16 @@ const { noShowList, noReturnList } = useMemo(() => {
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
 
-    return students.filter((s: any) => {
-      const rec = records?.[s.id] || {};
-      const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
-     const isAbsent =
-  rec?.status === "absent" || rec?.status === "A";
-      return !isAbsent && !inTime && nowMin > expectedMin + 15;
-    });
+   return students.filter((s:any) => {
+  const rec = records?.[s.id] || {};
+  const inTime = rec?.time || rec?.checkInTime || rec?.inTime || rec?.in || "";
+  const isAbsent = rec?.status === "absent" || rec?.status === "A";
+
+  const exemptLate = hasAcademyDuringLateWindow(s, expectedHHMM); // ✅ 추가
+  if (exemptLate) return false;
+
+  return !isAbsent && !inTime && nowMin > expectedMin + 15;
+});
   };
 
   const calcNoReturn = () => {
@@ -574,7 +625,7 @@ return (
     ...(hall === "hs" ? pastelPinkOn : pastelPink),
   }}
 >
-  고등관(47)
+  에듀코어(47)
 </button>
             </>
           )}
@@ -584,15 +635,13 @@ return (
 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
 
   {/* 방학모드 */}
-  <button
-    onClick={() => setVacationMode((v) => !v)}
-    style={{
+<button onClick={toggleVacationMode}
+ style={{
       ...pastelBase,
       ...pastelGold,
-    }}
-  >
-    {vacationMode ? "방학 모드 ON" : "방학 모드 OFF"}
-  </button>
+    }}>
+  {vacationMode ? "방학모드 ON" : "방학모드 OFF"}
+</button>
 
 {/* 출결 탭일 때만 */}
 {tab === "attendance" && (
@@ -745,7 +794,7 @@ return (
             <div id="ops-print-area">
               <TimeTable
                 students={students}
-                startHHMM={vacationMode ? "13:00" : "15:30"}
+                startHHMM={vacationMode ? "13:00" : "17:00"}
                 endHHMM="22:00"
                 stepMin={30}
                 vacationMode={vacationMode}
@@ -795,7 +844,7 @@ const hs = students.filter((s: any) => guessHall(s) === "고등관");
 const hallStudents = hall === "ms" ? ms : hs;
   const seatCount = hall === "ms" ? 16 : 47;
 
-const expectedHHMM = vacationMode ? "13:00" : "15:30";
+const expectedHHMM = vacationMode ? "13:00" : "17:00";
 
 // ✅ 중등 16석: 너가 그린 가로 2줄 + 가운데 door 기둥
 const seatLayout16Rows: (number | "door")[][] = [
@@ -815,6 +864,12 @@ const hsLayoutRows: Cell[][] = [
   ["aisle"],
   [40,41,42,43,44,45,46,47],
 ];
+const dayKeyToIndex = (k: string) => {
+  const m: any = { sun:0, mon:1, tue:2, wed:3, thu:4, fri:5, sat:6 };
+  return m[String(k || "").toLowerCase()] ?? null;
+};
+
+// ✅ 오늘 timeBlocks(개별시간)만 뽑아서 blocks 형태로 변환
 
 // seat -> student 매핑
 const seatMap: Record<number, any> = {};

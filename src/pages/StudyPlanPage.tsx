@@ -8,14 +8,16 @@ import {
   getDocs,
   setDoc,
   serverTimestamp,
+  Timestamp,
+  arrayUnion,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { deleteDoc } from "firebase/firestore";
 import { uploadProof } from "../services/storage";
 import { getStorage, ref, deleteObject } from "firebase/storage";
-
+import StudyTimelineModal from "../components/StudyTimelineModal";
 import "./StudyPlanPage.css";
-
 
 
 /* ------------------------------------------------------------------ */
@@ -38,11 +40,12 @@ type SubjectPlan = {
   teacherTasks: TaskItem[];
   studentPlans: TaskItem[];
   memo?: string;
+  teacherComment?: string;
   done?: boolean;
   updatedAt?: any;
   proofImages?: string[];
   proofMemo?: string;
-  wordTest?: { correct?: number; total?: number; };
+  wordTest?: { correct?: number; total?: number };
 };
 
 type StudentExam = {
@@ -67,14 +70,14 @@ type ExamItem = {
 };
 
 const SUBJECTS = [
-   { key: "common", label: "공통" },
+  { key: "common", label: "공통" },
   { key: "kor", label: "국어" },
   { key: "math", label: "수학" },
   { key: "eng", label: "영어" },
   { key: "sci", label: "과학" },
   { key: "soc", label: "사회" },
-  { key: "hist1", label: "역사1" },
-  { key: "hist2", label: "역사2" },
+  { key: "hist1", label: "역사1 · 세계사" },
+  { key: "hist2", label: "역사2 · 한국사" },
   { key: "tech", label: "기술가정" },
   { key: "hanja", label: "한자" },
   { key: "jp", label: "일본어" },
@@ -190,16 +193,18 @@ if (t.carriedFrom) {
     ? normalizeTasks(subj.studentPlans).filter(Boolean)
     : [];
 
-  return {
-    teacherTasks: teacher,
-    studentPlans: student,
-    memo: subj.memo || "",
-    done: !!subj.done,
-    proofImages: subj.proofImages || [],
-    proofMemo: subj.proofMemo || "",
-    wordTest: subj.wordTest || { correct: 0, total: 0 },
-  };
+ return {
+  teacherTasks: teacher,
+  studentPlans: student,
+  memo: subj.memo || "",
+  teacherComment: subj.teacherComment || "", // ✅ 추가
+  done: !!subj.done,
+  proofImages: subj.proofImages || [],
+  proofMemo: subj.proofMemo || "",
+  wordTest: subj.wordTest || { correct: 0, total: 0 },
 };
+};
+
 
 /* ---------------------------------------------------------- */
 /* 🔥  Legacy 자동 과제 (subtasks: undefined) 데이터 정리용 */
@@ -242,7 +247,7 @@ const fixLegacyTasks = async (
   }
 
   if (needFix) {
-    console.log("🔥 Legacy 자동과제 클린업 실행됨 →", selectedDate);
+
     await setDoc(
       doc(db, "studyPlans", id, "days", selectedDate),
       payload,
@@ -369,6 +374,7 @@ const readonly = role === "parent";
   const [studentInput, setStudentInput] = useState("");
   const [memo, setMemo] = useState("");
   const [done, setDone] = useState(false);
+
   const [proofImages, setProofImages] = useState<string[]>([]);
   const [proofMemo, setProofMemo] = useState("");
 
@@ -389,6 +395,8 @@ const readonly = role === "parent";
 const [myExams, setMyExams] = useState<StudentExam[]>([]);
 const [selectedExamId, setSelectedExamId] = useState<string>("");
 const [goals, setGoals] = useState<Record<string, number>>({});
+const [showTimelineModal, setShowTimelineModal] = useState(false);
+const [timelineDate, setTimelineDate] = useState<string | null>(null);
 
 useEffect(() => {
   const load = async () => {
@@ -655,6 +663,10 @@ useEffect(() => {
     return list;
   }, [plans, selectedDate]);
 
+const teacherCommentText =
+  selectedDate
+    ? plans[selectedDate]?.subjects?.[selectedSubject]?.teacherComment || ""
+    : "";
   /* ------------------------------------------------------------------ */
   /* 🔹 체크박스 토글 (선생님/학생 공통) */
   /* ------------------------------------------------------------------ */
@@ -998,6 +1010,8 @@ const saveGoal = async (subjectKey: string, value: number) => {
     }));
   };
 
+  
+
   /* ------------------------------------------------------------------ */
   /* 🔹 날짜 선택 */
   /* ------------------------------------------------------------------ */
@@ -1059,120 +1073,124 @@ const saveGoal = async (subjectKey: string, value: number) => {
   /* ------------------------------------------------------------------ */
   /* 🔹 저장 */
   /* ------------------------------------------------------------------ */
+const handleSave = async () => {
+  if (!id || !selectedDate) return alert("날짜를 먼저 선택하세요.");
+  if (isParent) return;
 
-  const handleSave = async () => {
-    if (!id || !selectedDate) return alert("날짜를 먼저 선택하세요.");
-    if (isParent) return;
+  const prevDay = plans[selectedDate];
+  const prevSubj = prevDay?.subjects?.[selectedSubject] || {};
 
-    const prevDay = plans[selectedDate];
-    const prevSubj = prevDay?.subjects?.[selectedSubject];
+  const ref = doc(db, "studyPlans", id, "days", selectedDate);
 
-    const ref = doc(db, "studyPlans", id, "days", selectedDate);
+  if (isTeacher) {
+    const prevTeacher = prevSubj?.teacherTasks || [];
 
-    if (isTeacher) {
-      const prevTeacher = prevSubj?.teacherTasks || [];
+    // 1) 자동 과제 유지
+    const autoList = prevTeacher.filter((t: any) =>
+      Array.isArray(t.subtasks)
+    );
 
-      // 🔵 1) 자동 과제는 유지 (subtasks가 배열인 항목만)
-      const autoList = prevTeacher.filter((t: any) =>
-        Array.isArray(t.subtasks)
-      );
-
-      // 🔵 2) 수동 과제만 입력창으로부터 갱신
-      const manualList = teacherInput
-        .split("\n")
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .map((text) => ({
-          text,
-          done:
-            prevTeacher.find((x: any) => x.text === text)?.done ?? false,
-        }));
-
-      // 🔵 최종: 자동 + 수동을 합친 새로운 teacherTasks
-      const teacherTasks = [...autoList, ...manualList];
-
-      const mergedSubject: SubjectPlan = {
-        teacherTasks,
-        studentPlans: prevSubj?.studentPlans || [],
-        memo: memo.trim(),
-        done,
-        updatedAt: serverTimestamp(),
-        proofImages: prevSubj?.proofImages || [],
-        proofMemo: prevSubj?.proofMemo || "",
-        wordTest: prevSubj?.wordTest || {}, // ⭐ 반드시 유지
-      };
-
-     const data = cleanForFirestore({
-  date: selectedDate,
-  [selectedSubject]: mergedSubject,
-});
-
-const payload = stripUndefinedDeep(data);
-
-await setDoc(ref, payload, { merge: true });
-
-      setPlans((prev) => ({
-        ...prev,
-        [selectedDate]: {
-          date: selectedDate,
-          subjects: {
-            ...(prev[selectedDate]?.subjects || {}),
-            [selectedSubject]: mergedSubject,
-          },
-        },
+    // 2) 수동 과제 갱신
+    const manualList = teacherInput
+      .split("\n")
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((text) => ({
+        text,
+        done: prevTeacher.find((x: any) => x.text === text)?.done ?? false,
       }));
 
-      alert("저장 완료! (선생님 계획)");
-      return;
-    }
-    if (isStudent) {
-      const prevStudent = prevSubj?.studentPlans || [];
+    // 3) 최종 선생님 과제
+    const teacherTasks = [...autoList, ...manualList];
+const studentPlans =
+  plans[selectedDate]?.subjects?.[selectedSubject]?.studentPlans ||
+  prevSubj?.studentPlans ||
+  [];
+   const mergedSubject: SubjectPlan = {
+  teacherTasks:
+    (plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks) ??
+    (prevSubj?.teacherTasks || []),
+  studentPlans,
+  memo: memo.trim(),
+  teacherComment: prevSubj?.teacherComment || "",
+  done,
+  updatedAt: serverTimestamp(),
+  proofImages: prevSubj?.proofImages || [],
+  proofMemo: prevSubj?.proofMemo || "",
+  wordTest: prevSubj?.wordTest || {},
+};
 
-      const studentPlans = studentInput
-        .split("\n")
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .map((text) => ({
-          text,
-          done: prevStudent.find((x) => x.text === text)?.done ?? false,
-        }));
+    const data = cleanForFirestore({
+      date: selectedDate,
+      [selectedSubject]: mergedSubject,
+    });
 
-      const mergedSubject: SubjectPlan = {
-        teacherTasks:
-  (plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks) ??
-  (prevSubj?.teacherTasks || []),
-        studentPlans,
-        memo: memo.trim(),
-        done,
-        updatedAt: serverTimestamp(),
-        proofImages: prevSubj?.proofImages || [],
-        proofMemo: prevSubj?.proofMemo || "",
-        wordTest: prevSubj?.wordTest || {},   // ⭐⭐ 여기도 반드시 ⭐⭐
-      };
+    const payload = stripUndefinedDeep(data);
 
-      const data = cleanForFirestore({
-  date: selectedDate,
-  [selectedSubject]: mergedSubject,
-});
+    await setDoc(ref, payload, { merge: true });
 
-const payload = stripUndefinedDeep(data);
-
-await setDoc(ref, payload, { merge: true });
-
-      setPlans((prev) => ({
-        ...prev,
-        [selectedDate]: {
-          date: selectedDate,
-          subjects: {
-            ...(prev[selectedDate]?.subjects || {}),
-            [selectedSubject]: mergedSubject,
-          },
+    setPlans((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        date: selectedDate,
+        subjects: {
+          ...(prev[selectedDate]?.subjects || {}),
+          [selectedSubject]: mergedSubject,
         },
+      },
+    }));
+
+    alert("저장 완료! (선생님 계획)");
+    return;
+  }
+
+  if (isStudent) {
+    const prevStudent = prevSubj?.studentPlans || [];
+
+    const studentPlans = studentInput
+      .split("\n")
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((text) => ({
+        text,
+        done: prevStudent.find((x) => x.text === text)?.done ?? false,
       }));
 
-      alert("저장 완료! (학생 계획)");
-    }
-  };
+    const mergedSubject: SubjectPlan = {
+      teacherTasks: prevSubj?.teacherTasks || [], // ✅ 기존 선생님 과제 유지
+      studentPlans,
+      memo: memo.trim(),
+      done,
+      updatedAt: serverTimestamp(),
+      proofImages: prevSubj?.proofImages || [],
+      proofMemo: prevSubj?.proofMemo || "",
+      wordTest: prevSubj?.wordTest || {},
+    };
+
+    const data = cleanForFirestore({
+      date: selectedDate,
+      [selectedSubject]: mergedSubject,
+    });
+
+    const payload = stripUndefinedDeep(data);
+
+    await setDoc(ref, payload, { merge: true });
+
+    setPlans((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        date: selectedDate,
+        subjects: {
+          ...(prev[selectedDate]?.subjects || {}),
+          [selectedSubject]: mergedSubject,
+        },
+      },
+    }));
+
+    alert("저장 완료! (학생 계획)");
+  }
+};
+
   const getLatestTest = (ds: string) => {
     const d = new Date(ds).getTime();
 
@@ -1200,6 +1218,7 @@ await setDoc(ref, payload, { merge: true });
   /* ------------------------------------------------------------------ */
   /* 📅 달력 렌더링 */
   /* ------------------------------------------------------------------ */
+
 
   const renderCalendar = () => {
     const firstDay = new Date(year, month, 1).getDay();
@@ -1395,7 +1414,12 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
               <button
                 className={`sp-day-box ${isToday ? "is-today" : ""} ${bgClass}`}
                 key={ds}
-                onClick={() => handleSelectDate(ds)}
+              onClick={() => {
+  console.log("날짜 클릭:", ds);
+  handleSelectDate(ds);
+  setTimelineDate(ds);
+  setShowTimelineModal(true);
+}}
               >
                 <div className="sp-day-num">{d}</div>
 
@@ -1441,7 +1465,9 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
   /* UI 시작 */
   /* ------------------------------------------------------------------ */
   const selectedDay = selectedDate ? plans[selectedDate] : undefined;
-
+const teacherComment =
+  selectedDay?.subjects?.[selectedSubject]?.teacherComment || "";
+  
   const currentRoleLabel = isTeacher
     ? "선생님 모드"
     : isStudent
@@ -1501,7 +1527,6 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
       
       </div>
 
-     {/* 출력/이동 영역 (선생님/학생) */}
 {/* 출력/이동 영역 (선생님/학생) */}
 {!isParent && (
   <div className="examCard">
@@ -1603,13 +1628,13 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
             >
               <div
                 style={{
-                  fontSize: 12,
+                  fontSize: 14,
                   fontWeight: 800,
                   color: "#1D4ED8",
                   marginBottom: 6,
                 }}
               >
-                📘 오늘 선생님 과제 한눈에 보기
+                [오늘 선생님 과제 한눈에 보기]
               </div>
 
               <div
@@ -1955,8 +1980,8 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
       background: "#ECFDF5",
     }}
   >
-    <div style={{ fontSize: 12, fontWeight: 800, color: "#047857", marginBottom: 6 }}>
-     나의 학습 계획
+    <div style={{ fontSize: 14, fontWeight: 800, color: "#047857", marginBottom: 6 }}>
+     [나의 학습 계획]
     </div>
 
     <div
@@ -2028,22 +2053,43 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
           )}
             */}
           {/* 메모 */}
-          {selectedDate && (
-            <InputSection
-              readonly={isParent}
-              title="메모"
-              value={memo}
-              setValue={setMemo}
-              rows={3}
-              placeholder="특이사항, 컨디션, 시험범위, 과제 중 어려웠던 점 등을 적어주세요."
-            />
-          )}
+<div
+  style={{
+    marginTop: 14,
+    background: "#FFFBEA",
+    border: "1px solid #d9cd9c",
+    borderRadius: 12,
+    padding: 12,
+  }}
+>
+  <div
+    style={{
+      fontSize: 14,
+      fontWeight: 800,
+      color: "#2c2927",
+      marginBottom: 6,
+    }}
+  >
+    [선생님 코멘트]
+  </div>
+
+  <div
+    style={{
+      fontSize: 13,
+      lineHeight: 1.6,
+      color: "#c027a7",
+      minHeight: 40,
+      whiteSpace: "pre-wrap",
+    }}
+  >
+    {teacherCommentText || "아직 남겨진 코멘트가 없습니다."}
+  </div>
+</div>
 
           {/* 저장 버튼 */}
           {!isParent && (
             <>
-             
-
+            
               <button
                 onClick={handleSave}
                 style={{
@@ -2065,18 +2111,30 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
           )}
         </div>
 
-        {/* 왼쪽: 달력 */}
-        <div
-          style={{
-            padding: 16,
-            background: "#F9FAFB",
-            borderRadius: 14,
-            border: "1px solid #E5E7EB",
-          }}
-        >
-          {renderCalendar()}
-        </div>
+ {/* 왼쪽: 달력 */}
+<div
+  style={{
+    padding: 16,
+    background: "#F9FAFB",
+    borderRadius: 14,
+    border: "1px solid #E5E7EB",
+  }}
+>
+  {renderCalendar()}
+</div>
 
+{showTimelineModal && timelineDate && (
+  <StudyTimelineModal
+    key={timelineDate}
+    open={true}
+    dateStr={timelineDate}
+    studentId={id || ""}
+    onClose={() => {
+      setShowTimelineModal(false);
+      setTimelineDate(null);
+    }}
+  />
+)}
     
       </div>
 
@@ -2420,7 +2478,7 @@ function ProofSection({
         { merge: true }
       );
     } catch (err) {
-      console.error("삭제 오류:", err);
+
     }
   };
   /** ------------------------------------------------------
