@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "../firebase";
 
 type Props = {
@@ -102,8 +108,10 @@ const MINUTES = ["00", "10", "20", "30", "40", "50"];
 ========================================================= */
 function StudyInsight({
   blocks,
+  isMobile,
 }: {
   blocks: TimelineBlocks;
+  isMobile: boolean;
 }) {
   if (Object.keys(blocks).length === 0) return null;
 
@@ -260,6 +268,7 @@ useEffect(() => {
      드래그 중
   --------------------------------------------------------- */
  const handlePointerEnter = (key: string, hour: number) => {
+  if (isMobile) return;  // 🔒 모바일에선 드래그 칠하기 비활성화
   if (!isDragging || !dragMode) return;
   if (dragRowHour !== hour) return;
 
@@ -269,11 +278,8 @@ useEffect(() => {
     if (dragMode === "paint") {
       updated[key] = selectedSubject;
     } else if (dragMode === "erase") {
-      if (updated[key] === selectedSubject) {
-        delete updated[key];
-      }
+      if (updated[key] === selectedSubject) delete updated[key];
     }
-
     return updated;
   });
 };
@@ -305,27 +311,33 @@ const saveTimeline = async (nextBlocks?: TimelineBlocks) => {
     return;
   }
 
+  const payloadBlocks = nextBlocks ?? blocks;
+
   console.log("🔥 저장 studentId:", studentId);
   console.log("🔥 저장 dateStr:", dateStr);
-  console.log("🔥 저장 blocks:", blocks);
-
-  const payloadBlocks = nextBlocks ?? blocks;
+  console.log("🔥 저장 payloadBlocks:", payloadBlocks);
 
   try {
     setSaving(true);
 
     const ref = doc(db, "studyPlans", studentId, "days", dateStr);
+    const snap = await getDoc(ref);
 
-    await setDoc(
-      ref,
-      {
+    if (snap.exists()) {
+      // ✅ timelineBlocks 맵 자체를 통째로 교체
+      await updateDoc(ref, {
         date: dateStr,
         timelineBlocks: payloadBlocks,
         timelineUpdatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
+      });
+    } else {
+      // ✅ 처음 생성일 때만 setDoc
+      await setDoc(ref, {
+        date: dateStr,
+        timelineBlocks: payloadBlocks,
+        timelineUpdatedAt: serverTimestamp(),
+      });
+    }
   } catch (err) {
     console.error("❌ 타임라인 저장 실패:", err);
   } finally {
@@ -422,7 +434,7 @@ const saveTimeline = async (nextBlocks?: TimelineBlocks) => {
       
 
 {/* 인사이트 */}
-       <StudyInsight blocks={blocks} />
+      {!isMobile && <StudyInsight blocks={blocks} isMobile={isMobile} />}
 
        {/* 과목 선택 - 라벨 없이 버튼만 깔끔하게 통합 */}
         <div style={simpleSubjectBarStyle}>
@@ -451,9 +463,11 @@ const saveTimeline = async (nextBlocks?: TimelineBlocks) => {
         </div>
 
         {/* 안내문 */}
-        <div style={guideBarStyle}>
-          칸을 눌러 기록하고, 드래그해서 여러 칸을 한 번에 칠할 수 있어요.
-        </div>
+<div style={guideBarStyle}>
+  {isMobile
+    ? "시간에서 드래그하세요. 칸을 눌러 학습 시간을 기록할 수 있어요."
+    : "칸을 눌러 기록하고, 드래그해서 여러 칸을 한 번에 칠할 수 있어요."}
+</div>
 
         {/* 타임라인 */}
         <div style={timelineWrapStyle}>
@@ -482,6 +496,7 @@ const saveTimeline = async (nextBlocks?: TimelineBlocks) => {
 onPointerEnter={() => handlePointerEnter(timeKey, hour)}
                         style={{
                           ...blockStyle,
+                           height: isMobile ? 50 : 36,
                           background: color ? color.bg : "#F8FAFC",
                           color: color ? color.text : "#94A3B8",
                           border: color
@@ -532,7 +547,7 @@ onPointerEnter={() => handlePointerEnter(timeKey, hour)}
             ))
           )}
         </div>
-
+{isMobile && <StudyInsight blocks={blocks} isMobile={isMobile} />}
         {/* 하단 버튼 */}
         <div
           style={{
@@ -546,33 +561,7 @@ onPointerEnter={() => handlePointerEnter(timeKey, hour)}
   {autoSaving || saving ? "자동 저장중..." : "변경사항 자동 저장됨"}
 </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              width: isMobile ? "100%" : "auto",
-            }}
-          >
-            <button
-              onClick={onClose}
-              style={{
-                ...cancelBtnStyle,
-                flex: isMobile ? 1 : undefined,
-              }}
-            >
-              취소
-            </button>
-           <button
-  onClick={() => saveTimeline()}
-  style={{
-    ...saveBtnStyle,
-    flex: isMobile ? 1 : undefined,
-  }}
-  disabled={saving}
->
-  {saving ? "저장중..." : "저장"}
-</button>
-          </div>
+         
         </div>
       </div>
     </div>
@@ -627,11 +616,11 @@ const closeBtnStyle: React.CSSProperties = {
 };
 
 const summaryTopWrapStyle: React.CSSProperties = {
-  padding: "16px 20px 10px",
+  padding: "10px 12px 8px",
   background: "#F8FAFC",
   borderBottom: "1px solid #E2E8F0",
   display: "grid",
-  gap: 12,
+  gap: 8,
 };
 
 const summaryMainCardStyle: React.CSSProperties = {
@@ -691,9 +680,10 @@ const progressBarContainerStyle: React.CSSProperties = {
 const timelineWrapStyle: React.CSSProperties = {
   flex: 1,
   overflowY: "auto",
-  padding: "18px 20px",
+  padding: "10px 12px",
   userSelect: "none",
   background: "#FFFFFF",
+  WebkitOverflowScrolling: "touch",
 };
 
 const rowStyle: React.CSSProperties = {
@@ -728,6 +718,7 @@ const blockStyle: React.CSSProperties = {
   gap: 2,
   cursor: "crosshair",
   transition: "all 0.12s ease",
+  touchAction: "none",
 };
 
 const footerStyle: React.CSSProperties = {
@@ -765,3 +756,4 @@ const simpleSubjectBarStyle: React.CSSProperties = {
   background: "#FFFFFF",
   borderBottom: "1px solid #E2E8F0",
 };
+

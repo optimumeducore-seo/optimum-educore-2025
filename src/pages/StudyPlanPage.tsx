@@ -1,5 +1,5 @@
 // src/pages/StudyPlanPage.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate, useLocation, } from "react-router-dom";
 import {
   collection,
@@ -47,6 +47,24 @@ type SubjectPlan = {
   proofMemo?: string;
   wordTest?: { correct?: number; total?: number };
 };
+const SUBJECT_LABELS: Record<string, string> = {
+  kor: "국어",
+  math: "수학",
+  eng: "영어",
+  sci: "과학",
+  soc: "사회",
+  hist1: "세계",
+  hist2: "한국",
+  tech: "기가",
+  hanja: "한자",
+  jp: "일본",
+  academy: "학원",
+  meal: "식사",
+  self: "자습",
+  rest: "휴식",
+};
+
+const SUBJECT_SUMMARY_LABELS: Record<string, string> = SUBJECT_LABELS;
 
 type StudentExam = {
   id: string;      // examId
@@ -59,6 +77,7 @@ type StudentExam = {
 type DayPlan = {
   date: string;
   subjects: Record<string, SubjectPlan>;
+  timelineBlocks?: Record<string, string>;
 };
 
 type ExamItem = {
@@ -83,6 +102,26 @@ const SUBJECTS = [
   { key: "jp", label: "일본어" },
 ];
 
+const SUBJECT_COLORS: Record<string, { bg: string; text: string; light: string }> = {
+
+  kor: { bg: "#3B82F6", text: "#FFFFFF", light: "#DBEAFE" },
+  math: { bg: "#6366F1", text: "#FFFFFF", light: "#E0E7FF" },
+  eng: { bg: "#10B981", text: "#FFFFFF", light: "#D1FAE5" },
+  sci: { bg: "#F59E0B", text: "#FFFFFF", light: "#FEF3C7" },
+  soc: { bg: "#EF4444", text: "#FFFFFF", light: "#FEE2E2" },
+
+  hist1: { bg: "#8B5CF6", text: "#FFFFFF", light: "#EDE9FE" },
+  hist2: { bg: "#EC4899", text: "#FFFFFF", light: "#FCE7F3" },
+
+  tech: { bg: "#06B6D4", text: "#FFFFFF", light: "#CFFAFE" },
+  hanja: { bg: "#A855F7", text: "#FFFFFF", light: "#F3E8FF" },
+  jp: { bg: "#F97316", text: "#FFFFFF", light: "#FFEDD5" },
+
+  academy: { bg: "#334155", text: "#FFFFFF", light: "#E2E8F0" },
+  meal: { bg: "#F59E0B", text: "#FFFFFF", light: "#FEF3C7" },
+  self: { bg: "#22C55E", text: "#FFFFFF", light: "#DCFCE7" },
+  rest: { bg: "#CBD5E1", text: "#1F2937", light: "#F1F5F9" },
+};
 const cleanForFirestore = (obj: any) => {
   const res: any = {};
   Object.entries(obj).forEach(([k, v]) => {
@@ -128,6 +167,25 @@ const normalizeTasks = (v: any[]): any[] => {
       done: !!item.done,
     };
   });
+};
+const sumTimelineByRange = (
+  plans: Record<string, DayPlan>,
+  startDate: string,
+  endDate: string
+) => {
+  const acc: Record<string, number> = {};
+
+  Object.entries(plans).forEach(([date, day]) => {
+    if (date < startDate || date > endDate) return;
+
+    const blocks = day.timelineBlocks || {};
+    Object.values(blocks).forEach((subKey) => {
+      if (!subKey) return;
+      acc[subKey] = (acc[subKey] || 0) + 10;
+    });
+  });
+
+  return acc;
 };
 
 function getNextDate(ds: string) {
@@ -321,6 +379,7 @@ function getExamStatus(start: string, end: string) {
 
   return "종료";
 }
+
 /* ------------------------------------------------------------------ */
 /* 메인 컴포넌트 */
 /* ------------------------------------------------------------------ */
@@ -397,6 +456,9 @@ const [selectedExamId, setSelectedExamId] = useState<string>("");
 const [goals, setGoals] = useState<Record<string, number>>({});
 const [showTimelineModal, setShowTimelineModal] = useState(false);
 const [timelineDate, setTimelineDate] = useState<string | null>(null);
+
+const [openEnergyWeek, setOpenEnergyWeek] = useState(false);
+const [openEnergyMonth, setOpenEnergyMonth] = useState(false);
 
 useEffect(() => {
   const load = async () => {
@@ -502,9 +564,10 @@ useEffect(() => {
         });
 
         map[d.id] = {
-          date: d.id,
-          subjects,
-        };
+  date: d.id,
+  subjects,
+  timelineBlocks: raw.timelineBlocks || {},
+};
       });
 
       setPlans(map);
@@ -667,6 +730,107 @@ const teacherCommentText =
   selectedDate
     ? plans[selectedDate]?.subjects?.[selectedSubject]?.teacherComment || ""
     : "";
+
+  const dayTimelineBlocks = useMemo(() => {
+  if (!selectedDate) return {};
+
+  const day = plans[selectedDate];
+  const blocks = day?.timelineBlocks || {};
+  return blocks;
+}, [plans, selectedDate]);
+
+const subjectSummary = useMemo(() => {
+  const acc: Record<string, number> = {};
+
+  Object.values(dayTimelineBlocks).forEach((subKey) => {
+    if (!subKey) return;
+    acc[subKey] = (acc[subKey] || 0) + 10;
+  });
+
+  console.log("subjectSummary 👉", acc);
+
+  return acc;
+}, [dayTimelineBlocks]);
+
+const focusRows = useMemo(() => {
+  const entries = Object.entries(subjectSummary)
+    .filter(([key]) => !["meal", "rest"].includes(key))
+    .sort((a, b) => b[1] - a[1]);
+
+  const max = entries[0]?.[1] || 1;
+
+  const rows = entries.map(([key, min]) => ({
+    key,
+    label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
+    minutes: min,
+    ratio: Math.round((min / max) * 100),
+  }));
+
+
+
+  return rows;
+}, [subjectSummary]);
+console.log("subjectSummary 👉", subjectSummary);
+
+const weeklySummary = useMemo(() => {
+  if (!selectedDate) return {};
+
+  const base = new Date(selectedDate);
+  const day = base.getDay();
+  const monday = new Date(base);
+  monday.setDate(base.getDate() - (day === 0 ? 6 : day - 1));
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const start = monday.toISOString().slice(0, 10);
+  const end = sunday.toISOString().slice(0, 10);
+
+  return sumTimelineByRange(plans, start, end);
+}, [plans, selectedDate]);
+
+const weeklyRows = useMemo(() => {
+  const entries = Object.entries(weeklySummary)
+    .filter(([key]) => !["meal", "rest"].includes(key))
+    .sort((a, b) => b[1] - a[1]);
+
+  const max = entries[0]?.[1] || 1;
+
+  return entries.map(([key, min]) => ({
+    key,
+    label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
+    minutes: min,
+    ratio: Math.round((min / max) * 100),
+  }));
+}, [weeklySummary]);
+
+const monthlySummary = useMemo(() => {
+  if (!selectedDate) return {};
+
+  const base = new Date(selectedDate);
+  const y = base.getFullYear();
+  const m = base.getMonth();
+
+  const start = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  const endDay = new Date(y, m + 1, 0).getDate();
+  const end = `${y}-${String(m + 1).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`;
+
+  return sumTimelineByRange(plans, start, end);
+}, [plans, selectedDate]);
+const monthlyRows = useMemo(() => {
+  const entries = Object.entries(monthlySummary)
+    .filter(([key]) => !["meal", "rest"].includes(key))
+    .sort((a, b) => b[1] - a[1]);
+
+  const max = entries[0]?.[1] || 1;
+
+  return entries.map(([key, min]) => ({
+    key,
+    label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
+    minutes: min,
+    ratio: Math.round((min / max) * 100),
+  }));
+}, [monthlySummary]);
   /* ------------------------------------------------------------------ */
   /* 🔹 체크박스 토글 (선생님/학생 공통) */
   /* ------------------------------------------------------------------ */
@@ -1214,6 +1378,18 @@ const studentPlans =
   const isTestDay = (ds: string) => {
     return testList.some(t => ds >= t.start && ds <= t.end);
   };
+
+  /* ------------------------------------------------------------------ */
+  /* 📅 공부합계 */
+  /* ------------------------------------------------------------------ */
+  const formatMinutes = (min: number) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}분`;
+  if (m === 0) return `${h}시간`;
+  return `${h}시간 ${m}분`;
+};
+
 
   /* ------------------------------------------------------------------ */
   /* 📅 달력 렌더링 */
@@ -1981,7 +2157,7 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
     }}
   >
     <div style={{ fontSize: 14, fontWeight: 800, color: "#047857", marginBottom: 6 }}>
-     [나의 학습 계획]
+      [나의 학습 계획]
     </div>
 
     <div
@@ -2037,8 +2213,82 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
     </div>
   </div>
 )}
+
+{/* 🔥 몰입 에너지 통합 박스 */}
+{selectedDate && (focusRows.length > 0 || weeklyRows.length > 0 || monthlyRows.length > 0) && (
+  <div style={{ marginTop: 14, marginBottom: 14, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: 12 }}>
+    <div style={{ fontSize: 14, fontWeight: 900, color: "#1E3A8A", marginBottom: 12 }}>🔥 몰입 에너지</div>
+
+    {/* 오늘 몰입 섹션 - 텍스트와 바 분리형 */}
+  {focusRows.length > 0 && (
+  <div style={{ padding: "14px 16px", borderRadius: 12, background: "#FFFFFF", border: "1px solid #E2E8F0", marginBottom: 12 }}>
+    {/* 타이틀과 과목 리스트를 한 줄(row)에 배치 */}
+    <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: 12, flexWrap: "wrap" }}>
+      <span style={{ fontSize: 13, fontWeight: 800, color: "#1E3A8A", whiteSpace: "nowrap" }}>
+        ⚡️ 오늘 실시간 몰입
+      </span>
       
-       
+      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
+        {focusRows.map((r, idx) => (
+          <span key={r.key}>
+            <span style={{ color: SUBJECT_COLORS[r.key]?.bg, fontWeight: 800 }}>{r.label}</span> {r.minutes}분
+            {idx < focusRows.length - 1 && <span style={{ margin: "0 8px", opacity: 0.3 }}>|</span>}
+          </span>
+        ))}
+      </div>
+    </div>
+
+    {/* 하단 컬러 바(Bar) */}
+    <div style={{ width: "100%", height: 10, background: "#F1F5F9", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+      {focusRows.map((row) => {
+        const total = focusRows.reduce((sum, r) => sum + r.minutes, 0) || 1;
+        return (
+          <div key={row.key} title={`${row.label} ${row.minutes}분`}
+            style={{
+              width: `${(row.minutes / total) * 100}%`,
+              height: "100%",
+              background: SUBJECT_COLORS[row.key]?.bg || "#3B82F6",
+              transition: "width 0.4s ease"
+            }}
+          />
+        );
+      })}
+    </div>
+  </div>
+)}
+    {/* 주간/월간 아코디언도 동일한 깔끔한 스타일로 적용 */}
+    {[
+      { label: "📅 이번 주 누적", rows: weeklyRows, open: openEnergyWeek, setter: setOpenEnergyWeek },
+      { label: "🗓 이번 달 누적", rows: monthlyRows, open: openEnergyMonth, setter: setOpenEnergyMonth }
+    ].map((item, idx) => item.rows.length > 0 && (
+      <div key={idx} style={{ marginBottom: 8 }}>
+        <button type="button" onClick={() => item.setter(!item.open)} style={energyAccordionBtnStyle}>
+          <span>{item.label}</span>
+          <span>{item.open ? "▾" : "▸"}</span>
+        </button>
+        {item.open && (
+          <div style={{ marginTop: 8, padding: "12px", borderRadius: 10, background: "#FFFFFF", border: "1px solid #E2E8F0" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: 10 }}>
+              {item.rows.map((r) => (
+                <span key={r.key} style={{ fontSize: 10, fontWeight: 700, color: "#64748B" }}>
+                  {r.label} <b style={{ color: SUBJECT_COLORS[r.key]?.bg }}>{formatMinutes(r.minutes)}</b>
+                </span>
+              ))}
+            </div>
+            <div style={{ width: "100%", height: 8, background: "#F1F5F9", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+              {item.rows.map((row) => {
+                const total = item.rows.reduce((sum, r) => sum + r.minutes, 0) || 1;
+                return (
+                  <div key={row.key} style={{ width: `${(row.minutes / total) * 100}%`, height: "100%", background: SUBJECT_COLORS[row.key]?.bg }} />
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+)}
           {/* 🔥 집공 인증샷 섹션 
           {selectedDate && (
             <ProofSection
@@ -2052,37 +2302,48 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
             />
           )}
             */}
-          {/* 메모 */}
+        {/* 📝 선생님 코멘트 - 깔끔한 피드백 카드 스타일 */}
+{/* 📝 선생님 코멘트 - 복구 및 디자인 개선 */}
 <div
   style={{
-    marginTop: 14,
-    background: "#FFFBEA",
-    border: "1px solid #d9cd9c",
-    borderRadius: 12,
-    padding: 12,
+    marginTop: 20,
+    padding: "16px",
+    borderRadius: "14px",
+    background: "#F8FAFC", 
+    border: "1px solid #E2E8F0",
   }}
 >
   <div
     style={{
-      fontSize: 14,
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+      fontSize: 13,
       fontWeight: 800,
-      color: "#2c2927",
-      marginBottom: 6,
+      color: "#372f37",
+      marginBottom: 10,
     }}
   >
-    [선생님 코멘트]
+    <span>💬</span> [선생님 코멘트]
   </div>
 
   <div
     style={{
-      fontSize: 13,
+      fontSize: 14,
       lineHeight: 1.6,
-      color: "#c027a7",
-      minHeight: 40,
+      color: teacherCommentText ? "#a3478e" : "#94A3B8", 
+      minHeight: "40px", // 기존 높이 유지
       whiteSpace: "pre-wrap",
+      padding: "12px",
+      background: "#FFFFFF", 
+      borderRadius: "10px",
+      border: "1px solid #F1F5F9",
     }}
   >
-    {teacherCommentText || "아직 남겨진 코멘트가 없습니다."}
+    {/* 변수명이 정확한지 확인: teacherCommentText */}
+    {teacherCommentText && teacherCommentText.trim() !== "" 
+      ? teacherCommentText 
+      : "아직 남겨진 코멘트가 없습니다."}
   </div>
 </div>
 
@@ -3001,3 +3262,17 @@ const applyBtn: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+const energyAccordionBtnStyle: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #E2E8F0",
+  background: "#FFFFFF",
+  cursor: "pointer",
+  fontSize: 14,
+  fontWeight: 800,
+  color: "#1E3A8A",
+};
