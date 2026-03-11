@@ -4,13 +4,13 @@ import {
   collection,
   doc,
   getDocs,
+  getDoc,
   setDoc,
   query,
   where,
   serverTimestamp,
   deleteDoc,
   writeBatch,
-  documentId,
 } from "firebase/firestore";
 import { db } from "../firebase";
 
@@ -21,7 +21,20 @@ type Student = {
   school?: string;
   grade?: string;
 };
+type StudentExamTask = {
+  key: string;
+  label: string;
+  target: number;
+  done: number;
+};
 
+type StudentExamRange = {
+  id: string;
+  big: string;
+  small: string;
+  pages: string;
+  tasks: StudentExamTask[];
+};
 type ExamRange = { big: string; small: string; pages: string };
 type ExamTask = { key: string; label: string; target: number };
 
@@ -102,7 +115,7 @@ const DEFAULT_TASKS: ExamTask[] = [
   { key: "print", label: "프린트 1-3회독", target: 3 },
   { key: "workbook", label: "시험범위 문제집풀이", target: 1 },
   { key: "workbookWrong", label: "문제집 단원별 오답 여부", target: 1 },
-  { key: "printBlank", label: "프린트 빈칸암기 1-3회독", target: 3 },
+  { key: "printBlank", label: "프린트빈칸 1-3회독", target: 3 },
   { key: "zokboPersonal", label: "족보 개인별문제", target: 1 },
   { key: "zokboEssay", label: "족보 서술형", target: 1 },
   { key: "guideEssay", label: "자습서 서술형", target: 1 },
@@ -114,10 +127,10 @@ const TASK_CANDIDATES: ExamTask[] = [
   { key: "print", label: "프린트", target: 3 },
   { key: "workbook", label: "문제집", target: 1 },
   { key: "workbookWrong", label: "문제집 오답", target: 1 },
-  { key: "printBlank", label: "프린트 빈칸암기", target: 3 },
-  { key: "zokboPersonal", label: "족보 개인별문제", target: 1 },
-  { key: "zokboEssay", label: "족보 서술형", target: 1 },
-  { key: "guideEssay", label: "자습서 서술형", target: 1 },
+  { key: "printBlank", label: "프린트빈칸", target: 3 },
+  { key: "zokboPersonal", label: "족보개인문제", target: 1 },
+  { key: "zokboEssay", label: "족보서술형", target: 1 },
+  { key: "guideEssay", label: "자습서서술", target: 1 },
   { key: "blankNote", label: "백지노트", target: 1 },
 ];
 
@@ -842,7 +855,48 @@ const table: React.CSSProperties = {
     setActiveDate("");
   };
 
+const buildStudentSubjectsWithMerge = (
+  subjects: any[],
+  existingSubjects: any[] = []
+) => {
+  const existingTaskMap = new Map<string, { target: number; done: number }>();
 
+  // 기존 studentExams 데이터에서 rangeId + taskKey 기준으로 보존값 수집
+  for (const sub of existingSubjects || []) {
+    for (const rg of sub.ranges || []) {
+      for (const task of rg.tasks || []) {
+        const mapKey = `${sub.key}__${rg.id}__${task.key}`;
+        existingTaskMap.set(mapKey, {
+          target: Number(task.target || 0),
+          done: Number(task.done || 0),
+        });
+      }
+    }
+  }
+
+  // 새 subjects(마스터 exam 기준)를 학생용 구조로 변환하면서 기존값 merge
+  return (subjects || []).map((sub: any) => ({
+    key: sub.key,
+    name: sub.name,
+    ranges: (sub.ranges || []).map((rg: any, idx: number) => ({
+      id: rg.id || `${sub.key}-${idx}`,
+      big: rg.big || "",
+      small: rg.small || "",
+      pages: rg.pages || "",
+      tasks: (sub.tasks || []).map((t: any) => {
+        const mapKey = `${sub.key}__${rg.id || `${sub.key}-${idx}`}__${t.key}`;
+        const existing = existingTaskMap.get(mapKey);
+
+        return {
+          key: t.key,
+          label: t.label,
+          target: existing ? Number(existing.target || t.target || 0) : Number(t.target || 0),
+          done: existing ? Number(existing.done || 0) : 0,
+        };
+      }),
+    })),
+  }));
+};
 
   /* ------------------------------------------------------------------ */
   /* 🔹 7. 시험 저장 + 학생들에게 반영 */
@@ -978,44 +1032,41 @@ examEnd,
       );
 
       // 5) 각 학생의 studentExams/{sid}/exams/{examId} 에 동일 정보 저장
-      const studentSubjects = subjects.map((sub: any) => ({
-  key: sub.key,
-  name: sub.name,
-  ranges: (sub.ranges || []).map((rg: any, idx: number) => ({
-    id: rg.id || `${sub.key}-${idx}`,
-    big: rg.big || "",
-    small: rg.small || "",
-    pages: rg.pages || "",
-    tasks: (sub.tasks || []).map((t: any) => ({
-      key: t.key,
-      label: t.label,
-      target: Number(t.target || 0),
-      done: 0,
-    })),
-  })),
-}));
-      for (const st of targetStudents) {
-        const ref = doc(collection(db, "studentExams", st.id, "exams"), examId!);
-        await setDoc(ref, {
-          examId,
-          studentId: st.id,
-          studentName: st.name,
-          school: selectedSchool,
-          grade: selectedGrade,
-          title: title.trim(),
+    for (const st of targetStudents) {
+  const ref = doc(collection(db, "studentExams", st.id, "exams"), examId!);
 
-         planStart,
-planEnd: fixedPlanEnd,
-examStart,
-examEnd,
+  // 기존 학생 시험 문서 읽기
+  const existingSnap = await getDoc(ref);
+  const existingData = existingSnap.exists() ? existingSnap.data() : null;
+  const existingSubjects = existingData?.subjects || [];
 
-          scheduleByDate,
-          memo: memo.trim(),
-          subjects: studentSubjects,
-          appliedAt: serverTimestamp(),
-        }, { merge: true });
-      }
+  // 기존 target/done 보존
+  const studentSubjects = buildStudentSubjectsWithMerge(subjects, existingSubjects);
 
+  await setDoc(
+    ref,
+    {
+      examId,
+      studentId: st.id,
+      studentName: st.name,
+      school: selectedSchool,
+      grade: selectedGrade,
+      title: title.trim(),
+
+      planStart,
+      planEnd: fixedPlanEnd,
+      examStart,
+      examEnd,
+
+      scheduleByDate,
+      memo: memo.trim(),
+      subjects: studentSubjects,
+      appliedAt: existingData?.appliedAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
       // 6) 로컬 state 갱신
       const newExam: Exam = {
         id: examId!,

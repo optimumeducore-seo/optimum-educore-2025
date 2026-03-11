@@ -2,6 +2,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { registerSW } from "./registerServiceWorker";
+
+registerSW();
 import App from "./App";
 import StudentPage from "./pages/StudentPage";
 import "./index.css";
@@ -17,7 +20,8 @@ import QRCardsPage from "./pages/QRCardsPage.tsx";
 import StudyPlanDashboardPage from "./pages/StudyPlanDashboardPage";
 import BookManagePage from "./pages/BookManagePage.tsx";
 import AutoBookAssignPage from "./pages/AutoBookAssignPage.tsx";
-
+import ParentLaunchPage from "./pages/ParentLaunchPage";
+import ParentInstallPage from "./pages/ParentInstallPage";
 
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -26,6 +30,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <Routes>
   <Route path="/student" element={<StudentPage />} />
   <Route path="/parent-report/:id" element={<ParentMonthlyReport />} />
+  <Route path="/parent-launch" element={<ParentLaunchPage />} />
+  <Route path="/parent-install" element={<ParentInstallPage />} />
   <Route path="/exam/:id" element={<ExamInputPage />} />
   <Route path="/study-plan/:id" element={<StudyPlanPage />} />
 

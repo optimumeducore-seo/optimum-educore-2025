@@ -130,6 +130,71 @@ function safeHM(raw: any): string | null {
   return null;
 }
 
+function formatMinutesKR(min?: number) {
+  if (!min || min <= 0) return "0분";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}분`;
+  if (m === 0) return `${h}시간`;
+  return `${h}시간 ${m}분`;
+}
+
+function getTimelineSummary(source: any) {
+  const timelineBlocks = source?.timelineBlocks || {};
+  const acc: Record<string, number> = {};
+
+  Object.values(timelineBlocks).forEach((rawKey: any) => {
+    if (!rawKey) return;
+
+    const subKey =
+      rawKey === "his1" ? "hist1" :
+      rawKey === "sci1" ? "sci" :
+      rawKey;
+
+    acc[subKey] = (acc[subKey] || 0) + 10;
+  });
+
+  return Object.entries(acc)
+    .filter(([key]) => !["meal", "rest"].includes(key))
+    .sort((a, b) => b[1] - a[1]);
+}
+
+function normalizeTimelineKey(rawKey: string) {
+  if (rawKey === "his1") return "hist1";
+  if (rawKey === "sci1") return "sci";
+  return rawKey;
+}
+
+function addTimelineToAcc(acc: Record<string, number>, timelineBlocks: Record<string, string> = {}) {
+  Object.values(timelineBlocks).forEach((rawKey) => {
+    if (!rawKey) return;
+    const key = normalizeTimelineKey(rawKey);
+    acc[key] = (acc[key] || 0) + 10;
+  });
+  return acc;
+}
+
+function sortTimelineSummary(acc: Record<string, number>) {
+  return Object.entries(acc)
+    .filter(([key]) => !["meal", "rest"].includes(key))
+    .sort((a, b) => b[1] - a[1]);
+}
+
+function getWeekDates(dateStr: string) {
+  const base = new Date(dateStr);
+  const day = base.getDay(); // 일=0
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+
+  const monday = new Date(base);
+  monday.setDate(base.getDate() + mondayOffset);
+
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+}
+
 function getWordTestTotal(source: any) {
   if (!source) return { correct: 0, total: 0 };
 
@@ -497,17 +562,56 @@ async function downloadSchedulePDF(
 const SUBJECT_LABEL: Record<string, string> = {
   soc: "사회",
   hist2: "한국사",
+  his1: "세계사",
+  hist1: "세계사",
   sci: "과학",
-  sci1: "과학", // ✅ 추가 (날짜에 따라 sci1로 저장된 케이스 대응)
+  sci1: "과학",
   kor: "국어",
   eng: "영어",
-  his1: "세계사",
   math: "수학",
   tech: "기술가정",
   hanja: "한자",
   jp: "일본어",
+  academy: "학원",
+  meal: "식사",
+  self: "자습",
+  rest: "휴식",
 };
 
+const SUBJECT_COLORS: Record<string, string> = {
+  kor: "#F87171",
+  math: "#60A5FA",
+  eng: "#34D399",
+  sci: "#A78BFA",
+  soc: "#FBBF24",
+  his1: "#FB923C",
+  hist1: "#FB923C",
+  hist2: "#94A3B8",
+  tech: "#2DD4BF",
+  hanja: "#E879F9",
+  jp: "#F472B6",
+  academy: "#334155",
+  meal: "#F59E0B",
+  self: "#10B981",
+  rest: "#CBD5E1",
+};
+const SUBJECT_SUMMARY_LABELS: Record<string, string> = {
+  kor: "국어",
+  math: "수학",
+  eng: "영어",
+  sci: "과학",
+  soc: "사회",
+  his1: "세계사",
+  hist1: "세계사",
+  hist2: "한국사",
+  tech: "기술가정",
+  hanja: "한자",
+  jp: "일본어",
+  academy: "학원",
+  meal: "식사",
+  self: "자습",
+  rest: "휴식",
+};
 const SUBJECT_KEYS = new Set([
   "kor",
   "eng",
@@ -515,8 +619,9 @@ const SUBJECT_KEYS = new Set([
   "soc",
   "hist2",
   "his1",
-  "sci",  // ✅ 추가 (실데이터에 sci가 있음)
-  "sci1", // ✅ 유지
+  "hist1",
+  "sci",
+  "sci1",
   "tech",
   "hanja",
   "jp",
@@ -602,7 +707,7 @@ const [open, setOpen] = useState(false);
 const [showDayModal, setShowDayModal] = useState(false);
 const [dayDetail, setDayDetail] = useState<any>(null);
 const [dayPlan, setDayPlan] = useState<any>(null);
-
+const [studyPlanDays, setStudyPlanDays] = useState<Record<string, any>>({});
 const [openSubject, setOpenSubject] = useState<string | null>(null);
 
 const tasksArr = useMemo(() => {
@@ -923,20 +1028,27 @@ useEffect(() => {
   /* ===============================
         데이터 로드
   ================================= */
-  useEffect(() => {
+ useEffect(() => {
   if (!id) return;
 
   (async () => {
-    // 학생 정보
     const stSnap = await getDoc(doc(db, "students", id));
     if (stSnap.exists()) {
       setStudent({ id, ...(stSnap.data() as Omit<Student, "id">) });
     }
 
-    // 🔥 날짜 기준 records에서 이 학생 기록만 모아오기
     const rec = await loadRecordsForStudent(id);
     setRecords(rec);
+
+    const daysSnap = await getDocs(collection(db, "studyPlans", id, "days"));
+    const daysMap: Record<string, any> = {};
+    daysSnap.forEach((d) => {
+      daysMap[d.id] = d.data();
+    });
+    setStudyPlanDays(daysMap);
+
     console.log("ALL RECORDS:", rec);
+    console.log("ALL STUDYPLAN DAYS:", daysMap);
   })();
 }, [id]);
 
@@ -1098,8 +1210,117 @@ const prevSummary = useMemo(() => {
       </div>
     );
   }
+function getTaskProgress(dayPlan: any) {
+  let teacherDone = 0;
+  let teacherTotal = 0;
+  let studentDone = 0;
+  let studentTotal = 0;
 
- 
+  if (!dayPlan || typeof dayPlan !== "object") {
+    return { teacherDone, teacherTotal, studentDone, studentTotal };
+  }
+
+  const isTaskLike = (v: any) => {
+    return !!v && typeof v === "object" && (
+      "done" in v ||
+      "text" in v ||
+      "title" in v ||
+      "carriedOver" in v ||
+      "carriedFrom" in v
+    );
+  };
+
+  const countOne = (task: any, bucket: "teacher" | "student" = "student") => {
+    if (!isTaskLike(task)) return;
+
+    if (bucket === "teacher") {
+      teacherTotal += 1;
+      if (task?.done === true) teacherDone += 1;
+    } else {
+      studentTotal += 1;
+      if (task?.done === true) studentDone += 1;
+    }
+  };
+
+  // 1) subjects 구조
+  if (dayPlan.subjects && typeof dayPlan.subjects === "object") {
+    Object.values(dayPlan.subjects).forEach((sub: any) => {
+      const teacherTasks = Array.isArray(sub?.teacherTasks)
+        ? sub.teacherTasks
+        : sub?.teacherTasks && typeof sub.teacherTasks === "object"
+        ? Object.values(sub.teacherTasks)
+        : [];
+
+      const studentPlans = Array.isArray(sub?.studentPlans)
+        ? sub.studentPlans
+        : sub?.studentPlans && typeof sub.studentPlans === "object"
+        ? Object.values(sub.studentPlans)
+        : [];
+
+      teacherTasks.forEach((t: any) => countOne(t, "teacher"));
+      studentPlans.forEach((t: any) => countOne(t, "student"));
+    });
+  }
+
+  // 2) 과목 루트 구조
+  const subjectKeys = [
+    "common",
+    "kor",
+    "math",
+    "eng",
+    "sci",
+    "soc",
+    "his1",
+    "hist1",
+    "hist2",
+    "tech",
+    "hanja",
+    "jp",
+  ];
+
+  subjectKeys.forEach((key) => {
+    const sub = dayPlan[key];
+    if (!sub || typeof sub !== "object") return;
+
+    const teacherTasks = Array.isArray(sub?.teacherTasks)
+      ? sub.teacherTasks
+      : sub?.teacherTasks && typeof sub.teacherTasks === "object"
+      ? Object.values(sub.teacherTasks)
+      : [];
+
+    const studentPlans = Array.isArray(sub?.studentPlans)
+      ? sub.studentPlans
+      : sub?.studentPlans && typeof sub.studentPlans === "object"
+      ? Object.values(sub.studentPlans)
+      : [];
+
+    teacherTasks.forEach((t: any) => countOne(t, "teacher"));
+    studentPlans.forEach((t: any) => countOne(t, "student"));
+  });
+
+  // 3) 루트 숫자키 구조 ("1","2","3"...)
+  Object.entries(dayPlan).forEach(([key, value]) => {
+    if (/^\d+$/.test(key) && isTaskLike(value)) {
+      countOne(value, "student");
+    }
+  });
+
+  // 4) 문서 루트 자체가 task인 경우
+  if (isTaskLike(dayPlan) && ("text" in dayPlan || "done" in dayPlan)) {
+    countOne(dayPlan, "student");
+  }
+
+  return {
+    teacherDone,
+    teacherTotal,
+    studentDone,
+    studentTotal,
+  };
+}
+
+function rate(done:number,total:number){
+  return total ? Math.round((done/total)*100) : 0;
+}
 
   /* ===============================
         UI + 프린트 스타일
@@ -1135,6 +1356,8 @@ const prevSummary = useMemo(() => {
       setDayPlan(null);
     }}
   >
+
+  
     <div
       style={{
         width: "min(560px, 100%)",
@@ -1309,6 +1532,243 @@ return (
 );
 })()}
 
+{(() => {
+  const dateStr = dayDetail?.date;
+if (!dateStr) return null;
+
+const basePlan = dayPlan ?? studyPlanDays?.[dateStr] ?? null;
+
+console.log("basePlan 👉", basePlan);
+console.log("basePlan keys 👉", Object.keys(basePlan || {}));
+console.log("basePlan.subtasks 👉", basePlan?.subtasks);
+console.log("basePlan.subjects 👉", basePlan?.subjects);
+
+const dailySummary = getTimelineSummary(basePlan);
+
+const p = getTaskProgress(basePlan);
+console.log("taskProgress 👉", p);
+
+const teacherRate = rate(p.teacherDone, p.teacherTotal);
+const studentRate = rate(p.studentDone, p.studentTotal);
+
+  // 이번 주
+  const weekDates = getWeekDates(dateStr);
+  const weeklyAcc: Record<string, number> = {};
+  weekDates.forEach((d) => {
+    const source = studyPlanDays?.[d];
+    if (!source?.timelineBlocks) return;
+    addTimelineToAcc(weeklyAcc, source.timelineBlocks);
+  });
+  const weeklySummary = sortTimelineSummary(weeklyAcc);
+
+  // 이번 달
+  const monthPrefix = dateStr.slice(0, 7);
+  const monthlyAcc: Record<string, number> = {};
+  Object.entries(studyPlanDays || {}).forEach(([d, source]) => {
+    if (!d.startsWith(monthPrefix)) return;
+    if (!(source as any)?.timelineBlocks) return;
+    addTimelineToAcc(monthlyAcc, (source as any).timelineBlocks);
+  });
+  const monthlySummary = sortTimelineSummary(monthlyAcc);
+
+  const renderSummaryBar = (summaryArr: [string, number][]) => {
+    if (summaryArr.length === 0) {
+      return (
+        <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 6 }}>
+          기록 없음
+        </div>
+      );
+    }
+
+    const total = summaryArr.reduce((sum, [, min]) => sum + Number(min), 0) || 1;
+
+    return (
+      <>
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8, lineHeight: 1.6 }}>
+          {summaryArr
+            .map(
+              ([key, min]) =>
+                `${SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABEL[key] || key} ${formatMinutesKR(Number(min))}`
+            )
+            .join(" / ")}
+        </div>
+
+        <div
+          style={{
+            width: "100%",
+            height: 12,
+            background: "#e5e7eb",
+            borderRadius: 999,
+            overflow: "hidden",
+            display: "flex",
+          }}
+        >
+          {summaryArr.map(([key, min]) => {
+            const width = `${(Number(min) / total) * 100}%`;
+
+            return (
+              <div
+                key={key}
+                title={`${SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABEL[key] || key} ${formatMinutesKR(Number(min))}`}
+                style={{
+                  width,
+                  height: "100%",
+                  background: SUBJECT_COLORS[key] || "#3B82F6",
+                }}
+              />
+            );
+          })}
+        </div>
+      </>
+    );
+  };
+
+  if (
+    dailySummary.length === 0 &&
+    weeklySummary.length === 0 &&
+    monthlySummary.length === 0 &&
+    p.teacherTotal + p.studentTotal === 0
+  ) return null;
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      {p.teacherTotal + p.studentTotal > 0 && (
+        <div
+          style={{
+            padding: 12,
+            borderRadius: 12,
+            border: "1px solid #e5e7eb",
+            background: "#F5F7FF",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 900,
+              color: "#92400e",
+              marginBottom: 10,
+            }}
+          >
+            📋 과제 수행 현황
+          </div>
+
+          <div style={{ fontSize: 12, marginBottom: 4 }}>
+            선생님 과제 {p.teacherDone}/{p.teacherTotal} · {teacherRate}%
+          </div>
+
+          <div
+            style={{
+              height: 10,
+              background: "#E5E7EB",
+              borderRadius: 999,
+              overflow: "hidden",
+              marginBottom: 10,
+            }}
+          >
+            <div
+              style={{
+                width: `${teacherRate}%`,
+                height: "100%",
+                background: "#eab86e",
+              }}
+            />
+          </div>
+
+          <div style={{ fontSize: 12, marginBottom: 4 }}>
+            자기 계획 {p.studentDone}/{p.studentTotal} · {studentRate}%
+          </div>
+
+          <div
+            style={{
+              height: 10,
+              background: "#E5E7EB",
+              borderRadius: 999,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${studentRate}%`,
+                height: "100%",
+                background: "#e096bb",
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid #e5e7eb",
+          background: "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 900,
+            color: "#1e3a8a",
+            marginBottom: 8,
+          }}
+        >
+          🔥 오늘 과목별 몰입 에너지
+        </div>
+        {renderSummaryBar(dailySummary)}
+      </div>
+
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid #e5e7eb",
+          background: "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 900,
+            color: "#1e3a8a",
+            marginBottom: 8,
+          }}
+        >
+          📅 주별 누적 몰입
+        </div>
+        {renderSummaryBar(weeklySummary)}
+      </div>
+
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid #e5e7eb",
+          background: "#f8fafc",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 900,
+            color: "#1e3a8a",
+            marginBottom: 8,
+          }}
+        >
+          🗓 월별 누적 몰입
+        </div>
+        {renderSummaryBar(monthlySummary)}
+      </div>
+    </div>
+  );
+})()}
 {/* ✅ 오늘 과제 (studyPlans/dayPlan.teacherTasks) 
 <div
   style={{
@@ -3319,9 +3779,6 @@ function TimelineItem({ label, time }: { label: string; time?: string }) {
 /* 도넛 그래프 */
 /* =================================================================== */
 
-/* =================================================================== */
-/* 도넛 그래프 (data 배열 버전) */
-/* =================================================================== */
 
 function DoughnutChart({
   data,

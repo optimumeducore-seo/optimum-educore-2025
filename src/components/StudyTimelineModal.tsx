@@ -164,6 +164,7 @@ export default function StudyTimelineModal({
   const [saving, setSaving] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
   const [dragRowHour, setDragRowHour] = useState<number | null>(null);
+  const [subjectPickerOpen, setSubjectPickerOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(
   typeof window !== "undefined" ? window.innerWidth < 600 : false
 );
@@ -437,36 +438,66 @@ const saveTimeline = async (nextBlocks?: TimelineBlocks) => {
       {!isMobile && <StudyInsight blocks={blocks} isMobile={isMobile} />}
 
        {/* 과목 선택 - 라벨 없이 버튼만 깔끔하게 통합 */}
-        <div style={simpleSubjectBarStyle}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {[...STUDY_SUBJECT_KEYS, ...LIFE_SUBJECT_KEYS].map((key) => {
-              const active = key === selectedSubject;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setSelectedSubject(key)}
-                 style={{
-  ...subjectBtnStyle,
-  background: active ? SUBJECT_COLORS[key].bg : "#F1F5F9",
-  color: active ? "#FFFFFF" : "#475569",
-  border: "none",
-  boxShadow: active
-    ? `0 4px 10px ${SUBJECT_COLORS[key].bg}33`
-    : "none",
-}}
-                >
-                  {SUBJECT_LABELS[key]}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+       <div style={simpleSubjectBarStyle}>
+  <button
+    type="button"
+    onClick={() => setSubjectPickerOpen((v) => !v)}
+    style={{
+      width: "100%",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "10px 12px",
+      borderRadius: 10,
+      border: "1px solid #E2E8F0",
+      background: "#FFFFFF",
+      cursor: "pointer",
+      fontSize: 14,
+      fontWeight: 800,
+      color: "#334155",
+      marginBottom: subjectPickerOpen ? 10 : 0,
+    }}
+  >
+    <span>
+      현재 과목: {SUBJECT_LABELS[selectedSubject]}
+    </span>
+    <span>{subjectPickerOpen ? "▴" : "▾"}</span>
+  </button>
+
+  {subjectPickerOpen && (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {[...STUDY_SUBJECT_KEYS, ...LIFE_SUBJECT_KEYS].map((key) => {
+        const active = key === selectedSubject;
+        return (
+          <button
+            key={key}
+            onClick={() => {
+              setSelectedSubject(key);
+              if (isMobile) setSubjectPickerOpen(false);
+            }}
+            style={{
+              ...subjectBtnStyle,
+              background: active ? SUBJECT_COLORS[key].bg : "#F1F5F9",
+              color: active ? "#FFFFFF" : "#475569",
+              border: "none",
+              boxShadow: active
+                ? `0 4px 10px ${SUBJECT_COLORS[key].bg}33`
+                : "none",
+            }}
+          >
+            {SUBJECT_LABELS[key]}
+          </button>
+        );
+      })}
+    </div>
+  )}
+</div>
 
         {/* 안내문 */}
 <div style={guideBarStyle}>
   {isMobile
-    ? "시간에서 드래그하세요. 칸을 눌러 학습 시간을 기록할 수 있어요."
-    : "칸을 눌러 기록하고, 드래그해서 여러 칸을 한 번에 칠할 수 있어요."}
+    ? "블럭을 눌러 학습 시간을 기록할 수 있어요."
+    : "드래그해서 여러 칸을 한 번에 칠할 수 있어요."}
 </div>
 
         {/* 타임라인 */}
@@ -494,24 +525,26 @@ const saveTimeline = async (nextBlocks?: TimelineBlocks) => {
                         key={timeKey}
                         onPointerDown={() => handlePointerDown(timeKey, hour)}
 onPointerEnter={() => handlePointerEnter(timeKey, hour)}
-                        style={{
-                          ...blockStyle,
-                           height: isMobile ? 50 : 36,
-                          background: color ? color.bg : "#F8FAFC",
-                          color: color ? color.text : "#94A3B8",
-                          border: color
-                            ? `1px solid ${color.bg}`
-                            : "1px solid #E2E8F0",
-                          boxShadow: color ? "0 4px 10px rgba(0,0,0,0.12)" : "none",
-                          transform: color
-                            ? isMobile
-                              ? "scale(1.02)"
-                              : "scale(1.05)"
-                            : "scale(1)",
-                          zIndex: color ? 10 : 1,
-                          position: "relative",
-                          transition: "all 0.15s cubic-bezier(0.4, 0, 0.2, 1)",
-                        }}
+                       style={{
+  ...blockStyle,
+  height: isMobile ? 50 : 36,
+  cursor: isMobile ? "pointer" : "crosshair",
+  touchAction: isMobile ? "manipulation" : "none",
+  background: color ? color.bg : "#F8FAFC",
+  color: color ? color.text : "#94A3B8",
+  border: color
+    ? `1px solid ${color.bg}`
+    : "1px solid #E2E8F0",
+  boxShadow: color ? "0 4px 10px rgba(0,0,0,0.12)" : "none",
+  transform: color
+    ? isMobile
+      ? "scale(1.02)"
+      : "scale(1.05)"
+    : "scale(1)",
+  zIndex: color ? 10 : 1,
+  position: "relative",
+  transition: "all 0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+}}
                         title={`${timeKey}${label ? ` · ${label}` : ""}`}
                       >
                         {subjectKey && (
@@ -716,9 +749,7 @@ const blockStyle: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   gap: 2,
-  cursor: "crosshair",
   transition: "all 0.12s ease",
-  touchAction: "none",
 };
 
 const footerStyle: React.CSSProperties = {

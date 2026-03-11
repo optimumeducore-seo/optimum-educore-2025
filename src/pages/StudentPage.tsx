@@ -51,18 +51,25 @@ async function loadStudentRecords(studentId: string) {
   // ② 기존 students/<id>/logs 배열도 읽기
   // -----------------------------
   const studentRef = doc(db, "students", studentId);
-  const studentSnap = await getDoc(studentRef);
+const studentSnap = await getDoc(studentRef);
 
-  if (studentSnap.exists()) {
-    const data = studentSnap.data() as any;
-    if (Array.isArray(data.logs)) {
-      data.logs.forEach((log: any) => {
-        if (!results.some((r) => r.date === log.date)) {
-          results.push(log);
-        }
-      });
-    }
+if (studentSnap.exists()) {
+  const data = studentSnap.data() as any;
+
+  // 🔒 그만둔 학생 차단
+  if (data?.removed === true) {
+    alert("현재 이용할 수 없는 학생 계정입니다.");
+    return [];
   }
+
+  if (Array.isArray(data.logs)) {
+    data.logs.forEach((log: any) => {
+      if (!results.some((r) => r.date === log.date)) {
+        results.push(log);
+      }
+    });
+  }
+}
 
   // 🔥 아이폰 포함 전체 디바이스에서 내부망 체크 (무료, 안정적)
   results.sort((a, b) => (a.date > b.date ? 1 : -1));
@@ -75,7 +82,7 @@ async function getPublicIP() {
     const data = await res.json();
     return data.ip;
   } catch (e) {
-    console.error("IP 가져오기 실패", e);
+
     return null;
   }
 }
@@ -250,20 +257,39 @@ const EDU = {
   const params = new URLSearchParams(location.search);
   const autoId = params.get("id");
   // 🔹 학생 전체 목록 로드
-  useEffect(() => {
-    const loadStudents = async () => {
-      const snap = await getDocs(collection(db, "students"));
-      setStudents(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-    };
-    loadStudents();
-  }, []);
+ useEffect(() => {
+  const loadStudents = async () => {
+    const snap = await getDocs(collection(db, "students"));
 
-  useEffect(() => {
-    if (autoId && students.length > 0) {
-      const target = students.find((s) => s.id === autoId);
-      if (target) handleSelectStudent(target);
-    }
-  }, [students, autoId]);
+    const list = snap.docs
+      .map((d) => ({ id: d.id, ...(d.data() as any) }))
+      .filter((s: any) => !s.removed); // ✅ 숨김 학생 제외
+
+    setStudents(list);
+  };
+
+  loadStudents();
+}, []);
+
+useEffect(() => {
+  const savedSid = localStorage.getItem("educore_student_sid");
+  if (!savedSid) return;
+  if (!students?.length) return;
+
+  const found = students.find((s:any)=>s.id===savedSid);
+
+  if(found){
+    setSelected(found);
+  }
+
+},[students])
+
+useEffect(() => {
+  if (autoId && students.length > 0) {
+    const target = students.find((s) => s.id === autoId && !s.removed);
+    if (target) handleSelectStudent(target);
+  }
+}, [students, autoId]);
 
   useEffect(() => {
   if (!verified || !selected?.id) return;
@@ -324,10 +350,15 @@ const safeHM = (v: any) => {
 
   // 🔥 학생 선택 시 Firestore에서 출결 로그 로드 (날짜 기반)
   const handleSelectStudent = async (student: any) => {
-    setSelected(student);
-    setVerified(false);
-    setPasswordInput("");
-    setTodayInTime(null);
+  if (student?.removed) {
+    alert("현재 이용할 수 없는 학생 계정입니다.");
+    return;
+  }
+
+  setSelected(student);
+  setVerified(false);
+  setPasswordInput("");
+  setTodayInTime(null);
 
     // 1) 기록 불러오기
     let logs = await loadStudentRecords(student.id);
@@ -403,7 +434,7 @@ const calcNetStudyMin_SP = (rec: any) => {
         const en = toMin(safeHM(s.end));
         if (en > st) external += (en - st);
       } catch (e) {
-        console.warn("segment time parse error", e, s);
+
       }
     }
     total -= external;
@@ -414,7 +445,7 @@ const calcNetStudyMin_SP = (rec: any) => {
         const aOut = toMin(safeHM(rec.academyOut));
         if (aOut > aIn) total -= (aOut - aIn);
       } catch (e) {
-        console.warn("academy time parse error", e);
+
       }
     }
   }
@@ -430,7 +461,7 @@ const verifyPassword = async () => {
   const key = `pw_${selected.id}`;
   const saved = localStorage.getItem(key);
 
-  // 신규 비번 생성
+  // 1) 신규 비밀번호 등록
   if (!saved) {
     if (passwordInput.trim().length < 3) {
       alert("비밀번호를 3자리 이상 입력하세요.");
@@ -440,53 +471,31 @@ const verifyPassword = async () => {
     localStorage.setItem(key, passwordInput);
     alert("🔐 비밀번호가 설정되었습니다.");
 
-    // ✅ 자동 체크인 (오늘 time 없으면 찍힘)
-   try {
-  const did = await ensureCheckInOnOpen(selected.id);
-if (did) {
-  setToast("✅ 자동 체크인 완료");
-  setTimeout(() => setToast(null), 1500);
-}  // 🔥 수정
-  await loadTodayRec(selected.id);                     // 🔥 여기 추가
-} catch (e) {
-  console.error("auto check-in failed", e);
-}
+    await loadTodayRec(selected.id);
     setVerified(true);
     return;
   }
 
-  // 기존 비밀번호 검증
+  // 2) 기존 비밀번호 검증
   if (passwordInput !== saved) {
     alert("❌ 비밀번호가 올바르지 않습니다.");
     return;
   }
 
-  // 성공
-  // ✅ 자동 체크인
-  try {
-  const did = await ensureCheckInOnOpen(selected.id);
-if (did) {
-  setToast("✅ 자동 체크인 완료");
-  setTimeout(() => setToast(null), 1500);
-} // 🔥 수정
-  await loadTodayRec(selected.id);                     // 🔥 여기 추가
-} catch (e) {
-  console.error("auto check-in failed", e);
-}
-
+  await loadTodayRec(selected.id);
   setVerified(true);
 };
 
-  // 🔹 비밀번호 초기화
-  const resetPassword = () => {
-    if (!selected) return;
-    const key = `pw_${selected.id}`;
-    localStorage.removeItem(key);
-    alert("🔄 비밀번호가 초기화되었습니다. 새 비밀번호를 등록하세요.");
-    setPasswordInput("");
-    setVerified(false);
-  };
+const resetPassword = () => {
+  if (!selected) return;
 
+  const key = `pw_${selected.id}`;
+  localStorage.removeItem(key);
+
+  alert("🔄 비밀번호가 초기화되었습니다.");
+  setPasswordInput("");
+  setVerified(false);
+};
 
   const year = new Date().getFullYear();
   const month = new Date().getMonth();
@@ -997,7 +1006,7 @@ try {
     { merge: true }
   );
 } catch(e){
- console.error("SEG SAVE ERROR", e)
+
 }
   return segments;
 }
@@ -1792,10 +1801,11 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             const list = students.filter((s) =>
-              (s?.name ?? "")
-                .toLowerCase()
-                .includes(search.toLowerCase())
-            );
+  !s.removed &&
+  (s?.name ?? "")
+    .toLowerCase()
+    .includes(search.toLowerCase())
+);
 
             if (list.length > 0) {
               handleSelectStudent(list[0]); // 🔥 첫 번째 검색 결과 자동 선택
@@ -1832,13 +1842,14 @@ if (log && Array.isArray(log.segments) && log.segments.length > 0) {
       {/* ===== 검색 결과 리스트 ===== */}
       {!selected && search && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {students
-            .filter((s) =>
-              (s?.name ?? "")
-                .toString()
-                .toLowerCase()
-                .includes(search.toLowerCase())
-            )
+         {students
+  .filter((s) =>
+    !s.removed &&
+    (s?.name ?? "")
+      .toString()
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  )
             .map((s) => (
               <div
                 key={s.id}

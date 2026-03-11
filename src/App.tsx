@@ -1102,13 +1102,16 @@ useEffect(() => {
   // ✅ 현재 그룹 학생 목록
 const students = useMemo(() => {
   const list = currentGroup?.students ? currentGroup.students : [];
-  return list.sort((a, b) => {
-    const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
-    const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
-    if (g1 !== g2) return g2 - g1;
-    return (a.name || "").localeCompare(b.name || "", "ko");
-  });
-}, [currentGroup]);
+
+  return list
+    .filter((s) => showRemoved ? true : !s.removed)
+    .sort((a, b) => {
+      const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
+      const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
+      if (g1 !== g2) return g2 - g1;
+      return (a.name || "").localeCompare(b.name || "", "ko");
+    });
+}, [currentGroup, showRemoved]);
   // =====================================
   // 🔥 Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조)
 // ✅ 1) (추가) students/currentGroup 상태 찍는 용도 — 독립 useEffect

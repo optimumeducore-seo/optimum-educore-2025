@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EDUCORE 학생앱 설치</title>
+    <meta name="theme-color" content="#111111" />
+    <link rel="manifest" href="/manifest-student.json" />
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #f8fafc;
+        color: #111827;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+      .card {
+        width: 100%;
+        max-width: 420px;
+        background: #ffffff;
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+        text-align: center;
+      }
+      .title {
+        font-size: 24px;
+        font-weight: 800;
+        margin-bottom: 10px;
+      }
+      .desc {
+        font-size: 15px;
+        color: #475569;
+        line-height: 1.6;
+        margin-bottom: 18px;
+      }
+      .name {
+        font-size: 22px;
+        font-weight: 800;
+        color: #1d4ed8;
+        margin: 14px 0 18px;
+      }
+      .guide {
+        background: #f1f5f9;
+        border-radius: 14px;
+        padding: 14px;
+        font-size: 14px;
+        line-height: 1.7;
+        text-align: left;
+      }
+      .warn {
+        margin-top: 14px;
+        color: #b91c1c;
+        font-size: 13px;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="title">EDUCORE 학생앱</div>
+      <div class="desc">학생 앱 설치 준비가 완료되었습니다.</div>
+      <div id="studentName" class="name">학생 정보 확인 중...</div>
+
+      <div class="guide">
+        안드로이드: Chrome 메뉴 → <b>홈 화면에 추가</b><br />
+        아이폰: Safari 공유버튼 → <b>홈 화면에 추가</b><br /><br />
+        설치 후 앱을 열면 학생이 자동 선택되고,<br />
+        비밀번호만 입력하면 됩니다.
+      </div>
+
+      <div class="warn">
+        안드로이드는 네이버/카톡 대신 Chrome에서 설치하는 것이 가장 안정적입니다.
+      </div>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const sid = params.get("sid");
+      const name = params.get("name") || "학생";
+
+      if (sid) {
+        localStorage.setItem("educore_student_sid", sid);
+      }
+
+      const el = document.getElementById("studentName");
+      if (el) {
+        el.innerText = `${name} 학생`;
+      }
+
+      console.log("install-student loaded", { sid, name });
+    </script>
+  </body>
+</html>

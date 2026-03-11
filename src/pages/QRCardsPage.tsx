@@ -27,7 +27,7 @@ export default function QRCardsPage() {
       const snap = await getDocs(collection(db, "students"));
 
 snap.docs.forEach((d) => {
-  console.log("학생데이터:", d.id, d.data());
+
 });
      const list = snap.docs
   .map((d) => ({ id: d.id, ...(d.data() as any) } as Student))
@@ -151,10 +151,11 @@ const getNameFontSize = (name: string) => {
           marginTop: 4,
         }}
       >
-        <QRCode
-          value={`https://optimum-educore-2025.web.app/student?id=${s.id}&auto=1`}
-          size={120} // ✅ 너가 쓰던 그대로
-        />
+      <QRCode
+  value={`https://optimum-educore-2025.web.app/install-student.html?sid=${s.id}&name=${encodeURIComponent(s.name)}`}
+  size={120}
+/>
+
       </div>
 
       {/* 안내문 */}

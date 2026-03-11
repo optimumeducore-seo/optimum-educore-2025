@@ -449,7 +449,7 @@ const readonly = role === "parent";
   const [testEnd, setTestEnd] = useState("");
   const [testMemo, setTestMemo] = useState("");
   const [zoomImgIndex, setZoomImgIndex] = useState<number | null>(null);
-
+  
 
 const [myExams, setMyExams] = useState<StudentExam[]>([]);
 const [selectedExamId, setSelectedExamId] = useState<string>("");
@@ -2148,13 +2148,13 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
       {/* ✏️ 내 공부 계획 — 선생님 박스와 같은 이중 박스 (여기 1곳만!) */}
 {selectedDate && (
   <div
-    style={{
-      marginBottom: 14,
-      padding: "10px 12px",
-      borderRadius: 10,
-      border: "1px solid #D1FAE5",
-      background: "#ECFDF5",
-    }}
+   style={{
+  marginBottom: 14,
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #DDEFE8",
+  background: "#F7FCFA",
+}}
   >
     <div style={{ fontSize: 14, fontWeight: 800, color: "#047857", marginBottom: 6 }}>
       [나의 학습 계획]
@@ -2210,6 +2210,29 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
           ))}
         </div>
       )}
+          {/* 저장 버튼 */}
+          {!isParent && (
+            <>
+            
+              <button
+                onClick={handleSave}
+                style={{
+                  width: "100%",
+                  padding: "10px 0",
+                  marginTop: 18,
+                  background: "#ddeafc",
+                  color: "#343333",
+                  borderRadius: 10,
+                  border: "none",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                저장하기
+              </button>
+            </>
+          )}
     </div>
   </div>
 )}
@@ -2347,29 +2370,7 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
   </div>
 </div>
 
-          {/* 저장 버튼 */}
-          {!isParent && (
-            <>
-            
-              <button
-                onClick={handleSave}
-                style={{
-                  width: "100%",
-                  padding: "10px 0",
-                  marginTop: 18,
-                  background: "#ddeafc",
-                  color: "#343333",
-                  borderRadius: 10,
-                  border: "none",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                저장하기
-              </button>
-            </>
-          )}
+      
         </div>
 
  {/* 왼쪽: 달력 */}
