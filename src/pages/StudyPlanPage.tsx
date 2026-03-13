@@ -215,14 +215,14 @@ const makeCleanSubject = (subj: any = {}) => {
     .filter(Boolean) // ✅ undefined 제거
     .map((t: any) => {
       const base: any = {
-  id: t.id || crypto.randomUUID(),
-  done: !!t.done,
-  carriedOver: !!t.carriedOver,
-};
+        id: t.id || crypto.randomUUID(),
+        done: !!t.done,
+        carriedOver: !!t.carriedOver,
+      };
 
-if (t.carriedFrom) {
-  base.carriedFrom = t.carriedFrom;
-}
+      if (t.carriedFrom) {
+        base.carriedFrom = t.carriedFrom;
+      }
 
       // ✅ 레거시 자동과제 복구(진짜 자동인 경우만)
       if (t.id && t.title && !t.text && t.subtasks == null) {
@@ -244,23 +244,23 @@ if (t.carriedFrom) {
       return { ...base, text: t.text || t.title || "" };
     })
     // ✅ 완전 빈 과제 제거(요약/렌더 터짐 방지)
-   .filter((t: TaskItem) => (Array.isArray(t.subtasks) ? true : !!t.text));
+    .filter((t: TaskItem) => (Array.isArray(t.subtasks) ? true : !!t.text));
 
 
   const student = Array.isArray(subj.studentPlans)
     ? normalizeTasks(subj.studentPlans).filter(Boolean)
     : [];
 
- return {
-  teacherTasks: teacher,
-  studentPlans: student,
-  memo: subj.memo || "",
-  teacherComment: subj.teacherComment || "", // ✅ 추가
-  done: !!subj.done,
-  proofImages: subj.proofImages || [],
-  proofMemo: subj.proofMemo || "",
-  wordTest: subj.wordTest || { correct: 0, total: 0 },
-};
+  return {
+    teacherTasks: teacher,
+    studentPlans: student,
+    memo: subj.memo || "",
+    teacherComment: subj.teacherComment || "", // ✅ 추가
+    done: !!subj.done,
+    proofImages: subj.proofImages || [],
+    proofMemo: subj.proofMemo || "",
+    wordTest: subj.wordTest || { correct: 0, total: 0 },
+  };
 };
 
 
@@ -362,12 +362,12 @@ function getExamStatus(start: string, end: string) {
   const s = new Date(start);
   const e = new Date(end);
 
-  today.setHours(0,0,0,0);
-  s.setHours(0,0,0,0);
-  e.setHours(0,0,0,0);
+  today.setHours(0, 0, 0, 0);
+  s.setHours(0, 0, 0, 0);
+  e.setHours(0, 0, 0, 0);
 
-  const diffToStart = Math.ceil((s.getTime() - today.getTime()) / (1000*60*60*24));
-  const diffFromStart = Math.floor((today.getTime() - s.getTime()) / (1000*60*60*24));
+  const diffToStart = Math.ceil((s.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const diffFromStart = Math.floor((today.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
 
   if (today < s) {
     return `D-${diffToStart}`;
@@ -386,40 +386,43 @@ function getExamStatus(start: string, end: string) {
 
 export default function StudyPlanPage() {
   const { id } = useParams<{ id: string }>(); // studentId
-const navigate = useNavigate();
+  const navigate = useNavigate();
+  const goBack = () => {
+    navigate(`/student?id=${id}`);
+  };
   const location = useLocation();
 
   // 역할 구분 (?role=teacher / ?role=student / ?role=parent)
   // 역할 구분
-const searchParams = new URLSearchParams(location.search);
-const roleParam = searchParams.get("role");
+  const searchParams = new URLSearchParams(location.search);
+  const roleParam = searchParams.get("role");
 
-const role =
-  roleParam === "parent" || roleParam === "teacher"
-    ? roleParam
-    : "student";
+  const role =
+    roleParam === "parent" || roleParam === "teacher"
+      ? roleParam
+      : "student";
 
-const isStudent = role === "student";
-const isTeacher = role === "teacher";
-const isParent = role === "parent";
-const readonly = role === "parent";
+  const isStudent = role === "student";
+  const isTeacher = role === "teacher";
+  const isParent = role === "parent";
+  const readonly = role === "parent";
 
 
   // 상태들
   const [student, setStudent] = useState<any | null>(null);
   const fallbackSubjects = React.useMemo(() => {
-  const list: string[] = Array.isArray(student?.academySubjects)
-    ? student.academySubjects
-    : [];
+    const list: string[] = Array.isArray(student?.academySubjects)
+      ? student.academySubjects
+      : [];
 
-  // 중복 제거(혹시 같은 과목 여러 번 들어가면)
-  const uniq = Array.from(new Set(list.map((x) => (x ?? "").trim()).filter(Boolean)));
+    // 중복 제거(혹시 같은 과목 여러 번 들어가면)
+    const uniq = Array.from(new Set(list.map((x) => (x ?? "").trim()).filter(Boolean)));
 
-  return uniq.map((name) => ({
-    id: name, // 한글 id OK
-    name,
-  }));
-}, [student?.academySubjects]);
+    return uniq.map((name) => ({
+      id: name, // 한글 id OK
+      name,
+    }));
+  }, [student?.academySubjects]);
 
   const [plans, setPlans] = useState<Record<string, DayPlan>>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -427,7 +430,7 @@ const readonly = role === "parent";
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
 
- const [selectedSubject, setSelectedSubject] = useState<string>("common");
+  const [selectedSubject, setSelectedSubject] = useState<string>("common");
 
   const [teacherInput, setTeacherInput] = useState("");
   const [studentInput, setStudentInput] = useState("");
@@ -449,41 +452,41 @@ const readonly = role === "parent";
   const [testEnd, setTestEnd] = useState("");
   const [testMemo, setTestMemo] = useState("");
   const [zoomImgIndex, setZoomImgIndex] = useState<number | null>(null);
-  
 
-const [myExams, setMyExams] = useState<StudentExam[]>([]);
-const [selectedExamId, setSelectedExamId] = useState<string>("");
-const [goals, setGoals] = useState<Record<string, number>>({});
-const [showTimelineModal, setShowTimelineModal] = useState(false);
-const [timelineDate, setTimelineDate] = useState<string | null>(null);
 
-const [openEnergyWeek, setOpenEnergyWeek] = useState(false);
-const [openEnergyMonth, setOpenEnergyMonth] = useState(false);
+  const [myExams, setMyExams] = useState<StudentExam[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState<string>("");
+  const [goals, setGoals] = useState<Record<string, number>>({});
+  const [showTimelineModal, setShowTimelineModal] = useState(false);
+  const [timelineDate, setTimelineDate] = useState<string | null>(null);
 
-useEffect(() => {
-  const load = async () => {
-    if (!id) return;
+  const [openEnergyWeek, setOpenEnergyWeek] = useState(false);
+  const [openEnergyMonth, setOpenEnergyMonth] = useState(false);
 
-    const snap = await getDocs(collection(db, "studentExams", id, "exams"));
-    const list = snap.docs.map((d) => ({
-      id: d.id,                 // ✅ 이게 문서ID
-      ...(d.data() as any),
-    })) as any[];
+  useEffect(() => {
+    const load = async () => {
+      if (!id) return;
 
-    const normalized: StudentExam[] = list.map((x) => ({
-      id: x.id,                 // ✅ 무조건 문서ID만 사용
-      title: x.title || "",
-      start: x.start || x.planStart || "",   // (필드명이 다를 수 있으니 보강)
-      end: x.end || x.planEnd || "",
-      subjects: (x.subjects || []).map((s: any) => ({ key: s.key, name: s.name })),
-    }));
+      const snap = await getDocs(collection(db, "studentExams", id, "exams"));
+      const list = snap.docs.map((d) => ({
+        id: d.id,                 // ✅ 이게 문서ID
+        ...(d.data() as any),
+      })) as any[];
 
-    setMyExams(normalized);
-    setSelectedExamId((prev) => prev || (normalized[0]?.id ?? ""));
-  };
+      const normalized: StudentExam[] = list.map((x) => ({
+        id: x.id,                 // ✅ 무조건 문서ID만 사용
+        title: x.title || "",
+        start: x.start || x.planStart || "",   // (필드명이 다를 수 있으니 보강)
+        end: x.end || x.planEnd || "",
+        subjects: (x.subjects || []).map((s: any) => ({ key: s.key, name: s.name })),
+      }));
 
-  load();
-}, [id]);
+      setMyExams(normalized);
+      setSelectedExamId((prev) => prev || (normalized[0]?.id ?? ""));
+    };
+
+    load();
+  }, [id]);
 
 
   // 🔹 빠른 기간 선택 (텀 스케줄 출력용)
@@ -564,10 +567,10 @@ useEffect(() => {
         });
 
         map[d.id] = {
-  date: d.id,
-  subjects,
-  timelineBlocks: raw.timelineBlocks || {},
-};
+          date: d.id,
+          subjects,
+          timelineBlocks: raw.timelineBlocks || {},
+        };
       });
 
       setPlans(map);
@@ -685,22 +688,22 @@ useEffect(() => {
     load();
   }, [student]);
 
-useEffect(() => {
-  const loadProgress = async () => {
-    if (!id || !selectedExamId) return;
+  useEffect(() => {
+    const loadProgress = async () => {
+      if (!id || !selectedExamId) return;
 
-    const ref = doc(db, "studentExams", id, "progress", selectedExamId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      setGoals({});
-      return;
-    }
-    const data = snap.data() as any;
-    setGoals(data.goals || {});
-  };
+      const ref = doc(db, "studentExams", id, "progress", selectedExamId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        setGoals({});
+        return;
+      }
+      const data = snap.data() as any;
+      setGoals(data.goals || {});
+    };
 
-  loadProgress();
-}, [id, selectedExamId]);
+    loadProgress();
+  }, [id, selectedExamId]);
 
   // ✅ 오늘 날짜의 "선생님 과제" 요약 (과목별로 한 번에 보기용)
   const todayTeacherSummary = React.useMemo(() => {
@@ -726,378 +729,378 @@ useEffect(() => {
     return list;
   }, [plans, selectedDate]);
 
-const teacherCommentText =
-  selectedDate
-    ? plans[selectedDate]?.subjects?.[selectedSubject]?.teacherComment || ""
-    : "";
+  const teacherCommentText =
+    selectedDate
+      ? plans[selectedDate]?.subjects?.[selectedSubject]?.teacherComment || ""
+      : "";
 
   const dayTimelineBlocks = useMemo(() => {
-  if (!selectedDate) return {};
+    if (!selectedDate) return {};
 
-  const day = plans[selectedDate];
-  const blocks = day?.timelineBlocks || {};
-  return blocks;
-}, [plans, selectedDate]);
+    const day = plans[selectedDate];
+    const blocks = day?.timelineBlocks || {};
+    return blocks;
+  }, [plans, selectedDate]);
 
-const subjectSummary = useMemo(() => {
-  const acc: Record<string, number> = {};
+  const subjectSummary = useMemo(() => {
+    const acc: Record<string, number> = {};
 
-  Object.values(dayTimelineBlocks).forEach((subKey) => {
-    if (!subKey) return;
-    acc[subKey] = (acc[subKey] || 0) + 10;
-  });
+    Object.values(dayTimelineBlocks).forEach((subKey) => {
+      if (!subKey) return;
+      acc[subKey] = (acc[subKey] || 0) + 10;
+    });
 
-  console.log("subjectSummary 👉", acc);
+    console.log("subjectSummary 👉", acc);
 
-  return acc;
-}, [dayTimelineBlocks]);
+    return acc;
+  }, [dayTimelineBlocks]);
 
-const focusRows = useMemo(() => {
-  const entries = Object.entries(subjectSummary)
-    .filter(([key]) => !["meal", "rest"].includes(key))
-    .sort((a, b) => b[1] - a[1]);
+  const focusRows = useMemo(() => {
+    const entries = Object.entries(subjectSummary)
+      .filter(([key]) => !["meal", "rest"].includes(key))
+      .sort((a, b) => b[1] - a[1]);
 
-  const max = entries[0]?.[1] || 1;
+    const max = entries[0]?.[1] || 1;
 
-  const rows = entries.map(([key, min]) => ({
-    key,
-    label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
-    minutes: min,
-    ratio: Math.round((min / max) * 100),
-  }));
+    const rows = entries.map(([key, min]) => ({
+      key,
+      label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
+      minutes: min,
+      ratio: Math.round((min / max) * 100),
+    }));
 
 
 
-  return rows;
-}, [subjectSummary]);
-console.log("subjectSummary 👉", subjectSummary);
+    return rows;
+  }, [subjectSummary]);
+  console.log("subjectSummary 👉", subjectSummary);
 
-const weeklySummary = useMemo(() => {
-  if (!selectedDate) return {};
+  const weeklySummary = useMemo(() => {
+    if (!selectedDate) return {};
 
-  const base = new Date(selectedDate);
-  const day = base.getDay();
-  const monday = new Date(base);
-  monday.setDate(base.getDate() - (day === 0 ? 6 : day - 1));
+    const base = new Date(selectedDate);
+    const day = base.getDay();
+    const monday = new Date(base);
+    monday.setDate(base.getDate() - (day === 0 ? 6 : day - 1));
 
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
 
-  const start = monday.toISOString().slice(0, 10);
-  const end = sunday.toISOString().slice(0, 10);
+    const start = monday.toISOString().slice(0, 10);
+    const end = sunday.toISOString().slice(0, 10);
 
-  return sumTimelineByRange(plans, start, end);
-}, [plans, selectedDate]);
+    return sumTimelineByRange(plans, start, end);
+  }, [plans, selectedDate]);
 
-const weeklyRows = useMemo(() => {
-  const entries = Object.entries(weeklySummary)
-    .filter(([key]) => !["meal", "rest"].includes(key))
-    .sort((a, b) => b[1] - a[1]);
+  const weeklyRows = useMemo(() => {
+    const entries = Object.entries(weeklySummary)
+      .filter(([key]) => !["meal", "rest"].includes(key))
+      .sort((a, b) => b[1] - a[1]);
 
-  const max = entries[0]?.[1] || 1;
+    const max = entries[0]?.[1] || 1;
 
-  return entries.map(([key, min]) => ({
-    key,
-    label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
-    minutes: min,
-    ratio: Math.round((min / max) * 100),
-  }));
-}, [weeklySummary]);
+    return entries.map(([key, min]) => ({
+      key,
+      label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
+      minutes: min,
+      ratio: Math.round((min / max) * 100),
+    }));
+  }, [weeklySummary]);
 
-const monthlySummary = useMemo(() => {
-  if (!selectedDate) return {};
+  const monthlySummary = useMemo(() => {
+    if (!selectedDate) return {};
 
-  const base = new Date(selectedDate);
-  const y = base.getFullYear();
-  const m = base.getMonth();
+    const base = new Date(selectedDate);
+    const y = base.getFullYear();
+    const m = base.getMonth();
 
-  const start = `${y}-${String(m + 1).padStart(2, "0")}-01`;
-  const endDay = new Date(y, m + 1, 0).getDate();
-  const end = `${y}-${String(m + 1).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`;
+    const start = `${y}-${String(m + 1).padStart(2, "0")}-01`;
+    const endDay = new Date(y, m + 1, 0).getDate();
+    const end = `${y}-${String(m + 1).padStart(2, "0")}-${String(endDay).padStart(2, "0")}`;
 
-  return sumTimelineByRange(plans, start, end);
-}, [plans, selectedDate]);
-const monthlyRows = useMemo(() => {
-  const entries = Object.entries(monthlySummary)
-    .filter(([key]) => !["meal", "rest"].includes(key))
-    .sort((a, b) => b[1] - a[1]);
+    return sumTimelineByRange(plans, start, end);
+  }, [plans, selectedDate]);
+  const monthlyRows = useMemo(() => {
+    const entries = Object.entries(monthlySummary)
+      .filter(([key]) => !["meal", "rest"].includes(key))
+      .sort((a, b) => b[1] - a[1]);
 
-  const max = entries[0]?.[1] || 1;
+    const max = entries[0]?.[1] || 1;
 
-  return entries.map(([key, min]) => ({
-    key,
-    label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
-    minutes: min,
-    ratio: Math.round((min / max) * 100),
-  }));
-}, [monthlySummary]);
+    return entries.map(([key, min]) => ({
+      key,
+      label: SUBJECT_SUMMARY_LABELS[key] || SUBJECT_LABELS[key] || key,
+      minutes: min,
+      ratio: Math.round((min / max) * 100),
+    }));
+  }, [monthlySummary]);
   /* ------------------------------------------------------------------ */
   /* 🔹 체크박스 토글 (선생님/학생 공통) */
   /* ------------------------------------------------------------------ */
 
   const toggleTask = async (
-  field: "teacherTasks" | "studentPlans",
-  index: number
-) => {
-  if (!id || !selectedDate || !selectedSubject || readonly) return;
+    field: "teacherTasks" | "studentPlans",
+    index: number
+  ) => {
+    if (!id || !selectedDate || !selectedSubject || readonly) return;
 
-  // 1) 현재 상태에서 "업데이트 결과" 먼저 계산
-  const day = plans[selectedDate];
-  if (!day) return;
+    // 1) 현재 상태에서 "업데이트 결과" 먼저 계산
+    const day = plans[selectedDate];
+    if (!day) return;
 
-  const subj = day.subjects?.[selectedSubject];
-  if (!subj) return;
+    const subj = day.subjects?.[selectedSubject];
+    if (!subj) return;
 
-  const list = [...(subj[field] || [])];
-  if (!list[index]) return;
+    const list = [...(subj[field] || [])];
+    if (!list[index]) return;
 
-  list[index] = { ...list[index], done: !list[index].done };
+    list[index] = { ...list[index], done: !list[index].done };
 
-  const updatedSubject: SubjectPlan = {
-    ...subj,
-    [field]: list,
+    const updatedSubject: SubjectPlan = {
+      ...subj,
+      [field]: list,
+    };
+
+    const updatedDay: DayPlan = {
+      ...day,
+      subjects: {
+        ...day.subjects,
+        [selectedSubject]: updatedSubject,
+      },
+    };
+
+    // 2) 화면은 즉시 반영 (await 없이)
+    setPlans((prev) => ({
+      ...prev,
+      [selectedDate]: updatedDay,
+    }));
+
+    // 3) Firestore 저장 (여기서 await OK)
+    const ref = doc(db, "studyPlans", id, "days", selectedDate);
+
+    const payload = stripUndefinedDeep(
+      cleanForFirestore({
+        date: selectedDate,
+        [selectedSubject]: updatedSubject,
+      })
+    );
+
+    await setDoc(ref, payload, { merge: true });
   };
+  const saveGoal = async (subjectKey: string, value: number) => {
+    if (!id || !selectedExamId) return;
 
-  const updatedDay: DayPlan = {
-    ...day,
-    subjects: {
-      ...day.subjects,
-      [selectedSubject]: updatedSubject,
-    },
+    const next = { ...goals, [subjectKey]: value };
+    setGoals(next);
+
+    await setDoc(
+      doc(db, "studentExams", id, "progress", selectedExamId),
+      {
+        studentId: id,
+        examId: selectedExamId,
+        goals: next,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   };
-
-  // 2) 화면은 즉시 반영 (await 없이)
-  setPlans((prev) => ({
-    ...prev,
-    [selectedDate]: updatedDay,
-  }));
-
-  // 3) Firestore 저장 (여기서 await OK)
-  const ref = doc(db, "studyPlans", id, "days", selectedDate);
-
-  const payload = stripUndefinedDeep(
-    cleanForFirestore({
-      date: selectedDate,
-      [selectedSubject]: updatedSubject,
-    })
-  );
-
-  await setDoc(ref, payload, { merge: true });
-};
-const saveGoal = async (subjectKey: string, value: number) => {
-  if (!id || !selectedExamId) return;
-
-  const next = { ...goals, [subjectKey]: value };
-  setGoals(next);
-
-  await setDoc(
-    doc(db, "studentExams", id, "progress", selectedExamId),
-    {
-      studentId: id,
-      examId: selectedExamId,
-      goals: next,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-};
 
 
   /* ------------------------------ */
   /* 🔵 메인 과제 전체 토글 */
   /* ------------------------------ */
- const toggleMain = (taskIndex: number) => {
-  if (!id || !selectedDate || !selectedSubject || readonly) return; // ✅ parent 막기
+  const toggleMain = (taskIndex: number) => {
+    if (!id || !selectedDate || !selectedSubject || readonly) return; // ✅ parent 막기
 
-  setPlans((prev) => {
-    const day = prev[selectedDate];
-    if (!day) return prev;
+    setPlans((prev) => {
+      const day = prev[selectedDate];
+      if (!day) return prev;
 
-    const subj = day.subjects?.[selectedSubject];
-    if (!subj) return prev;
+      const subj = day.subjects?.[selectedSubject];
+      if (!subj) return prev;
 
-    const teacherTasks = (subj.teacherTasks || []).map((task, i) => {
-      if (i !== taskIndex) return task;
+      const teacherTasks = (subj.teacherTasks || []).map((task, i) => {
+        if (i !== taskIndex) return task;
 
-      // 🔵 일반 과제
-      if (!Array.isArray(task.subtasks) || task.subtasks.length === 0) {
-        return { ...task, done: !task.done };
-      }
+        // 🔵 일반 과제
+        if (!Array.isArray(task.subtasks) || task.subtasks.length === 0) {
+          return { ...task, done: !task.done };
+        }
 
-      // 🔵 자동 과제 (메인)
-      const doneCount = task.subtasks.filter((s) => s.done).length;
-      const total = task.subtasks.length;
+        // 🔵 자동 과제 (메인)
+        const doneCount = task.subtasks.filter((s) => s.done).length;
+        const total = task.subtasks.length;
 
-      const shouldComplete = doneCount === total ? false : true;
+        const shouldComplete = doneCount === total ? false : true;
+
+        return {
+          ...task,
+          done: shouldComplete,
+          subtasks: task.subtasks.map((s) => ({
+            ...s,
+            done: shouldComplete,
+          })),
+        };
+      });
+
+      const updatedSubject = { ...subj, teacherTasks };
+
+      const ref = doc(db, "studyPlans", id, "days", selectedDate);
+
+      // ✅ undefined 제거해서 Firestore 에러 방지
+      const payload = stripUndefinedDeep(
+        cleanForFirestore({
+          date: selectedDate,
+          [selectedSubject]: updatedSubject,
+        })
+      );
+
+      // ✅ setPlans 안에서는 await 금지 → 그냥 호출
+      void setDoc(ref, payload, { merge: true });
 
       return {
-        ...task,
-        done: shouldComplete,
-        subtasks: task.subtasks.map((s) => ({
-          ...s,
-          done: shouldComplete,
-        })),
+        ...prev,
+        [selectedDate]: {
+          ...day,
+          subjects: {
+            ...day.subjects,
+            [selectedSubject]: updatedSubject,
+          },
+        },
       };
     });
-
-    const updatedSubject = { ...subj, teacherTasks };
-
-    const ref = doc(db, "studyPlans", id, "days", selectedDate);
-
-    // ✅ undefined 제거해서 Firestore 에러 방지
-    const payload = stripUndefinedDeep(
-      cleanForFirestore({
-        date: selectedDate,
-        [selectedSubject]: updatedSubject,
-      })
-    );
-
-    // ✅ setPlans 안에서는 await 금지 → 그냥 호출
-    void setDoc(ref, payload, { merge: true });
-
-    return {
-      ...prev,
-      [selectedDate]: {
-        ...day,
-        subjects: {
-          ...day.subjects,
-          [selectedSubject]: updatedSubject,
-        },
-      },
-    };
-  });
-};
+  };
   /* ------------------------------ */
   /* 🔵 서브 과제 개별 토글 */
   /* ------------------------------ */
   const toggleSubtask = (taskIndex: number, subIndex: number) => {
-  if (!id || !selectedDate || !selectedSubject || readonly) return; // ✅ parent 막기
+    if (!id || !selectedDate || !selectedSubject || readonly) return; // ✅ parent 막기
 
-  setPlans((prev) => {
-    const day = prev[selectedDate];
-    if (!day) return prev;
+    setPlans((prev) => {
+      const day = prev[selectedDate];
+      if (!day) return prev;
 
-    const subj = day.subjects?.[selectedSubject];
-    if (!subj) return prev;
+      const subj = day.subjects?.[selectedSubject];
+      if (!subj) return prev;
 
-    const teacherTasks = (subj.teacherTasks || []).map((task, i) => {
-      if (i !== taskIndex) return task;
-      if (!Array.isArray(task.subtasks) || task.subtasks.length === 0) return task;
+      const teacherTasks = (subj.teacherTasks || []).map((task, i) => {
+        if (i !== taskIndex) return task;
+        if (!Array.isArray(task.subtasks) || task.subtasks.length === 0) return task;
 
-      // 🔥 서브 과제 불변 토글
-      const newSubtasks = task.subtasks.map((s, j) =>
-        j === subIndex ? { ...s, done: !s.done } : s
+        // 🔥 서브 과제 불변 토글
+        const newSubtasks = task.subtasks.map((s, j) =>
+          j === subIndex ? { ...s, done: !s.done } : s
+        );
+
+        const allDone = newSubtasks.every((s) => s.done);
+
+        return {
+          ...task,
+          done: allDone,
+          subtasks: newSubtasks,
+        };
+      });
+
+      const updatedSubject = {
+        ...subj,
+        teacherTasks,
+      };
+
+      const ref = doc(db, "studyPlans", id, "days", selectedDate);
+
+      // ✅ undefined 제거해서 Firestore 에러 방지
+      const payload = stripUndefinedDeep(
+        cleanForFirestore({
+          date: selectedDate,
+          [selectedSubject]: updatedSubject,
+        })
       );
 
-      const allDone = newSubtasks.every((s) => s.done);
+      void setDoc(ref, payload, { merge: true });
 
       return {
-        ...task,
-        done: allDone,
-        subtasks: newSubtasks,
+        ...prev,
+        [selectedDate]: {
+          ...day,
+          subjects: {
+            ...day.subjects,
+            [selectedSubject]: updatedSubject,
+          },
+        },
       };
     });
-
-    const updatedSubject = {
-      ...subj,
-      teacherTasks,
-    };
-
-    const ref = doc(db, "studyPlans", id, "days", selectedDate);
-
-    // ✅ undefined 제거해서 Firestore 에러 방지
-    const payload = stripUndefinedDeep(
-      cleanForFirestore({
-        date: selectedDate,
-        [selectedSubject]: updatedSubject,
-      })
-    );
-
-    void setDoc(ref, payload, { merge: true });
-
-    return {
-      ...prev,
-      [selectedDate]: {
-        ...day,
-        subjects: {
-          ...day.subjects,
-          [selectedSubject]: updatedSubject,
-        },
-      },
-    };
-  });
-};
+  };
 
   /* ------------------------------ */
   /* 🔁 안 한 과제 다음날로 미루기 */
   /* ------------------------------ */
- const carryOverWithMark = async () => {
-  if (!id || !selectedDate || !selectedSubject) return;
+  const carryOverWithMark = async () => {
+    if (!id || !selectedDate || !selectedSubject) return;
 
-  const nextDate = getNextDate(selectedDate);
+    const nextDate = getNextDate(selectedDate);
 
-  setPlans(prev => {
-    const today = prev[selectedDate];
-    if (!today) return prev;
+    setPlans(prev => {
+      const today = prev[selectedDate];
+      if (!today) return prev;
 
-    const subj = today.subjects[selectedSubject];
-    if (!subj) return prev;
+      const subj = today.subjects[selectedSubject];
+      if (!subj) return prev;
 
-    const todayTasks: any[] = [];
-    const nextTasks: any[] = [];
+      const todayTasks: any[] = [];
+      const nextTasks: any[] = [];
 
       subj.teacherTasks.forEach(t => {
         // 🔹 서브과제 있는 자동 과제
-      if (Array.isArray(t.subtasks)) {
+        if (Array.isArray(t.subtasks)) {
           const doneSubs = t.subtasks.filter(s => s.done);
           const undoneSubs = t.subtasks.filter(s => !s.done);
 
           // 오늘에 남길 과제
-        if (doneSubs.length > 0) {
-          todayTasks.push({
-            ...t,
-            subtasks: doneSubs,
-            done: doneSubs.length === t.subtasks.length,
-          });
-        }
+          if (doneSubs.length > 0) {
+            todayTasks.push({
+              ...t,
+              subtasks: doneSubs,
+              done: doneSubs.length === t.subtasks.length,
+            });
+          }
 
           // 내일로 넘길 과제
-        if (undoneSubs.length > 0) {
-          nextTasks.push({
-            ...t,
-  subtasks: undoneSubs.map(s => ({ ...s, done: false })),
-            done: false,
-            carriedOver: false,
-  carriedFrom: selectedDate,   // ✅ “어제에서 넘어옴” 표시
-          });
+          if (undoneSubs.length > 0) {
+            nextTasks.push({
+              ...t,
+              subtasks: undoneSubs.map(s => ({ ...s, done: false })),
+              done: false,
+              carriedOver: false,
+              carriedFrom: selectedDate,   // ✅ “어제에서 넘어옴” 표시
+            });
 
+          }
+
+          return;
         }
 
-        return;
-      }
-
-      // 🔹 수동 과제
-      if (t.done) {
-        todayTasks.push(t);
-      } else {
+        // 🔹 수동 과제
+        if (t.done) {
+          todayTasks.push(t);
+        } else {
           todayTasks.push(markAsCarriedOver(t));
-          nextTasks.push(cloneForNextDay(t,selectedDate));
-      }
-    });
+          nextTasks.push(cloneForNextDay(t, selectedDate));
+        }
+      });
 
-    if (nextTasks.length === 0) return prev;
+      if (nextTasks.length === 0) return prev;
 
-    const nextDay = prev[nextDate] || { date: nextDate, subjects: {} };
-    const nextSubj = nextDay.subjects[selectedSubject] || {
-      teacherTasks: [],
-      studentPlans: [],
-    };
+      const nextDay = prev[nextDate] || { date: nextDate, subjects: {} };
+      const nextSubj = nextDay.subjects[selectedSubject] || {
+        teacherTasks: [],
+        studentPlans: [],
+      };
 
       const updatedToday = { ...subj, teacherTasks: todayTasks };
       const updatedNext = {
-      ...nextSubj,
-      teacherTasks: [...nextSubj.teacherTasks, ...nextTasks],
-    };
+        ...nextSubj,
+        teacherTasks: [...nextSubj.teacherTasks, ...nextTasks],
+      };
 
       // Firestore 저장
       setDoc(
@@ -1112,25 +1115,25 @@ const saveGoal = async (subjectKey: string, value: number) => {
         { merge: true }
       );
 
-    return {
-      ...prev,
-      [selectedDate]: {
-        ...today,
+      return {
+        ...prev,
+        [selectedDate]: {
+          ...today,
           subjects: {
             ...today.subjects,
             [selectedSubject]: updatedToday,
           },
-      },
-      [nextDate]: {
-        ...nextDay,
+        },
+        [nextDate]: {
+          ...nextDay,
           subjects: {
             ...nextDay.subjects,
             [selectedSubject]: updatedNext,
           },
-      },
-    };
-  });
-};
+        },
+      };
+    });
+  };
 
   const updateWordTest = async (
     date: string,
@@ -1174,7 +1177,7 @@ const saveGoal = async (subjectKey: string, value: number) => {
     }));
   };
 
-  
+
 
   /* ------------------------------------------------------------------ */
   /* 🔹 날짜 선택 */
@@ -1237,123 +1240,123 @@ const saveGoal = async (subjectKey: string, value: number) => {
   /* ------------------------------------------------------------------ */
   /* 🔹 저장 */
   /* ------------------------------------------------------------------ */
-const handleSave = async () => {
-  if (!id || !selectedDate) return alert("날짜를 먼저 선택하세요.");
-  if (isParent) return;
+  const handleSave = async () => {
+    if (!id || !selectedDate) return alert("날짜를 먼저 선택하세요.");
+    if (isParent) return;
 
-  const prevDay = plans[selectedDate];
-  const prevSubj = prevDay?.subjects?.[selectedSubject] || {};
+    const prevDay = plans[selectedDate];
+    const prevSubj = prevDay?.subjects?.[selectedSubject] || {};
 
-  const ref = doc(db, "studyPlans", id, "days", selectedDate);
+    const ref = doc(db, "studyPlans", id, "days", selectedDate);
 
-  if (isTeacher) {
-    const prevTeacher = prevSubj?.teacherTasks || [];
+    if (isTeacher) {
+      const prevTeacher = prevSubj?.teacherTasks || [];
 
-    // 1) 자동 과제 유지
-    const autoList = prevTeacher.filter((t: any) =>
-      Array.isArray(t.subtasks)
-    );
+      // 1) 자동 과제 유지
+      const autoList = prevTeacher.filter((t: any) =>
+        Array.isArray(t.subtasks)
+      );
 
-    // 2) 수동 과제 갱신
-    const manualList = teacherInput
-      .split("\n")
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((text) => ({
-        text,
-        done: prevTeacher.find((x: any) => x.text === text)?.done ?? false,
+      // 2) 수동 과제 갱신
+      const manualList = teacherInput
+        .split("\n")
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((text) => ({
+          text,
+          done: prevTeacher.find((x: any) => x.text === text)?.done ?? false,
+        }));
+
+      // 3) 최종 선생님 과제
+      const teacherTasks = [...autoList, ...manualList];
+      const studentPlans =
+        plans[selectedDate]?.subjects?.[selectedSubject]?.studentPlans ||
+        prevSubj?.studentPlans ||
+        [];
+      const mergedSubject: SubjectPlan = {
+        teacherTasks:
+          (plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks) ??
+          (prevSubj?.teacherTasks || []),
+        studentPlans,
+        memo: memo.trim(),
+        teacherComment: prevSubj?.teacherComment || "",
+        done,
+        updatedAt: serverTimestamp(),
+        proofImages: prevSubj?.proofImages || [],
+        proofMemo: prevSubj?.proofMemo || "",
+        wordTest: prevSubj?.wordTest || {},
+      };
+
+      const data = cleanForFirestore({
+        date: selectedDate,
+        [selectedSubject]: mergedSubject,
+      });
+
+      const payload = stripUndefinedDeep(data);
+
+      await setDoc(ref, payload, { merge: true });
+
+      setPlans((prev) => ({
+        ...prev,
+        [selectedDate]: {
+          date: selectedDate,
+          subjects: {
+            ...(prev[selectedDate]?.subjects || {}),
+            [selectedSubject]: mergedSubject,
+          },
+        },
       }));
 
-    // 3) 최종 선생님 과제
-    const teacherTasks = [...autoList, ...manualList];
-const studentPlans =
-  plans[selectedDate]?.subjects?.[selectedSubject]?.studentPlans ||
-  prevSubj?.studentPlans ||
-  [];
-   const mergedSubject: SubjectPlan = {
-  teacherTasks:
-    (plans[selectedDate]?.subjects?.[selectedSubject]?.teacherTasks) ??
-    (prevSubj?.teacherTasks || []),
-  studentPlans,
-  memo: memo.trim(),
-  teacherComment: prevSubj?.teacherComment || "",
-  done,
-  updatedAt: serverTimestamp(),
-  proofImages: prevSubj?.proofImages || [],
-  proofMemo: prevSubj?.proofMemo || "",
-  wordTest: prevSubj?.wordTest || {},
-};
+      alert("저장 완료! (선생님 계획)");
+      return;
+    }
 
-    const data = cleanForFirestore({
-      date: selectedDate,
-      [selectedSubject]: mergedSubject,
-    });
+    if (isStudent) {
+      const prevStudent = prevSubj?.studentPlans || [];
 
-    const payload = stripUndefinedDeep(data);
+      const studentPlans = studentInput
+        .split("\n")
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((text) => ({
+          text,
+          done: prevStudent.find((x) => x.text === text)?.done ?? false,
+        }));
 
-    await setDoc(ref, payload, { merge: true });
+      const mergedSubject: SubjectPlan = {
+        teacherTasks: prevSubj?.teacherTasks || [], // ✅ 기존 선생님 과제 유지
+        studentPlans,
+        memo: memo.trim(),
+        done,
+        updatedAt: serverTimestamp(),
+        proofImages: prevSubj?.proofImages || [],
+        proofMemo: prevSubj?.proofMemo || "",
+        wordTest: prevSubj?.wordTest || {},
+      };
 
-    setPlans((prev) => ({
-      ...prev,
-      [selectedDate]: {
+      const data = cleanForFirestore({
         date: selectedDate,
-        subjects: {
-          ...(prev[selectedDate]?.subjects || {}),
-          [selectedSubject]: mergedSubject,
+        [selectedSubject]: mergedSubject,
+      });
+
+      const payload = stripUndefinedDeep(data);
+
+      await setDoc(ref, payload, { merge: true });
+
+      setPlans((prev) => ({
+        ...prev,
+        [selectedDate]: {
+          date: selectedDate,
+          subjects: {
+            ...(prev[selectedDate]?.subjects || {}),
+            [selectedSubject]: mergedSubject,
+          },
         },
-      },
-    }));
-
-    alert("저장 완료! (선생님 계획)");
-    return;
-  }
-
-  if (isStudent) {
-    const prevStudent = prevSubj?.studentPlans || [];
-
-    const studentPlans = studentInput
-      .split("\n")
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((text) => ({
-        text,
-        done: prevStudent.find((x) => x.text === text)?.done ?? false,
       }));
 
-    const mergedSubject: SubjectPlan = {
-      teacherTasks: prevSubj?.teacherTasks || [], // ✅ 기존 선생님 과제 유지
-      studentPlans,
-      memo: memo.trim(),
-      done,
-      updatedAt: serverTimestamp(),
-      proofImages: prevSubj?.proofImages || [],
-      proofMemo: prevSubj?.proofMemo || "",
-      wordTest: prevSubj?.wordTest || {},
-    };
-
-    const data = cleanForFirestore({
-      date: selectedDate,
-      [selectedSubject]: mergedSubject,
-    });
-
-    const payload = stripUndefinedDeep(data);
-
-    await setDoc(ref, payload, { merge: true });
-
-    setPlans((prev) => ({
-      ...prev,
-      [selectedDate]: {
-        date: selectedDate,
-        subjects: {
-          ...(prev[selectedDate]?.subjects || {}),
-          [selectedSubject]: mergedSubject,
-        },
-      },
-    }));
-
-    alert("저장 완료! (학생 계획)");
-  }
-};
+      alert("저장 완료! (학생 계획)");
+    }
+  };
 
   const getLatestTest = (ds: string) => {
     const d = new Date(ds).getTime();
@@ -1383,12 +1386,12 @@ const studentPlans =
   /* 📅 공부합계 */
   /* ------------------------------------------------------------------ */
   const formatMinutes = (min: number) => {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  if (h === 0) return `${m}분`;
-  if (m === 0) return `${h}시간`;
-  return `${h}시간 ${m}분`;
-};
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h === 0) return `${m}분`;
+    if (m === 0) return `${h}시간`;
+    return `${h}시간 ${m}분`;
+  };
 
 
   /* ------------------------------------------------------------------ */
@@ -1402,122 +1405,104 @@ const studentPlans =
 
     const blanks = Array(firstDay).fill(null);
     const today = new Date().toISOString().slice(0, 10);
-const selectedExam = myExams.find((x) => x.id === selectedExamId);
-const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam.end) : "";
+    const selectedExam = myExams.find((x) => x.id === selectedExamId);
+    const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam.end) : "";
 
 
     return (
       <div>
-    {/* 월 이동 헤더 */}
-{/* 월 이동 헤더 - 세련된 버전 */}
-<div
-  style={{
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: "24px",
-    padding: "10px 16px",
-    background: "#e2eefd", 
-    borderRadius: "20px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.03)", // 아주 은은한 그림자
-    border: "1px solid #F1F5F9"
-  }}
->
-  {/* 왼쪽: 이전달 버튼 */}
-  <button
-    style={{
-      width: "40px",
-      height: "40px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: "12px",
-      border: "1px solid #E2E8F0",
-      background: "#fff",
-      cursor: "pointer",
-      transition: "all 0.2s"
-    }}
-    onClick={() => {
-      if (month === 0) { setYear(year - 1); setMonth(11); }
-      else { setMonth(month - 1); }
-    }}
-  >
-    <span style={{ fontSize: "16px", color: "#64748B", fontWeight: "800" }}>〈</span>
-  </button>
+        {/* 월 이동 헤더 */}
+        {/* 월 이동 헤더 - 세련된 버전 */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "24px",
+            padding: "10px 16px",
+            background: "#e2eefd",
+            borderRadius: "20px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.03)", // 아주 은은한 그림자
+            border: "1px solid #F1F5F9"
+          }}
+        >
+          {/* 왼쪽: 이전달 버튼 */}
+          <button
+            style={{
+              width: "40px",
+              height: "40px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: "12px",
+              border: "1px solid #E2E8F0",
+              background: "#fff",
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+            onClick={() => {
+              if (month === 0) { setYear(year - 1); setMonth(11); }
+              else { setMonth(month - 1); }
+            }}
+          >
+            <span style={{ fontSize: "16px", color: "#64748B", fontWeight: "800" }}>〈</span>
+          </button>
 
-  {/* 중앙: 연도와 월 (계층 구조 강조) */}
-  <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => {
-    // 💡 클릭하면 오늘 날짜로 돌아오는 기능 같은 걸 넣으면 좋아!
-    const now = new Date();
-    setYear(now.getFullYear());
-    setMonth(now.getMonth());
-  }}>
-    <div style={{ 
-      fontSize: "13px", 
-      color: "#29292a", 
-      fontWeight: 700, 
-      letterSpacing: "1px",
-      marginBottom: "2px"
-    }}>
-      {year}
-    </div>
-    <div style={{ 
-      fontSize: "22px", 
-      fontWeight: 900, 
-      color: "#1E293B",
-      display: "flex",
-      alignItems: "center",
-      gap: "6px"
-    }}>
-      {month + 1}월
-      <span style={{ fontSize: "12px", color: "#3B82F6", background: "#EFF6FF", padding: "2px 8px", borderRadius: "20px" }}>
-        Today
-      </span>
-    </div>
-  </div>
+          {/* 중앙: 연도와 월 (계층 구조 강조) */}
+          <div style={{ textAlign: "center", cursor: "pointer" }} onClick={() => {
+            // 💡 클릭하면 오늘 날짜로 돌아오는 기능 같은 걸 넣으면 좋아!
+            const now = new Date();
+            setYear(now.getFullYear());
+            setMonth(now.getMonth());
+          }}>
+            <div style={{
+              fontSize: "13px",
+              color: "#29292a",
+              fontWeight: 700,
+              letterSpacing: "1px",
+              marginBottom: "2px"
+            }}>
+              {year}
+            </div>
+            <div style={{
+              fontSize: "22px",
+              fontWeight: 900,
+              color: "#1E293B",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px"
+            }}>
+              {month + 1}월
+              <span style={{ fontSize: "12px", color: "#3B82F6", background: "#EFF6FF", padding: "2px 8px", borderRadius: "20px" }}>
+                Today
+              </span>
+            </div>
+          </div>
 
-  {/* 오른쪽: 다음달 버튼 */}
-  <button
-    style={{
-      width: "40px",
-      height: "40px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: "12px",
-      border: "1px solid #E2E8F0",
-      background: "#fff",
-      cursor: "pointer",
-      transition: "all 0.2s"
-    }}
-    onClick={() => {
-      if (month === 11) { setYear(year + 1); setMonth(0); }
-      else { setMonth(month + 1); }
-    }}
-  >
-    <span style={{ fontSize: "16px", color: "#64748B", fontWeight: "800" }}>〉</span>
-  </button>
+          {/* 오른쪽: 다음달 버튼 */}
+          <button
+            style={{
+              width: "40px",
+              height: "40px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: "12px",
+              border: "1px solid #E2E8F0",
+              background: "#fff",
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+            onClick={() => {
+              if (month === 11) { setYear(year + 1); setMonth(0); }
+              else { setMonth(month + 1); }
+            }}
+          >
+            <span style={{ fontSize: "16px", color: "#64748B", fontWeight: "800" }}>〉</span>
+          </button>
 
 
 
-          {isTeacher && (
-            <button
-              onClick={() => setShowTestModal(true)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 999,
-                border: "1px solid #FCA5A5",
-                background: "#FEF2F2",
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#B91C1C",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              📘 시험기간 추가
-            </button>
-          )}
         </div>
 
         {/* 요일 */}
@@ -1590,12 +1575,12 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
               <button
                 className={`sp-day-box ${isToday ? "is-today" : ""} ${bgClass}`}
                 key={ds}
-              onClick={() => {
-  console.log("날짜 클릭:", ds);
-  handleSelectDate(ds);
-  setTimelineDate(ds);
-  setShowTimelineModal(true);
-}}
+                onClick={() => {
+                  console.log("날짜 클릭:", ds);
+                  handleSelectDate(ds);
+                  setTimelineDate(ds);
+                  setShowTimelineModal(true);
+                }}
               >
                 <div className="sp-day-num">{d}</div>
 
@@ -1641,9 +1626,9 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
   /* UI 시작 */
   /* ------------------------------------------------------------------ */
   const selectedDay = selectedDate ? plans[selectedDate] : undefined;
-const teacherComment =
-  selectedDay?.subjects?.[selectedSubject]?.teacherComment || "";
-  
+  const teacherComment =
+    selectedDay?.subjects?.[selectedSubject]?.teacherComment || "";
+
   const currentRoleLabel = isTeacher
     ? "선생님 모드"
     : isStudent
@@ -1660,12 +1645,14 @@ const teacherComment =
         (t) => selectedDate >= t.start && selectedDate <= t.end
       )
       : [];
-      const studentPlansList =
-  selectedDate ? (plans[selectedDate]?.subjects?.[selectedSubject]?.studentPlans || []) : [];
+  const studentPlansList =
+    selectedDate ? (plans[selectedDate]?.subjects?.[selectedSubject]?.studentPlans || []) : [];
 
-const hasStudentPlans = studentPlansList.length > 0;
-const selectedExam = myExams.find((x) => x.id === selectedExamId);
-const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam.end) : null;
+  const hasStudentPlans = studentPlansList.length > 0;
+  const selectedExam = myExams.find((x) => x.id === selectedExamId);
+  const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam.end) : null;
+
+
   return (
     <div
       className="sp-container"
@@ -1679,6 +1666,23 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
         fontFamily: "Pretendard",
       }}
     >
+      {isStudent && (
+      <button
+        onClick={goBack}
+        style={{
+          marginBottom: 12,
+          padding: "10px 14px",
+          borderRadius: 10,
+          border: "1px solid #ddd",
+          background: "#fff",
+          fontWeight: 700,
+          cursor: "pointer",
+        }}
+      >
+        ← 잠금화면으로
+      </button>
+    )}
+
       {/* 상단 헤더 */}
       <div
         style={{
@@ -1700,89 +1704,62 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
           </div>
         )}
 
-      
+
       </div>
 
-{/* 출력/이동 영역 (선생님/학생) */}
-{!isParent && (
-  <div className="examCard">
-    <div className="examTopRow">
-      <select
-        className="examSelect"
-        value={selectedExamId ?? ""}
-        onChange={(e) => setSelectedExamId(e.target.value)}
-      >
-        <option value="">시험 선택</option>
-        {myExams.map((ex) => (
-          <option key={ex.id} value={ex.id}>
-            {ex.title}
-          </option>
-        ))}
-      </select>
+      {/* 출력/이동 영역 (선생님/학생) */}
+      {!isParent && (
+        <div className="examCard">
+          <div className="examTopRow">
+            <select
+              className="examSelect"
+              value={selectedExamId ?? ""}
+              onChange={(e) => setSelectedExamId(e.target.value)}
+            >
+              <option value="">시험 선택</option>
+              {myExams.map((ex) => (
+                <option key={ex.id} value={ex.id}>
+                  {ex.title}
+                </option>
+              ))}
+            </select>
 
-      <div className="examActions">
-        <button
-          className="btnExamMode"
-          type="button"
-          onClick={() => {
-            if (!id) return alert("학생 ID 없음");
-            if (!selectedExamId) return alert("시험을 먼저 선택하세요");
-            navigate(`/study-plan/term-print/${id}/${selectedExamId}`);
-          }}
-        >
-          시험모드
-        </button>
+            <div className="examActions">
+              <button
+                className="btnExamMode"
+                type="button"
+                onClick={() => {
+                  if (!id) return alert("학생 ID 없음");
+                  if (!selectedExamId) return alert("시험을 먼저 선택하세요");
+                  navigate(`/study-plan/term-print/${id}/${selectedExamId}`);
+                }}
+              >
+                시험모드
+              </button>
 
-        <button
-          className="btnPortfolio"
-          type="button"
-          onClick={() => navigate(`/study-plan/portfolio-print/${id}`)}
-        >
-          포트폴리오
-        </button>
-      </div>
-    </div>
-
-    {selectedExam && (
-      <div className="examMetaBox">
-        <div className="examMetaLine1">
-          <div className="examTitle">{selectedExam.title}</div>
-
-          <div
-            className={`examBadge ${
-              examStatus === "종료"
-                ? "isEnd"
-                : examStatus === "시험중"
-                ? "isOn"
-                : "isBefore"
-            }`}
-          >
-            {examStatus}
+              <button
+                className="btnPortfolio"
+                type="button"
+                onClick={() => navigate(`/study-plan/portfolio-print/${id}`)}
+              >
+                포트폴리오
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="examMetaLine2">
-          <span>
-            {selectedExam.start} ~ {selectedExam.end}
-          </span>
-          <span>·</span>
-          <span>과목 {selectedExam.subjects.length}</span>
+          
+          {myExams.length === 0 && (
+            <div className="examEmpty">
+              등록된 시험이 없습니다. (선생님이 시험 관리에서 먼저 입력해야 함)
+            </div>
+          )}
         </div>
-      </div>
-    )}
-
-    {myExams.length === 0 && (
-      <div className="examEmpty">
-        등록된 시험이 없습니다. (선생님이 시험 관리에서 먼저 입력해야 함)
-      </div>
-    )}
-  </div>
-)}
+      )}
 
       {/* ---------------- 2컬럼 레이아웃 ---------------- */}
       <div
         className="sp-grid">
-    {/* 오른쪽: 과목 탭 + 입력/체크 */}
+        {/* 오른쪽: 과목 탭 + 입력/체크 */}
         <div
           style={{
             padding: 16,
@@ -1850,23 +1827,23 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
                       }}
                     >
                       {subj.tasks.map((task: any, i: number) => (
-  <label
-    key={i}
-    style={{
-      display: "flex",
-      gap: 6,
-      marginBottom: 4,
-      fontSize: 12,
-    }}
-  >
-    <input
-      type="checkbox"
-      checked={task.done}
-      onChange={() => toggleTask("teacherTasks", i)}
-    />
-    <span>{task.title || task.text}</span>
-  </label>
-))}
+                        <label
+                          key={i}
+                          style={{
+                            display: "flex",
+                            gap: 6,
+                            marginBottom: 4,
+                            fontSize: 12,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={task.done}
+                            onChange={() => toggleTask("teacherTasks", i)}
+                          />
+                          <span>{task.title || task.text}</span>
+                        </label>
+                      ))}
 
                     </div>
                   </div>
@@ -1912,8 +1889,8 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
             })}
           </div>
 */}
-   
-          {/* 선택 날짜가 시험기간이면 안내 */}
+
+          {/* 선택 날짜가 시험기간이면 안내 
           {selectedDateTests.length > 0 && (
             <div
               style={{
@@ -1939,9 +1916,9 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
             </div>
           )}
 
-     
 
-          {/* 문제집 자동 채우기 버튼 (선생님만) */}
+
+          {/* 문제집 자동 채우기 버튼 (선생님만) 
           {isTeacher && (
             <button
               onClick={fillWorkbookTemplate}
@@ -1960,173 +1937,11 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
               🧾 문제집 기본 템플릿 넣기
             </button>
           )}
+          
 
-          {/* 🔵 단어 시험 기록 */}
-         {selectedDate && isTeacher && (
-            <div
-              style={{
-                background: "#F0F9FF",
-                border: "1px solid #93C5FD",
-                padding: 10,
-                borderRadius: 10,
-                marginTop: 12,
-                marginBottom: 12,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "#1D4ED8",
-                  marginBottom: 6,
-                }}
-              >
-                📘 단어 시험 기록
-              </div>
+        
 
-              <div style={{ display: "flex", gap: 10 }}>
-                {/* ✅ 맞은 개수 */}
-                <input
-                  type="number"
-                  placeholder="맞은 개수"
-                  value={
-                    selectedDay?.subjects?.[selectedSubject]?.wordTest?.correct ?? ""
-                  }
-                  onChange={(e) => {
-                    if (!selectedDate || !id) return;
-
-                    const num = Number(e.target.value || 0);
-
-                    // 1) 화면 상태 업데이트
-                    setPlans((prev) => {
-                      const day = prev[selectedDate] || { subjects: {} as any };
-                      const subjects = day.subjects || {};
-                      const subj = subjects[selectedSubject] || {};
-
-                      const newWord = {
-                        ...(subj.wordTest || { correct: 0, total: 0 }),
-                        correct: num,
-                      };
-
-                      const updatedDay = {
-                        ...day,
-                        subjects: {
-                          ...subjects,
-                          [selectedSubject]: {
-                            ...subj,
-                            wordTest: newWord,
-                          },
-                        },
-                      };
-
-                      // 🔥 2) Firestore에도 같이 저장
-                      const prevSubj =
-                        (plans[selectedDate]?.subjects?.[selectedSubject] as any) || {};
-                      const fsWord = {
-                        ...(prevSubj.wordTest || { correct: 0, total: 0 }),
-                        correct: num,
-                      };
-
-                      const ref = doc(db, "studyPlans", id, "days", selectedDate);
-                      setDoc(
-                        ref,
-                        cleanForFirestore({
-                          date: selectedDate,
-                          [selectedSubject]: {
-                            ...prevSubj,
-                            wordTest: fsWord,
-                          },
-                        }),
-                        { merge: true }
-                      );
-
-                      return {
-                        ...prev,
-                        [selectedDate]: updatedDay,
-                      };
-                    });
-                  }}
-                  style={{
-                    width: 100,
-                    padding: 6,
-                    borderRadius: 6,
-                    border: "1px solid #d1d5db",
-                  }}
-                />
-
-                {/* ✅ 총 문제 수 */}
-                <input
-                  type="number"
-                  placeholder="총 문제 수"
-                  value={
-                    selectedDay?.subjects?.[selectedSubject]?.wordTest?.total ?? ""
-                  }
-                  onChange={(e) => {
-                    if (!selectedDate || !id) return;
-
-                    const num = Number(e.target.value || 0);
-
-                    // 1) 화면 상태 업데이트
-                    setPlans((prev) => {
-                      const day = prev[selectedDate] || { subjects: {} as any };
-                      const subjects = day.subjects || {};
-                      const subj = subjects[selectedSubject] || {};
-
-                      const newWord = {
-                        ...(subj.wordTest || { correct: 0, total: 0 }),
-                        total: num,
-                      };
-
-                      const updatedDay = {
-                        ...day,
-                        subjects: {
-                          ...subjects,
-                          [selectedSubject]: {
-                            ...subj,
-                            wordTest: newWord,
-                          },
-                        },
-                      };
-
-                      // 🔥 2) Firestore에도 같이 저장
-                      const prevSubj =
-                        (plans[selectedDate]?.subjects?.[selectedSubject] as any) || {};
-                      const fsWord = {
-                        ...(prevSubj.wordTest || { correct: 0, total: 0 }),
-                        total: num,
-                      };
-
-                      const ref = doc(db, "studyPlans", id, "days", selectedDate);
-                      setDoc(
-                        ref,
-                        cleanForFirestore({
-                          date: selectedDate,
-                          [selectedSubject]: {
-                            ...prevSubj,
-                            wordTest: fsWord,
-                          },
-                        }),
-                        { merge: true }
-                      );
-
-                      return {
-                        ...prev,
-                        [selectedDate]: updatedDay,
-                      };
-                    });
-                  }}
-                  style={{
-                    width: 100,
-                    padding: 6,
-                    borderRadius: 6,
-                    border: "1px solid #d1d5db",
-                  }}
-                />
-              </div>
-            </div>
-          )}
-
-       {/*
+          {/*
           <button
   onClick={() => alert("⚠️ 이월 기능 점검중이라 잠시 꺼뒀어요.")}
   style={{
@@ -2145,173 +1960,197 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
 </button> */}
 
 
-      {/* ✏️ 내 공부 계획 — 선생님 박스와 같은 이중 박스 (여기 1곳만!) */}
-{selectedDate && (
-  <div
-   style={{
-  marginBottom: 14,
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid #DDEFE8",
-  background: "#F7FCFA",
-}}
-  >
-    <div style={{ fontSize: 14, fontWeight: 800, color: "#047857", marginBottom: 6 }}>
-      [나의 학습 계획]
-    </div>
-
-    <div
-      style={{
-        padding: "6px 8px",
-        borderRadius: 8,
-        background: "#FFFFFF",
-        border: "1px dashed #8de3f8",
-      }}
-    >
-      <textarea
-        value={studentInput}
-        onChange={(e) => setStudentInput(e.target.value)}
-        readOnly={isParent || isTeacher}
-        disabled={(isParent || isTeacher) && !studentInput}
-        rows={4}
-        placeholder="예) 오답 정리, 개념 암기, 시험 대비 요약노트 등"
-        style={{
-          width: "100%",
-          borderRadius: 10,
-          border: "1px solid #E5E7EB",
-          padding: "8px 10px",
-          fontSize: 13,
-          background: "#F9FAFB",
-          resize: "vertical",
-        }}
-      />
-
-      {hasStudentPlans && (
-        <div style={{ marginTop: 10 }}>
-          {studentPlansList.map((task, i) => (
-            <label
-              key={i}
+          {/* ✏️ 내 공부 계획 — 선생님 박스와 같은 이중 박스 (여기 1곳만!) */}
+          {selectedDate && (
+            <div
               style={{
-                display: "flex",
-                gap: 6,
-                marginBottom: 4,
-                fontSize: 12,
-                color: "#1F2937",
+                marginBottom: 14,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #DDEFE8",
+                background: "#F7FCFA",
               }}
             >
-              <input
-                type="checkbox"
-                checked={!!task.done}
-                onChange={() => toggleTask("studentPlans", i)}
-                disabled={isParent}
-              />
-              <span>{task.text}</span>
-            </label>
-          ))}
-        </div>
-      )}
-          {/* 저장 버튼 */}
-          {!isParent && (
-            <>
-            
-              <button
-                onClick={handleSave}
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#047857", marginBottom: 6 }}>
+                [나의 학습 계획]
+              </div>
+
+              <div
                 style={{
-                  width: "100%",
-                  padding: "10px 0",
-                  marginTop: 18,
-                  background: "#ddeafc",
-                  color: "#343333",
-                  borderRadius: 10,
-                  border: "none",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  cursor: "pointer",
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                  background: "#FFFFFF",
+                  border: "1px dashed #8de3f8",
                 }}
               >
-                저장하기
-              </button>
-            </>
+                <textarea
+                  value={studentInput}
+                  onChange={(e) => setStudentInput(e.target.value)}
+                  readOnly={isParent || isTeacher}
+                  disabled={(isParent || isTeacher) && !studentInput}
+                  rows={4}
+                  placeholder="예) 오답 정리, 개념 암기, 시험 대비 요약노트 등"
+                  style={{
+                    width: "100%",
+                    borderRadius: 10,
+                    border: "1px solid #E5E7EB",
+                    padding: "8px 10px",
+                    fontSize: 13,
+                    background: "#F9FAFB",
+                    resize: "vertical",
+                  }}
+                />
+
+                {hasStudentPlans && (
+                  <div style={{ marginTop: 10 }}>
+                    {studentPlansList.map((task, i) => (
+                      <label
+                        key={i}
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          marginBottom: 4,
+                          fontSize: 12,
+                          color: "#1F2937",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!task.done}
+                          onChange={() => toggleTask("studentPlans", i)}
+                          disabled={isParent}
+                        />
+                        <span>{task.text}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {/* 저장 버튼 */}
+                {!isParent && (
+                  <>
+
+                    <button
+                      onClick={handleSave}
+                      style={{
+                        width: "100%",
+                        padding: "10px 0",
+                        marginTop: 18,
+                        background: "#ddeafc",
+                        color: "#343333",
+                        borderRadius: 10,
+                        border: "none",
+                        fontSize: 14,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      저장하기
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
           )}
-    </div>
-  </div>
-)}
+{selectedDate && (() => {
+  const subj: any = selectedDay?.subjects?.[selectedSubject] || {};
 
-{/* 🔥 몰입 에너지 통합 박스 */}
-{selectedDate && (focusRows.length > 0 || weeklyRows.length > 0 || monthlyRows.length > 0) && (
-  <div style={{ marginTop: 14, marginBottom: 14, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: 12 }}>
-    <div style={{ fontSize: 14, fontWeight: 900, color: "#1E3A8A", marginBottom: 12 }}>🔥 몰입 에너지</div>
+  const teacherTasks = Array.isArray(subj.teacherTasks) ? subj.teacherTasks : [];
+  const studentPlans = Array.isArray(subj.studentPlans) ? subj.studentPlans : [];
 
-    {/* 오늘 몰입 섹션 - 텍스트와 바 분리형 */}
-  {focusRows.length > 0 && (
-  <div style={{ padding: "14px 16px", borderRadius: 12, background: "#FFFFFF", border: "1px solid #E2E8F0", marginBottom: 12 }}>
-    {/* 타이틀과 과목 리스트를 한 줄(row)에 배치 */}
-    <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: 12, flexWrap: "wrap" }}>
-      <span style={{ fontSize: 13, fontWeight: 800, color: "#1E3A8A", whiteSpace: "nowrap" }}>
-        ⚡️ 오늘 실시간 몰입
-      </span>
-      
-      <div style={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
-        {focusRows.map((r, idx) => (
-          <span key={r.key}>
-            <span style={{ color: SUBJECT_COLORS[r.key]?.bg, fontWeight: 800 }}>{r.label}</span> {r.minutes}분
-            {idx < focusRows.length - 1 && <span style={{ margin: "0 8px", opacity: 0.3 }}>|</span>}
-          </span>
-        ))}
+  const teacherDone = teacherTasks.filter((t: any) => t?.done).length;
+  const teacherTotal = teacherTasks.length;
+
+  const studentDone = studentPlans.filter((t: any) => t?.done).length;
+  const studentTotal = studentPlans.length;
+
+  const totalDone = teacherDone + studentDone;
+  const totalCount = teacherTotal + studentTotal;
+  const totalRate = totalCount > 0 ? Math.round((totalDone / totalCount) * 100) : 0;
+
+  if (teacherTotal === 0 && studentTotal === 0) return null;
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        marginBottom: 14,
+        padding: 14,
+        borderRadius: 12,
+        border: "1px solid #E5E7EB",
+        background: "#F8FAFC",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 14,
+          fontWeight: 900,
+          color: "#1E3A8A",
+          marginBottom: 10,
+        }}
+      >
+        📊 오늘 과제 수행률
+      </div>
+
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 4 }}>
+        선생님 과제 {teacherDone}/{teacherTotal}
+      </div>
+      <div
+        style={{
+          height: 8,
+          background: "#E5E7EB",
+          borderRadius: 999,
+          overflow: "hidden",
+          marginBottom: 10,
+        }}
+      >
+        <div
+          style={{
+            width: `${teacherTotal > 0 ? Math.round((teacherDone / teacherTotal) * 100) : 0}%`,
+            height: "100%",
+            background: "#93C5FD",
+          }}
+        />
+      </div>
+
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 4 }}>
+        나의 계획 {studentDone}/{studentTotal}
+      </div>
+      <div
+        style={{
+          height: 8,
+          background: "#E5E7EB",
+          borderRadius: 999,
+          overflow: "hidden",
+          marginBottom: 10,
+        }}
+      >
+        <div
+          style={{
+            width: `${studentTotal > 0 ? Math.round((studentDone / studentTotal) * 100) : 0}%`,
+            height: "100%",
+            background: "#86EFAC",
+          }}
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 4,
+          padding: "8px 10px",
+          borderRadius: 10,
+          background: totalRate === 100 ? "#ECFDF5" : "#FFF7ED",
+          color: totalRate === 100 ? "#065F46" : "#9A3412",
+          fontSize: 13,
+          fontWeight: 800,
+          textAlign: "center",
+        }}
+      >
+        전체 수행률 {totalDone}/{totalCount} · {totalRate}%
       </div>
     </div>
-
-    {/* 하단 컬러 바(Bar) */}
-    <div style={{ width: "100%", height: 10, background: "#F1F5F9", borderRadius: 999, overflow: "hidden", display: "flex" }}>
-      {focusRows.map((row) => {
-        const total = focusRows.reduce((sum, r) => sum + r.minutes, 0) || 1;
-        return (
-          <div key={row.key} title={`${row.label} ${row.minutes}분`}
-            style={{
-              width: `${(row.minutes / total) * 100}%`,
-              height: "100%",
-              background: SUBJECT_COLORS[row.key]?.bg || "#3B82F6",
-              transition: "width 0.4s ease"
-            }}
-          />
-        );
-      })}
-    </div>
-  </div>
-)}
-    {/* 주간/월간 아코디언도 동일한 깔끔한 스타일로 적용 */}
-    {[
-      { label: "📅 이번 주 누적", rows: weeklyRows, open: openEnergyWeek, setter: setOpenEnergyWeek },
-      { label: "🗓 이번 달 누적", rows: monthlyRows, open: openEnergyMonth, setter: setOpenEnergyMonth }
-    ].map((item, idx) => item.rows.length > 0 && (
-      <div key={idx} style={{ marginBottom: 8 }}>
-        <button type="button" onClick={() => item.setter(!item.open)} style={energyAccordionBtnStyle}>
-          <span>{item.label}</span>
-          <span>{item.open ? "▾" : "▸"}</span>
-        </button>
-        {item.open && (
-          <div style={{ marginTop: 8, padding: "12px", borderRadius: 10, background: "#FFFFFF", border: "1px solid #E2E8F0" }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: 10 }}>
-              {item.rows.map((r) => (
-                <span key={r.key} style={{ fontSize: 10, fontWeight: 700, color: "#64748B" }}>
-                  {r.label} <b style={{ color: SUBJECT_COLORS[r.key]?.bg }}>{formatMinutes(r.minutes)}</b>
-                </span>
-              ))}
-            </div>
-            <div style={{ width: "100%", height: 8, background: "#F1F5F9", borderRadius: 999, overflow: "hidden", display: "flex" }}>
-              {item.rows.map((row) => {
-                const total = item.rows.reduce((sum, r) => sum + r.minutes, 0) || 1;
-                return (
-                  <div key={row.key} style={{ width: `${(row.minutes / total) * 100}%`, height: "100%", background: SUBJECT_COLORS[row.key]?.bg }} />
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    ))}
-  </div>
-)}
+  );
+})()}
+         
           {/* 🔥 집공 인증샷 섹션 
           {selectedDate && (
             <ProofSection
@@ -2325,83 +2164,158 @@ const examStatus = selectedExam ? getExamStatus(selectedExam.start, selectedExam
             />
           )}
             */}
-        {/* 📝 선생님 코멘트 - 깔끔한 피드백 카드 스타일 */}
-{/* 📝 선생님 코멘트 - 복구 및 디자인 개선 */}
-<div
+          {/* 📝 선생님 코멘트 - 깔끔한 피드백 카드 스타일 */}
+          {/* 📝 선생님 코멘트 - 복구 및 디자인 개선 */}
+          <div
+            style={{
+              marginTop: 20,
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+            }}
+          >
+           <div
   style={{
-    marginTop: 20,
-    padding: "16px",
-    borderRadius: "14px",
-    background: "#F8FAFC", 
-    border: "1px solid #E2E8F0",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: 14,
+    fontWeight: 900,
+    color: "#c52d90",
+    marginBottom: 10,
   }}
 >
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: "6px",
-      fontSize: 13,
-      fontWeight: 800,
-      color: "#372f37",
-      marginBottom: 10,
-    }}
-  >
-    <span>💬</span> [선생님 코멘트]
-  </div>
-
-  <div
-    style={{
-      fontSize: 14,
-      lineHeight: 1.6,
-      color: teacherCommentText ? "#a3478e" : "#94A3B8", 
-      minHeight: "40px", // 기존 높이 유지
-      whiteSpace: "pre-wrap",
-      padding: "12px",
-      background: "#FFFFFF", 
-      borderRadius: "10px",
-      border: "1px solid #F1F5F9",
-    }}
-  >
-    {/* 변수명이 정확한지 확인: teacherCommentText */}
-    {teacherCommentText && teacherCommentText.trim() !== "" 
-      ? teacherCommentText 
-      : "아직 남겨진 코멘트가 없습니다."}
-  </div>
+  [💬 선생님 코멘트]
 </div>
 
-      
+            <div
+              style={{
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: teacherCommentText ? "#283bcd" : "#94A3B8",
+fontWeight: teacherCommentText ? 700 : 500,
+background: teacherCommentText ? "#F8FAFF" : "#FFFFFF",
+border: teacherCommentText ? "1px solid #C7D2FE" : "1px solid #F1F5F9",
+                minHeight: "40px", // 기존 높이 유지
+                whiteSpace: "pre-wrap",
+                padding: "12px",       
+                borderRadius: "10px",
+              }}
+            >
+              {/* 변수명이 정확한지 확인: teacherCommentText */}
+              {teacherCommentText && teacherCommentText.trim() !== ""
+                ? teacherCommentText
+                : "오늘 선생님 피드백이 없습니다."}
+            </div>
+          </div>
+          
+ {/* 🔥 몰입 에너지 통합 박스 */}
+          {selectedDate && (focusRows.length > 0 || weeklyRows.length > 0 || monthlyRows.length > 0) && (
+            <div style={{ marginTop: 14, marginBottom: 14, background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 900, color: "#1E3A8A", marginBottom: 12 }}>🔥 몰입 에너지</div>
+
+              {/* 오늘 몰입 섹션 - 텍스트와 바 분리형 */}
+              {focusRows.length > 0 && (
+                <div style={{ padding: "14px 16px", borderRadius: 12, background: "#FFFFFF", border: "1px solid #E2E8F0", marginBottom: 12 }}>
+                  {/* 타이틀과 과목 리스트를 한 줄(row)에 배치 */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: 12, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: "#1E3A8A", whiteSpace: "nowrap" }}>
+                      ⚡️ 오늘 실시간 몰입
+                    </span>
+
+                    <div style={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
+                      {focusRows.map((r, idx) => (
+                        <span key={r.key}>
+                          <span style={{ color: SUBJECT_COLORS[r.key]?.bg, fontWeight: 800 }}>{r.label}</span> {r.minutes}분
+                          {idx < focusRows.length - 1 && <span style={{ margin: "0 8px", opacity: 0.3 }}>|</span>}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 하단 컬러 바(Bar) */}
+                  <div style={{ width: "100%", height: 10, background: "#F1F5F9", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                    {focusRows.map((row) => {
+                      const total = focusRows.reduce((sum, r) => sum + r.minutes, 0) || 1;
+                      return (
+                        <div key={row.key} title={`${row.label} ${row.minutes}분`}
+                          style={{
+                            width: `${(row.minutes / total) * 100}%`,
+                            height: "100%",
+                            background: SUBJECT_COLORS[row.key]?.bg || "#3B82F6",
+                            transition: "width 0.4s ease"
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* 주간/월간 아코디언도 동일한 깔끔한 스타일로 적용 */}
+              {[
+                { label: "📅 이번 주 누적", rows: weeklyRows, open: openEnergyWeek, setter: setOpenEnergyWeek },
+                { label: "🗓 이번 달 누적", rows: monthlyRows, open: openEnergyMonth, setter: setOpenEnergyMonth }
+              ].map((item, idx) => item.rows.length > 0 && (
+                <div key={idx} style={{ marginBottom: 8 }}>
+                  <button type="button" onClick={() => item.setter(!item.open)} style={energyAccordionBtnStyle}>
+                    <span>{item.label}</span>
+                    <span>{item.open ? "▾" : "▸"}</span>
+                  </button>
+                  {item.open && (
+                    <div style={{ marginTop: 8, padding: "12px", borderRadius: 10, background: "#FFFFFF", border: "1px solid #E2E8F0" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: 10 }}>
+                        {item.rows.map((r) => (
+                          <span key={r.key} style={{ fontSize: 10, fontWeight: 700, color: "#64748B" }}>
+                            {r.label} <b style={{ color: SUBJECT_COLORS[r.key]?.bg }}>{formatMinutes(r.minutes)}</b>
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ width: "100%", height: 8, background: "#F1F5F9", borderRadius: 999, overflow: "hidden", display: "flex" }}>
+                        {item.rows.map((row) => {
+                          const total = item.rows.reduce((sum, r) => sum + r.minutes, 0) || 1;
+                          return (
+                            <div key={row.key} style={{ width: `${(row.minutes / total) * 100}%`, height: "100%", background: SUBJECT_COLORS[row.key]?.bg }} />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
         </div>
 
- {/* 왼쪽: 달력 */}
-<div
-  style={{
-    padding: 16,
-    background: "#F9FAFB",
-    borderRadius: 14,
-    border: "1px solid #E5E7EB",
-  }}
->
-  {renderCalendar()}
-</div>
+        {/* 왼쪽: 달력 */}
+        <div
+          style={{
+            padding: 16,
+            background: "#F9FAFB",
+            borderRadius: 14,
+            border: "1px solid #E5E7EB",
+          }}
+        >
+          {renderCalendar()}
+        </div>
 
-{showTimelineModal && timelineDate && (
-  <StudyTimelineModal
-    key={timelineDate}
-    open={true}
-    dateStr={timelineDate}
-    studentId={id || ""}
-    onClose={() => {
-      setShowTimelineModal(false);
-      setTimelineDate(null);
-    }}
-  />
-)}
-    
+        {showTimelineModal && timelineDate && (
+          <StudyTimelineModal
+            key={timelineDate}
+            open={true}
+            dateStr={timelineDate}
+            studentId={id || ""}
+            onClose={() => {
+              setShowTimelineModal(false);
+              setTimelineDate(null);
+            }}
+          />
+        )}
+
       </div>
 
-      {/* ---------------- WEEKLY VIEW ---------------- */}
-      <WeeklyView selectedDate={selectedDate} plans={plans} tests={testList} />
+   
 
       {/* ---------------- 시험기간 모달 ---------------- */}
       {showTestModal && (
@@ -2677,11 +2591,11 @@ function InputSection({
 
           // 선생님 과제일 때만 "과목)" prefix 자동
           if (!readonly && title === "선생님 과제" && subjLabel) {
-  const prefix = subjLabel + ")";
-  if (text && !text.startsWith(prefix)) {
-    text = prefix + " " + text;
-  }
-}
+            const prefix = subjLabel + ")";
+            if (text && !text.startsWith(prefix)) {
+              text = prefix + " " + text;
+            }
+          }
 
           setValue(text);
         }}
@@ -2983,208 +2897,6 @@ function ProofSection({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* 📅 WEEKLY VIEW — 주간 학습 요약 */
-/* ------------------------------------------------------------------ */
-
-function WeeklyView({
-  selectedDate,
-  plans,
-  tests,
-}: {
-  selectedDate: string | null;
-  plans: Record<string, DayPlan>;
-  tests: any[];
-}) {
-  // 🔥 days 배열 안전 생성 (HMR 시 undefined 방지)
-  const base = selectedDate ? new Date(selectedDate) : new Date();
-  const dayIndex = base.getDay();
-  const monday = new Date(base);
-  monday.setDate(base.getDate() - dayIndex + 1);
-
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate()
-    ).padStart(2, "0")}`;
-  });
-  if (!selectedDate) {
-    return (
-      <div
-        style={{
-          marginTop: 32,
-          padding: "20px 22px",
-          background: "#F9FAFB",
-          borderRadius: 14,
-          border: "1px solid #E5E7EB",
-          textAlign: "center",
-          color: "#6B7280",
-        }}
-      >
-        날짜를 선택하면 주간 계획이 표시됩니다.
-      </div>
-    );
-  }
-
-
-  const dayNames = ["월", "화", "수", "목", "금", "토", "일"];
-
-  const isTestDay = (ds: string) =>
-    tests?.some((t: any) => ds >= t.start && ds <= t.end);
-
-  return (
-    <div
-      style={{
-        marginTop: 32,
-        padding: "20px 22px",
-        background: "#EEF2FF",
-        borderRadius: 14,
-        border: "1px solid #D9E1FF",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 16,
-          fontWeight: 800,
-          color: "#1E3A8A",
-          marginBottom: 14,
-        }}
-      >
-        📅 WEEKLY VIEW — 주간 학습 요약
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, 1fr)",
-          gap: 10,
-        }}
-      >
-        {days.map((ds, idx) => {
-          const p = plans[ds];
-
-          // 🔥 기록 없음 early-return (여기가 정확한 위치)
-          if (!p || !p.subjects) {
-            return (
-              <div
-                key={ds}
-                style={{
-                  padding: "10px 12px",
-                  background: "#FFFFFF",
-                  borderRadius: 12,
-                  border: "1px solid #E5E7EB",
-                  minHeight: 120,
-                  boxShadow: "0 3px 8px rgba(0,0,0,0.05)",
-                  fontSize: 12,
-                  color: "#9CA3AF",
-                }}
-              >
-                기록 없음
-              </div>
-            );
-          }
-
-          let teacherDone = 0,
-            teacherTotal = 0,
-            studentDone = 0,
-            studentTotal = 0;
-          let anyDone = false;
-
-          if (p.subjects) {
-            Object.values(p.subjects).forEach((sub: any) => {
-              const tTasks = sub.teacherTasks ?? [];
-              const sPlans = sub.studentPlans ?? [];
-
-              teacherDone += tTasks.filter((t: any) => t?.done).length;
-              teacherTotal += tTasks.length;
-
-              studentDone += sPlans.filter((t: any) => t?.done).length;
-              studentTotal += sPlans.length;
-
-              if (sub.done) anyDone = true;
-            });
-          }
-
-          const testDay = isTestDay(ds);
-
-          return (
-            <div
-              key={ds}
-              style={{
-                padding: "10px 12px",
-                background: "#FFFFFF",
-                borderRadius: 12,
-                border: "1px solid #E5E7EB",
-                minHeight: 120,
-                boxShadow: "0 3px 8px rgba(0,0,0,0.05)",
-              }}
-            >
-              <div
-                style={{
-                  fontWeight: 800,
-                  fontSize: 13,
-                  color: "#1E3A8A",
-                  marginBottom: 4,
-                }}
-              >
-                {dayNames[idx]} {ds.slice(5)}
-              </div>
-
-              {testDay && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "#B91C1C",
-                    marginBottom: 4,
-                  }}
-                >
-                  📌 시험기간
-                </div>
-              )}
-
-              {p ? (
-                <>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: teacherTotal ? "#1D4ED8" : "#9CA3AF",
-                    }}
-                  >
-                    선생님 {teacherDone}/{teacherTotal}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: studentTotal ? "#16A34A" : "#9CA3AF",
-                    }}
-                  >
-                    내 계획 {studentDone}/{studentTotal}
-                  </div>
-
-                  {anyDone && (
-                    <div
-                      style={{
-                        marginTop: 6,
-                        fontSize: 11,
-                        color: "#059669",
-                        fontWeight: 700,
-                      }}
-                    >
-                      ✔ 하루 전체 과목 중 완료된 것 있음
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div style={{ fontSize: 12, color: "#9CA3AF" }}>기록 없음</div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* 공용 스타일 */

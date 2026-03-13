@@ -752,12 +752,12 @@ useEffect(() => {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const KEY = "access_until_v1"; // 저장키(12시간 유지)
+    const KEY = "access_until_v2"; // 저장키(12시간 유지)
     const until = Number(localStorage.getItem(KEY) || 0);
     if (Number.isFinite(until) && until > Date.now()) return; // 유효기간 남으면 통과
 
     const pass = window.prompt("🔒 비밀번호를 입력하세요:") ?? ""; // null 방지
-    if (pass.trim() === "77777") {
+    if (pass.trim() === "77555") {
       const EXPIRE_MS = 12 * 60 * 60 * 1000;
       localStorage.setItem(KEY, String(Date.now() + EXPIRE_MS));
       return; // 통과

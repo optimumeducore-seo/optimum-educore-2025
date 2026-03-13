@@ -180,7 +180,9 @@ const [timeBlocks, setTimeBlocks] = useState<
     customSubject?: string; // ✅ 직접입력용 새 필드 추가
   }[]
 >([]);
-
+const [scheduleMemo, setScheduleMemo] = useState(
+  (student as any)?.personalSchedule?.scheduleMemo || ""
+);
 // 🔥 학생 정보 최신 Firestore 로딩 (모달 열릴 때 자동 반영)
 // === Firestore의 최신 학생 정보 불러오기 ===
 useEffect(() => {
@@ -216,6 +218,7 @@ if (Array.isArray(fire)) {
   const local = localStorage.getItem(`timeBlocks_${student.id}`);
   setTimeBlocks(local ? JSON.parse(local) : []);
 }
+setScheduleMemo(data.personalSchedule?.scheduleMemo || "");
   }
 
   loadFullStudent();
@@ -1220,21 +1223,23 @@ const baseSchedule = sched.current ?? {};
         <span style={{ fontSize: 14 }}>📝</span> 특이사항 및 안내문구
       </div>
       <textarea 
-        placeholder="이곳에 학생에게 전달할 메시지나 주간 주의사항을 입력하세요."
-        style={{
-          width: "100%",
-          minHeight: "80px",
-          padding: "10px",
-          fontSize: "12px",
-          border: "1px solid #E2E8F0",
-          borderRadius: "8px",
-          background: "#F8FAFC",
-          color: "#475569",
-          resize: "none",
-          lineHeight: "1.5",
-          outline: "none"
-        }}
-      />
+  placeholder="이곳에 학원, 특이 메모하세요."
+  value={scheduleMemo}
+  onChange={(e) => setScheduleMemo(e.target.value)}
+  style={{
+    width: "100%",
+    minHeight: "80px",
+    padding: "10px",
+    fontSize: "12px",
+    border: "1px solid #E2E8F0",
+    borderRadius: "8px",
+    background: "#F8FAFC",
+    color: "#303337",
+    resize: "none",
+    lineHeight: "1.5",
+    outline: "none"
+  }}
+/>
     </div>
   </div>
 </div>
@@ -1390,74 +1395,83 @@ if (hall && maxSeat) {
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(0, 0, 0, 0);
 
-      const updated = {
-        ...form,
-
-        hall: (form as any).hall || "",
-        seatNo: (form as any).seatNo ?? null,
-
-        entryDate: (form as any).entryDate || null,
-
-        personalSchedule: {
-          current: sched.current,
-          next: {
-            effectiveDate: tomorrow.toISOString(),
-            data: JSON.parse(JSON.stringify(safeActive)),
-          },
-        },
-
-        academySubjects: Object.keys(safeActive).filter(
-          (k) => (safeActive[k as AcademyType]?.slots ?? []).length > 0
-        ) as AcademyType[],
-      };
- const safeNext = sched.next
+       const safeNext = sched.next
   ? JSON.parse(JSON.stringify(sched.next))
   : null;
+
 const cleanedTimeBlocks = (timeBlocks || []).map((b: any) => ({
   ...b,
   start: normalizeHM(b.start),
   end: normalizeHM(b.end),
 }));
+
+      const updated = {
+  ...form,
+
+  hall: (form as any).hall || "",
+  seatNo: (form as any).seatNo ?? null,
+
+  entryDate: (form as any).entryDate || null,
+
+  personalSchedule: {
+    current: sched.current,
+    next: {
+      effectiveDate: tomorrow.toISOString(),
+      data: JSON.parse(JSON.stringify(safeActive)),
+    },
+    timeBlocks: JSON.parse(JSON.stringify(cleanedTimeBlocks || [])),
+    scheduleMemo, // ✅ 추가
+  },
+
+  academySubjects: Object.keys(safeActive).filter(
+    (k) => (safeActive[k as AcademyType]?.slots ?? []).length > 0
+  ) as AcademyType[],
+};
+
+
+
       // 🔥 Firestore 저장 payload (네 로직 유지)
-      const payload = {
-        ...student,
-        ...updated,
+    const payload = {
+  ...student,
+  ...updated,
 
-        hall: (updated as any).hall || "",
-        seatNo: (updated as any).seatNo ?? null,
+  hall: (updated as any).hall || "",
+  seatNo: (updated as any).seatNo ?? null,
 
-        personalSchedule: {
-          current: {
-            ...sched.current,
-            영어: {
-              ...sched.current.영어,
-              slots: (sched.current.영어?.slots || []).filter(
-                (slot: any, index: number, self: any[]) =>
-                  index ===
-                  self.findIndex(
-                    (s) => s.day === slot.day && s.from === slot.from && s.to === slot.to
-                  )
-              ),
-            },
-          },
-         next: safeNext,
-         timeBlocks: JSON.parse(JSON.stringify(cleanedTimeBlocks || [])),
-        },
+  personalSchedule: {
+    ...updated.personalSchedule,
+    current: {
+      ...sched.current,
+      영어: {
+        ...sched.current.영어,
+        slots: (sched.current.영어?.slots || []).filter(
+          (slot: any, index: number, self: any[]) =>
+            index ===
+            self.findIndex(
+              (s) => s.day === slot.day && s.from === slot.from && s.to === slot.to
+            )
+        ),
+      },
+    },
+  },
 
-        academySubjects: Object.keys(safeActive).filter(
-          (k) => (safeActive[k as AcademyType]?.slots ?? []).length > 0
-        ) as AcademyType[],
-      };
-
+  academySubjects: Object.keys(safeActive).filter(
+    (k) => (safeActive[k as AcademyType]?.slots ?? []).length > 0
+  ) as AcademyType[],
+};
       await setDoc(doc(db, "students", student.id), payload, { merge: true });
 
       // ✅ 로컬 반영
       const newStudent = {
-        ...student,
-        ...updated,
-        hall: (updated as any).hall || "",
-        seatNo: (updated as any).seatNo ?? null,
-      };
+  ...student,
+  ...updated,
+  hall: (updated as any).hall || "",
+  seatNo: (updated as any).seatNo ?? null,
+  personalSchedule: {
+    ...(student.personalSchedule || {}),
+    ...(updated.personalSchedule || {}),
+  },
+};
 
       onSave(newStudent);
       alert("✅ 저장 완료! (입학일 포함 모든 정보 Firestore 반영됨)");

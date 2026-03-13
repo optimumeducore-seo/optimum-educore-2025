@@ -372,64 +372,71 @@ const saveTimeline = async (nextBlocks?: TimelineBlocks) => {
         </div>
 
         {/* 상단 요약 */}
-        <div
-          style={{
-            ...summaryTopWrapStyle,
-            gridTemplateColumns: isMobile ? "1fr" : "180px 1fr",
-          }}
-        >
-          <div style={summaryMainCardStyle}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#475569" }}>
-              총 몰입 시간
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 22,
-                fontWeight: 900,
-                color: "#1E3A8A",
-              }}
-            >
-              {totalMinutes}분
-            </div>
-          </div>
+       <div
+  style={{
+    ...summaryMainCardStyle,
+    padding: isMobile ? "10px 12px" : "14px 16px",
+  }}
+>
+  <div
+    style={{
+      fontSize: isMobile ? 12 : 13,
+      fontWeight: 800,
+      color: "#475569",
+    }}
+  >
+    총 몰입 시간
+  </div>
 
-          <div style={summarySubCardStyle}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 800,
-                color: "#64748B",
-                marginBottom: 6,
-              }}
-            >
-              과목별 합계
-            </div>
+  <div
+    style={{
+      marginTop: 4,
+      fontSize: isMobile ? 18 : 22,
+      fontWeight: 900,
+      color: "#1E3A8A",
+    }}
+  >
+    {totalMinutes}분
+  </div>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {orderedSummary.length === 0 ? (
-                <div style={{ fontSize: 12, color: "#94A3B8" }}>
-                  아직 기록 없음
-                </div>
-              ) : (
-                orderedSummary.map(([subKey, min]) => (
-                  <div
-                    key={subKey}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      background: SUBJECT_COLORS[subKey]?.light || "#F3F4F6",
-                      color: "#334155",
-                      fontSize: 12,
-                      fontWeight: 800,
-                    }}
-                  >
-                    {SUBJECT_SUMMARY_LABELS[subKey] || SUBJECT_LABELS[subKey]} {min}분
-                  </div>
-                ))
-              )}
-            </div>
+         {!isMobile && (
+  <div style={summarySubCardStyle}>
+    <div
+      style={{
+        fontSize: 12,
+        fontWeight: 800,
+        color: "#64748B",
+        marginBottom: 6,
+      }}
+    >
+      과목별 합계
+    </div>
+
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {orderedSummary.length === 0 ? (
+        <div style={{ fontSize: 12, color: "#94A3B8" }}>
+          아직 기록 없음
+        </div>
+      ) : (
+        orderedSummary.map(([subKey, min]) => (
+          <div
+            key={subKey}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              background: SUBJECT_COLORS[subKey]?.light || "#F3F4F6",
+              color: "#334155",
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            {SUBJECT_SUMMARY_LABELS[subKey] || SUBJECT_LABELS[subKey]} {min}분
           </div>
+        ))
+      )}
+    </div>
+  </div>
+)}
         </div>
 
       
