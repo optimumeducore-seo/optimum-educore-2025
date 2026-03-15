@@ -174,6 +174,7 @@ export interface BookEpisode {
   videoMin?: number;   // 인강 분량 (선택)
 }
 
+
 /* ====== 새 계층 구조 ====== */
 
 // 소단원(실제 과제 단위)
@@ -182,6 +183,7 @@ export interface BookSection {
   title: string;
   startPage?: number;
   endPage?: number;
+  videoEpisode?: string;
   videoTitle?: string;
   videoMin?: number;
 }
@@ -203,10 +205,15 @@ export interface BookChapter {
 // 교재
 export interface Book {
   id: string;
-  name: string;                 // 교재 이름 (숨마 국어 문법 등)
-  subject: BookSubject;         // 과목 키 (kor, math...)
-  episodes: BookEpisode[];      // 🔹 자동 배정용 flat 리스트 (그대로 유지)
-  chapters?: BookChapter[];     // 🔹 새 계층 구조 (선택)
+  name: string;
+  publisher?: string;
+  subject: BookSubject;
+
+  videoPlatform?: string;   // 인강 플랫폼
+  videoSeries?: string;     // 기본 강좌명
+
+  episodes: BookEpisode[];
+  chapters?: BookChapter[];
   createdAt?: any;
   updatedAt?: any;
 }
@@ -228,15 +235,16 @@ export const flattenChaptersToEpisodes = (
   chapters.forEach((ch) => {
     ch.units.forEach((u) => {
       u.sections.forEach((s) => {
-        result.push({
-          id: s.id,
-          // 제목은 "대단원 > 중단원 > 소단원" 식으로 합쳐서 저장
-          title: [ch.title, u.title, s.title].filter(Boolean).join(" > "),
-          startPage: s.startPage,
-          endPage: s.endPage,
-          videoTitle: s.videoTitle,
-          videoMin: s.videoMin,
-        });
+       result.push({
+  id: s.id,
+  title: [ch.title, u.title, s.title].filter(Boolean).join(" > "),
+  startPage: s.startPage,
+  endPage: s.endPage,
+  videoTitle: s.videoTitle,
+  videoMin: s.videoMin,
+  videoPlatform: (s as any).videoPlatform,
+  videoEpisode: (s as any).videoEpisode,
+} as any);
       });
     });
   });
@@ -260,18 +268,39 @@ export const migrateEpisodesToChapters = (episodes: any[]) => {
           id: "unit-default",
           title: "기본 중단원",
           sections: episodes.map((ep) => ({
-            id: ep.id,
-            title: ep.title,
-            startPage: ep.startPage,
-            endPage: ep.endPage,
-            videoTitle: ep.videoTitle,
-            videoMin: ep.videoMin,
-          })),
+  id: ep.id,
+  title: ep.title,
+  startPage: ep.startPage,
+  endPage: ep.endPage,
+  videoPlatform: (ep as any).videoPlatform,
+  videoEpisode: (ep as any).videoEpisode,
+  videoTitle: ep.videoTitle,
+  videoMin: ep.videoMin,
+})),
         },
       ],
     },
   ];
 };
+
+
+function deepRemoveUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((v) => deepRemoveUndefined(v)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    const result: any = {};
+    Object.entries(value as Record<string, any>).forEach(([k, v]) => {
+      if (v !== undefined) {
+        result[k] = deepRemoveUndefined(v);
+      }
+    });
+    return result;
+  }
+
+  return value;
+}
 
 /* ------------------- 교재 CRUD ------------------- */
 
@@ -291,16 +320,22 @@ export const saveBook = async (book: Omit<Book, "id"> & { id?: string }) => {
       : flattenChaptersToEpisodes(chapters);
 
   const data: Book = {
-    id,
-    name: book.name,
-    subject: book.subject,
-    episodes: episodes || [],
-    chapters,
-    createdAt: (book as any).createdAt || serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
+  id,
+  name: book.name,
+  publisher: (book as any).publisher || "",
+  subject: book.subject,
 
-  await setDoc(ref, data, { merge: true });
+  videoPlatform: (book as any).videoPlatform || "",
+  videoSeries: (book as any).videoSeries || "",
+
+  episodes: episodes || [],
+  chapters,
+  createdAt: (book as any).createdAt || serverTimestamp(),
+  updatedAt: serverTimestamp(),
+};
+
+const safeData = deepRemoveUndefined(data);
+  await setDoc(ref, safeData, { merge: true });
   return id;
 };
 
@@ -335,15 +370,14 @@ export const loadStudentBookProgress = async (
   return snap.data() as StudentBookProgress;
 };
 
-// 학생별 교재 진도 저장
 export const saveStudentBookProgress = async (
   studentId: string,
   progress: StudentBookProgress
 ) => {
   const ref = doc(db, "studentBooks", studentId, "books", progress.bookId);
+  console.log("saveStudentBookProgress 호출", studentId, progress);
   await setDoc(ref, progress, { merge: true });
 };
-
 
 
 /* ---------------- 자동 배정 핵심 로직 ---------------- */
@@ -358,57 +392,120 @@ export const autoAssignNextEpisode = async (params: {
 
   if (!book.episodes || book.episodes.length === 0) return;
 
-  // 1) 학생의 현재 진도
+  // 1) 학생 현재 진도 불러오기
   const progress = await loadStudentBookProgress(studentId, book.id);
   const idx = progress.lastEpisodeIndex || 0;
 
+  // 이미 마지막까지 다 했으면 종료
   if (idx >= book.episodes.length) return;
 
   const ep = book.episodes[idx];
 
-  const taskItem: MainTask = {
-  id: crypto.randomUUID(),        // ⭐ 추가!!!
-  title: `📘 ${ep.title}`,
-  done: false,
-  subtasks: [],
+// 제목 마지막 소단원만 뽑기
+const rawTitle = ep.title || "";
+const parts = rawTitle.split(">").map((v) => v.trim());
+const lastTitle = parts[parts.length - 1] || rawTitle;
+
+// 플랫폼 축약
+const platformMap: Record<string, string> = {
+  "강남인강": "강남",
+  "EBSi": "EBS",
+  "EBS": "EBS",
+  "메가스터디": "메가",
+  "대성마이맥": "대성",
 };
 
-// 문제집
-if (ep.startPage || ep.endPage) {
-  const p1 = ep.startPage ?? "";
-  const p2 = ep.endPage ?? p1;
-  const pageText = p1 !== p2 ? `${p1}~${p2}쪽` : `${p1}쪽`;
+const rawPlatform = (book as any).videoPlatform?.trim() || "";
+const platformText = platformMap[rawPlatform] || rawPlatform;
 
+// <강남 1강> / <EBS 1강> / <1강>
+const nextEpisodeLabel = platformText
+  ? `<${platformText} ${idx + 1}강>`
+  : `<${idx + 1}강>`;
+
+const pageStart = ep.startPage ?? null;
+const pageEnd = ep.endPage ?? pageStart;
+const hasPages = pageStart !== null && pageStart !== undefined;
+
+const pageText =
+  hasPages && pageEnd
+    ? pageStart !== pageEnd
+      ? `${pageStart}~${pageEnd}p`
+      : `${pageStart}p`
+    : "";
+
+// 학생에게 보이는 제목: 책 이름 제외
+const subjectLabelMap: Record<string, string> = {
+  kor: "국어",
+  math: "수학",
+  eng: "영어",
+  sci: "과학",
+  soc: "사회",
+  hist1: "역사",
+  hist2: "역사",
+  tech: "기술",
+};
+
+const subjectLabel = subjectLabelMap[book.subject] || "";
+
+const oneLineTitle = [
+  subjectLabel ? `${subjectLabel} >` : "",
+  nextEpisodeLabel,
+  lastTitle,
+  pageText,
+]
+  .filter(Boolean)
+  .join(" ");
+
+const taskItem: any = {
+  id: crypto.randomUUID(),
+  title: oneLineTitle,
+  text: oneLineTitle,
+  done: false,
+  subtasks: [],
+
+  sourceType: "autoBook",
+  bookId: book.id,
+  assignedEpisodeIndex: idx,
+};
+
+  // 문제집
+  if (ep.startPage || ep.endPage) {
+    const p1 = ep.startPage ?? "";
+    const p2 = ep.endPage ?? p1;
+    const subPageText = p1 !== p2 ? `${p1}~${p2}쪽` : `${p1}쪽`;
+
+    taskItem.subtasks.push({
+      text: `문제집: ${subPageText}`,
+      done: false,
+    });
+  }
+
+  // 인강
+  if (ep.videoTitle) {
+    const minText = ep.videoMin ? ` (${ep.videoMin}분)` : "";
+    taskItem.subtasks.push({
+      text: `인강: ${ep.videoTitle}${minText}`,
+      done: false,
+    });
+  }
+
+  // 노트 정리: 사회/역사만
+if (book.subject === "soc" || book.subject === "hist1" || book.subject === "hist2") {
   taskItem.subtasks.push({
-    text: `문제집: ${pageText}`,
-    done: false
+    text: "노트 정리(핵심 내용 정리)",
+    done: false,
   });
 }
-
-// 인강
-if (ep.videoTitle) {
-  const minText = ep.videoMin ? ` (${ep.videoMin}분)` : "";
-  taskItem.subtasks.push({
-    text: `인강: ${ep.videoTitle}${minText}`,
-    done: false
-  });
-}
-
-// 노트정리
-taskItem.subtasks.push({
-  text: "노트 정리(핵심 내용 정리)",
-  done: false
-});
-
 
   // -------------------------------------------
-  // 🔵 StudyPlan 구조 맞추기
+  // common.teacherTasks 로 통일 저장
   // -------------------------------------------
   const planRef = doc(db, "studyPlans", studentId, "days", dateStr);
   const snap = await getDoc(planRef);
-  const raw = snap.exists() ? snap.data() as any : {};
+  const raw = snap.exists() ? (snap.data() as any) : {};
 
-  const subjectKey = book.subject;
+  const subjectKey = "common";
   const prevSubj = raw[subjectKey] || {};
 
   const prevTeacher = Array.isArray(prevSubj.teacherTasks)
@@ -416,12 +513,13 @@ taskItem.subtasks.push({
     : [];
 
   const mergedSubject = {
-    teacherTasks: [...prevTeacher, taskItem],  // 🔥 UI가 읽을 수 있는 구조!
+    teacherTasks: [...prevTeacher, taskItem],
     studentPlans: prevSubj.studentPlans || [],
     memo: prevSubj.memo || "",
     done: prevSubj.done || false,
     proofImages: prevSubj.proofImages || [],
     proofMemo: prevSubj.proofMemo || "",
+    teacherComment: prevSubj.teacherComment || "",
     wordTest: prevSubj.wordTest || { correct: 0, total: 0 },
     updatedAt: serverTimestamp(),
   };
@@ -435,13 +533,15 @@ taskItem.subtasks.push({
     { merge: true }
   );
 
-  // -------------------------------------------
-  // 🔵 다음 에피소드로 진도 이동
-  // -------------------------------------------
-  await saveStudentBookProgress(studentId, {
+  // 2) 진도 한 칸 올리기
+ await saveStudentBookProgress(
+  studentId,
+  {
     bookId: book.id,
     lastEpisodeIndex: idx + 1,
-  });
+    
+  }
+);
 };
 
 
@@ -521,13 +621,23 @@ const dayRef = doc(db, "studyPlans", studentId, "days", current);
 const daySnap = await getDoc(dayRef);  
 const raw = daySnap.exists() ? (daySnap.data() as any) : {};  
 const subj = raw[subjectKey] || {};  
-const teacherTasks: any[] = Array.isArray(subj.teacherTasks)  
-  ? subj.teacherTasks  
-  : [];  
+const teacherTasks: any[] = Array.isArray(subj.teacherTasks)
+  ? subj.teacherTasks
+  : [];
 
-if (teacherTasks.length < maxTasksPerDay) {  
-  // ✅ 이 날짜 사용  
-  return current;  
+// ⭐ 자동과제 있는 날은 자동배정 금지
+const hasAutoTask =
+  teacherTasks.some(t => Array.isArray(t.subtasks) && t.subtasks.length > 0);
+
+if (hasAutoTask) {
+  const nextDate = new Date(currentDate.getTime() + DAY_MS);
+  current = formatYMD(nextDate);
+  continue;
+}
+
+// 원래 조건
+if (teacherTasks.length < maxTasksPerDay) {
+  return current;
 }  
 
 // 6개 이상 → 다음날로 밀기  

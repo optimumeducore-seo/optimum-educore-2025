@@ -16,11 +16,14 @@ import {
 import OpsModal from "../components/admin/OpsModal";
 import { db } from "../firebase";
 import type { AssignmentRules, Weekday } from "../services/firestore";
-import { saveAssignmentRules, loadAssignmentRules } from "../services/firestore";
+import { saveAssignmentRules, loadAssignmentRules, saveStudentBookProgress } from "../services/firestore";
 import { rescheduleDeletedAutoTask } from "../services/firestore";
 import type { MainTask } from "../services/firestore";
 import { useNavigate } from "react-router-dom";
 import { BRAND } from "../config/brand";
+import { mapBookSectionToTask } from "../utils/bookTaskMapper";
+import { loadBooks } from "../services/firestore";
+
 
 /* -------------------------------------------------- */
 /* 타입 정의 (간단 버전)                              */
@@ -38,17 +41,51 @@ type Student = {
 
 };
 
+type TaskMode = "task" | "lecture" | "book" | "lecture+book";
+type TaskSourceType = "manual" | "book" | "exam";
+
+type TaskSubItem = {
+  text: string;
+  done: boolean;
+};
+
 type TaskItem = {
-  id?: string;          // ✅ 이 줄 하나 추가
+  id?: string;
+  url?: string;
+
   text?: string;
   title?: string;
   done?: boolean;
   deleted?: boolean;
-  subtasks?: {
-    text: string;
-    done: boolean;
-  }[];
+
+  carriedOver?: boolean;
   carriedFrom?: string;
+
+  subtasks?: TaskSubItem[];
+
+  sourceType?: TaskSourceType;
+  subject?: string;
+
+  taskMode?: TaskMode;
+
+  lectureTitle?: string;
+  lectureDone?: boolean;
+
+  bookTitle?: string;
+  bookDone?: boolean;
+
+  pageStart?: number;
+  pageEnd?: number;
+
+  bigUnit?: string;
+  smallUnit?: string;
+
+  estimatedMin?: number;
+  priority?: number;
+  locked?: boolean;
+
+  bookId?: string;
+  sectionId?: string;
 };
 
 type SubjectPlan = {
@@ -348,6 +385,12 @@ const [consultLogs, setConsultLogs] = useState<any[]>([]);
 const [commentEditOpen, setCommentEditOpen] = useState(false);
 const [consultSummaryOpen, setConsultSummaryOpen] = useState(false);
 const [consultStatusMap, setConsultStatusMap] = useState<Record<string, any>>({});
+const [books, setBooks] = useState<any[]>([]);
+
+const [selectedBook, setSelectedBook] = useState<any>(null);
+const [selectedChapter, setSelectedChapter] = useState<any>(null);
+const [selectedUnit, setSelectedUnit] = useState<any>(null);
+const [selectedSection, setSelectedSection] = useState<any>(null);
 
   const getYesterday = (date: string) => {
     const d = new Date(date);
@@ -751,6 +794,110 @@ console.log("consultSummary", consultSummary);
   setConsultLogs(logs);
 };
 
+
+const handleAddSelectedBookTask = async (sid: string, subjectKey: string) => {
+  try {
+    if (!selectedBook) {
+      alert("교재를 선택하세요.");
+      return;
+    }
+    if (!selectedChapter) {
+      alert("대단원을 선택하세요.");
+      return;
+    }
+    if (!selectedUnit) {
+      alert("중단원을 선택하세요.");
+      return;
+    }
+    if (!selectedSection) {
+      alert("소단원을 선택하세요.");
+      return;
+    }
+
+    const newTask = mapBookSectionToTask(selectedSection, {
+      bookId: selectedBook.id,
+      bookName: selectedBook.name,
+      subject: selectedBook.subject,
+      bigUnit: selectedChapter.title || "",
+      smallUnit: selectedUnit.title || selectedSection.title || "",
+    });
+
+    // -----------------------------
+    // 1) 로컬 state용 구조 (subjects 안)
+    // -----------------------------
+    const localDay = dayPlans[sid] || { date: dateStr, subjects: {} };
+    const localSubjects = localDay.subjects || {};
+    const localSubj = localSubjects[subjectKey] || {
+      teacherTasks: [],
+      studentPlans: [],
+      memo: "",
+      teacherComment: "",
+      done: false,
+      updatedAt: null,
+      proofImages: [],
+      proofMemo: "",
+      wordTest: { correct: 0, total: 0 },
+    };
+
+    const updatedLocalSubj = {
+      ...localSubj,
+      teacherTasks: [...(localSubj.teacherTasks || []), newTask],
+    };
+
+    const updatedLocalDay = {
+      ...localDay,
+      date: dateStr,
+      subjects: {
+        ...localSubjects,
+        [subjectKey]: updatedLocalSubj,
+      },
+    };
+
+    setDayPlans((prev: any) => ({
+      ...prev,
+      [sid]: updatedLocalDay,
+    }));
+
+    // -----------------------------
+    // 2) Firestore용 구조 (top-level 과목키)
+    // -----------------------------
+    const planRef = doc(db, "studyPlans", sid, "days", dateStr);
+    const snap = await getDoc(planRef);
+    const raw = snap.exists() ? (snap.data() as any) : {};
+
+    const prevSubj = raw[subjectKey] || {
+      teacherTasks: [],
+      studentPlans: [],
+      memo: "",
+      teacherComment: "",
+      done: false,
+      proofImages: [],
+      proofMemo: "",
+      wordTest: { correct: 0, total: 0 },
+    };
+
+    const mergedSubject = {
+      ...prevSubj,
+      teacherTasks: [...(prevSubj.teacherTasks || []), newTask],
+      updatedAt: serverTimestamp(),
+    };
+
+    await setDoc(
+      planRef,
+      {
+        date: dateStr,
+        [subjectKey]: mergedSubject,
+      },
+      { merge: true }
+    );
+
+    alert("선택한 소단원 과제가 저장되었습니다.");
+  } catch (err) {
+    console.error("교재 과제 추가 오류:", err);
+    alert("교재 과제 추가 중 오류가 났습니다. 콘솔 확인!");
+  }
+};
+
 const loadConsultStatus = async (studentList: Student[]) => {
   const monthKey = getMonthKey();
   const nextMap: Record<string, any> = {};
@@ -1111,7 +1258,15 @@ const saveConsultLog = async () => {
     setExamCardOpen(false);
   }, [selectedStudentId]);
 
+useEffect(() => {
+  const loadBooks = async () => {
+    const snap = await getDocs(collection(db, "books"));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    setBooks(list);
+  };
 
+  loadBooks();
+}, []);
 
   /* ---------------- 우측 하단 상세 입력 동기화 ------- */
 
@@ -1247,76 +1402,99 @@ const saveConsultLog = async () => {
 
   // 🔥 선생님 과제 1개 삭제 + 자동 이월
   const handleDeleteTeacherTask = async (
-    sid: string,
-    date: string,
-    subjectKey: string,
-    taskIndex: number
-  ) => {
-    if (!sid || !date) return;
+  sid: string,
+  date: string,
+  subjectKey: string,
+  taskIndex: number
+) => {
+  if (!sid || !date) return;
 
-    const ok = window.confirm("해당 과제를 삭제할까요?\n(확인을 누르면 즉시 삭제됩니다)");
-    if (!ok) return;
+  const ok = window.confirm("해당 과제를 삭제할까요?\n(확인을 누르면 즉시 삭제됩니다)");
+  if (!ok) return;
 
-    try {
-      // 1. 정확한 위치(상세 주소) 찾기
-      const dayRef = doc(db, "studyPlans", sid, "days", date);
-      const snap = await getDoc(dayRef);
+  try {
+    // 1. 정확한 위치(상세 주소) 찾기
+    const dayRef = doc(db, "studyPlans", sid, "days", date);
+    const snap = await getDoc(dayRef);
 
-      if (!snap.exists()) {
-        alert("데이터를 찾을 수 없습니다.");
-        return;
-      }
-
-      const raw = snap.data();
-      const subj = raw[subjectKey];
-
-      if (!subj || !Array.isArray(subj.teacherTasks)) {
-        alert("삭제할 과제가 목록에 없습니다.");
-        return;
-      }
-
-      // 2. 데이터 복사해서 해당 순서(index) 과제만 쏙 빼기
-      const tasks = [...subj.teacherTasks];
-      const targetTask = tasks[taskIndex]; // 삭제될 과제 정보 보관
-
-      tasks.splice(taskIndex, 1); // 선택한 번호 삭제
-
-      const updatedSubject = {
-        ...subj,
-        teacherTasks: tasks,
-        updatedAt: serverTimestamp(),
-      };
-
-      // 3. 파이어베이스에 최종 저장
-      await setDoc(
-        dayRef,
-        { [subjectKey]: updatedSubject },
-        { merge: true }
-      );
-
-      // 4. 화면(대시보드) 즉시 업데이트
-      setDayPlans((prev) => {
-        const day = prev[sid];
-        if (!day) return prev;
-        return {
-          ...prev,
-          [sid]: {
-            ...day,
-            subjects: {
-              ...day.subjects,
-              [subjectKey]: updatedSubject,
-            },
-          },
-        };
-      });
-
-      alert("삭제가 완료되었습니다.");
-
-    } catch (e) {
-
-      alert("삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    if (!snap.exists()) {
+      alert("데이터를 찾을 수 없습니다.");
+      return;
     }
-  };
+
+    const raw = snap.data() as any;
+    const subj = raw[subjectKey];
+
+    if (!subj || !Array.isArray(subj.teacherTasks)) {
+      alert("삭제할 과제가 목록에 없습니다.");
+      return;
+    }
+
+    // 2. 데이터 복사해서 해당 순서(index) 과제만 쏙 빼기
+  const tasks = [...subj.teacherTasks];
+const targetTask = tasks[taskIndex];
+
+console.log("삭제 targetTask", JSON.stringify(targetTask, null, 2));
+
+if (!targetTask) {
+  alert("삭제 대상 과제를 찾을 수 없습니다.");
+  return;
+}
+
+if (targetTask.sourceType === "autoBook" && targetTask.bookId) {
+  console.log("진도복구 조건 진입", {
+    sid,
+    bookId: targetTask.bookId,
+    assignedEpisodeIndex: targetTask.assignedEpisodeIndex,
+  });
+
+  await saveStudentBookProgress(sid, {
+    bookId: targetTask.bookId,
+    lastEpisodeIndex: targetTask.assignedEpisodeIndex ?? 0,
+  });
+
+  console.log("진도복구 저장 완료");
+}
+    // 4. 과제 삭제
+    tasks.splice(taskIndex, 1);
+
+    const updatedSubject = {
+      ...subj,
+      teacherTasks: tasks,
+      updatedAt: serverTimestamp(),
+    };
+
+    // 5. 파이어베이스에 최종 저장
+    await setDoc(
+      dayRef,
+      { [subjectKey]: updatedSubject },
+      { merge: true }
+    );
+
+    // 6. 화면(대시보드) 즉시 업데이트
+    setDayPlans((prev) => {
+      const day = prev[sid];
+      if (!day) return prev;
+
+      return {
+        ...prev,
+        [sid]: {
+          ...day,
+          subjects: {
+            ...day.subjects,
+            [subjectKey]: updatedSubject,
+          },
+        },
+      };
+    });
+
+    alert("삭제가 완료되었습니다.");
+  } catch (e) {
+    console.error(e);
+    alert("삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+  }
+};
+
   const handlePrint = () => {
     const printElement = document.getElementById("print-area");
     if (!printElement) {
@@ -2960,25 +3138,153 @@ input, button {
             [🎯 선생님 과제 입력]
           </div>
           <textarea
-            placeholder="과제 입력 후 바깥을 클릭하면 자동 저장됩니다."
-            value={teacherInput}
-            onChange={(e) => setTeacherInput(e.target.value)}
-            onBlur={() => handleSave()}
-            style={{
-              width: "100%",
-              height: 150, 
-              borderRadius: 12,
-              border: "2px solid #F1F5F9",
-              padding: "14px",
-              fontSize: 13,
-              lineHeight: "1.6",
-              outline: "none",
-              resize: "none",
-              background: "#F9FBFF",
-              fontWeight: 550,
-              boxSizing: "border-box",
-            }}
-          />
+  placeholder="과제 입력 후 바깥을 클릭하면 자동 저장됩니다."
+  value={teacherInput}
+  onChange={(e) => setTeacherInput(e.target.value)}
+  onBlur={() => handleSave()}
+  style={{
+    width: "100%",
+    height: 150, 
+    borderRadius: 12,
+    border: "2px solid #F1F5F9",
+    padding: "14px",
+    fontSize: 13,
+    lineHeight: "1.6",
+    outline: "none",
+    resize: "none",
+    background: "#F9FBFF",
+    fontWeight: 550,
+    boxSizing: "border-box",
+  }}
+/>
+
+<select
+  value={selectedBook?.id || ""}
+  onChange={(e) => {
+    const book = books.find((b: any) => b.id === e.target.value);
+    setSelectedBook(book || null);
+    setSelectedChapter(null);
+    setSelectedUnit(null);
+    setSelectedSection(null);
+  }}
+  style={{
+    width: "100%",
+    marginTop: 8,
+    padding: "8px 10px",
+    borderRadius: 8,
+    border: "1px solid #CBD5E1",
+    background: "#FFFFFF",
+    fontSize: 12,
+    color: "#0F172A",
+  }}
+>
+  <option value="">교재 선택</option>
+  {books.map((book: any) => (
+    <option key={book.id} value={book.id}>
+      {book.name}
+    </option>
+  ))}
+</select>
+<select
+  value={selectedChapter?.id || ""}
+  onChange={(e) => {
+    const chapter = selectedBook?.chapters?.find(
+      (ch: any) => ch.id === e.target.value
+    );
+    setSelectedChapter(chapter || null);
+    setSelectedUnit(null);
+    setSelectedSection(null);
+  }}
+  disabled={!selectedBook}
+  style={{
+    width: "100%",
+    marginTop: 8,
+    padding: "8px 10px",
+    borderRadius: 8,
+    border: "1px solid #CBD5E1",
+    background: selectedBook ? "#FFFFFF" : "#F8FAFC",
+    fontSize: 12,
+    color: "#0F172A",
+  }}
+>
+  <option value="">대단원 선택</option>
+  {(selectedBook?.chapters || []).map((ch: any) => (
+    <option key={ch.id} value={ch.id}>
+      {ch.title}
+    </option>
+  ))}
+</select>
+<select
+  value={selectedUnit?.id || ""}
+  onChange={(e) => {
+    const unit = selectedChapter?.units?.find(
+      (u: any) => u.id === e.target.value
+    );
+    setSelectedUnit(unit || null);
+    setSelectedSection(null);
+  }}
+  disabled={!selectedChapter}
+  style={{
+    width: "100%",
+    marginTop: 8,
+    padding: "8px 10px",
+    borderRadius: 8,
+    border: "1px solid #CBD5E1",
+    background: selectedChapter ? "#FFFFFF" : "#F8FAFC",
+    fontSize: 12,
+    color: "#0F172A",
+  }}
+>
+  <option value="">중단원 선택</option>
+  {(selectedChapter?.units || []).map((u: any) => (
+    <option key={u.id} value={u.id}>
+      {u.title}
+    </option>
+  ))}
+</select>
+
+<select
+  value={selectedSection?.id || ""}
+  onChange={(e) => {
+    const section = selectedUnit?.sections?.find(
+      (s: any) => s.id === e.target.value
+    );
+    setSelectedSection(section || null);
+  }}
+  disabled={!selectedUnit}
+  style={{
+    width: "100%",
+    marginTop: 8,
+    padding: "8px 10px",
+    borderRadius: 8,
+    border: "1px solid #CBD5E1",
+    background: selectedUnit ? "#FFFFFF" : "#F8FAFC",
+    fontSize: 12,
+    color: "#0F172A",
+  }}
+>
+  <option value="">소단원 선택</option>
+  {(selectedUnit?.sections || []).map((s: any) => (
+    <option key={s.id} value={s.id}>
+      {s.title}
+    </option>
+  ))}
+</select>
+
+<button
+  onClick={() => handleAddSelectedBookTask(selectedStudentId, selectedSubject)}
+  style={{
+    padding: "6px 10px",
+    borderRadius: 8,
+    border: "1px solid #CBD5E1",
+    background: "#EFF6FF",
+    fontSize: 12,
+    color: "#1D4ED8",
+    marginLeft: 8,
+  }}
+>
+  📚 교재 과제 테스트 추가
+</button>
         </div>
 
         {/* --- [우측: 과제목록, 학생계획, 단어시험] --- */}
