@@ -13,6 +13,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../firebase";
+import DevWatermark from "../components/DevWatermark";
 
 // 학생 타입 (느슨하게 any로 써도 되지만, 기본 구조만 정의)
 type Student = {
@@ -111,27 +112,27 @@ const SUBJECT_TASK_KEYS: Record<string, string[]> = {
 
 // ✅ 과목 기본 템플릿(너가 원하는 항목들)
 const DEFAULT_TASKS: ExamTask[] = [
-  { key: "textbook", label: "교과서 1-3회독", target: 3 },
-  { key: "print", label: "프린트 1-3회독", target: 3 },
-  { key: "workbook", label: "시험범위 문제집풀이", target: 1 },
-  { key: "workbookWrong", label: "문제집 단원별 오답 여부", target: 1 },
-  { key: "printBlank", label: "프린트빈칸 1-3회독", target: 3 },
-  { key: "zokboPersonal", label: "족보 개인별문제", target: 1 },
-  { key: "zokboEssay", label: "족보 서술형", target: 1 },
-  { key: "guideEssay", label: "자습서 서술형", target: 1 },
-  { key: "blankNote", label: "백지노트", target: 1 },
+  { key: "textbook", label: "교과서읽기", target: 1 },
+  { key: "print", label: "학교프린트빈칸", target: 2 },
+  { key: "workbook", label: "문제집풀기", target: 1 },
+  { key: "workbookWrong", label: "오답정리", target: 1 },
+  { key: "printBlank", label: "서술형암기", target: 1 },
+  { key: "zokboPersonal", label: "족보문제", target: 2 },
+  { key: "zokboEssay", label: "서술형작성", target: 1 },
+  { key: "guideEssay", label: "중요문답", target: 1 },
+  { key: "blankNote", label: "자습서", target: 1 },
 ];
 
 const TASK_CANDIDATES: ExamTask[] = [
-  { key: "textbook", label: "교과서", target: 3 },
-  { key: "print", label: "프린트", target: 3 },
-  { key: "workbook", label: "문제집", target: 1 },
-  { key: "workbookWrong", label: "문제집 오답", target: 1 },
-  { key: "printBlank", label: "프린트빈칸", target: 3 },
-  { key: "zokboPersonal", label: "족보개인문제", target: 1 },
-  { key: "zokboEssay", label: "족보서술형", target: 1 },
-  { key: "guideEssay", label: "자습서서술", target: 1 },
-  { key: "blankNote", label: "백지노트", target: 1 },
+  { key: "textbook", label: "교과서읽기", target: 1 },
+  { key: "print", label: "학교프린트빈칸", target: 2 },
+  { key: "workbook", label: "문제집풀기", target: 1 },
+  { key: "workbookWrong", label: "오답정리", target: 1 },
+  { key: "printBlank", label: "서술형암기", target: 1 },
+  { key: "zokboPersonal", label: "족보문제", target: 2 },
+  { key: "zokboEssay", label: "서술형작성", target: 1 },
+  { key: "guideEssay", label: "중요문답", target: 1 },
+  { key: "blankNote", label: "자습서", target: 1 },
 ];
 
 const parseYMD = (ymd: string) => new Date(`${ymd}T00:00:00`);
@@ -385,6 +386,7 @@ const ScheduleTable = ({
   };
 
   return (
+    
     <div style={wrapStyle}>
       <table style={tableStyle}>
         <thead>
@@ -1196,6 +1198,9 @@ const handleDeleteExam = async (examId: string) => {
 // ✅ ExamManagePage.tsx : return (...) 블록 전체 교체 (요즘 SaaS 레이아웃)
 
 return (
+  <>
+    {/* 🛡️ 보안 워터마크 레이어 (최상단 배치) */}
+    <DevWatermark userLabel="Optimum_Admin" />
   <div
     style={{
       maxWidth: 1360, // 조금 더 여유 있게 확장
@@ -1944,6 +1949,6 @@ return (
 </div>
       </div>
     </div>
- 
+ </>
 );
 }

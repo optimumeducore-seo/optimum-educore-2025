@@ -3,6 +3,8 @@ import { db } from "./firebase";
 import GradeModal from "./components/GradeModal";
 import GradeChartModal from "./components/GradeChartModal";  // ✅ 중괄호 제거
 import EditStudentModal from "./components/EditStudentModal";
+import DevWatermark from "./components/DevWatermark";
+
 import { deleteField } from "firebase/firestore";
 import {
   collection,
@@ -148,10 +150,10 @@ export interface DayCell {
   memo?: string;
   comment?: string;
   wordTest?: {
-  correct: number;   // 맞은 개수
-  total: number;     // 총 문제 수
-  memo?: string;     // 틀린 단어 메모 (선택)
-};
+    correct: number;   // 맞은 개수
+    total: number;     // 총 문제 수
+    memo?: string;     // 틀린 단어 메모 (선택)
+  };
   studyNote?: string;
   tasks?: TaskItem[];
   hwDone?: boolean;
@@ -188,8 +190,8 @@ export type Student = {
   mathScore?: number;
   scienceScore?: number;
   entryDate?: string;
-hall?: "중등관" | "고등관";   // ✅ 관
-seatNo?: number | null;        // ✅ 좌석번호
+  hall?: "중등관" | "고등관";   // ✅ 관
+  seatNo?: number | null;        // ✅ 좌석번호
 };
 
 export type Records = Record<string, Record<string, DayCell>>;
@@ -506,21 +508,21 @@ function loadStore(): StoreShape {
 
     const g0: Group = { id: "default", name: "우리반", students: [] };
     const init: StoreShape = {
-  groups: [g0],
-  currentGroupId: "default",
-  records: {},
-  selectedDate: null,   // ⭐ 추가
-};
+      groups: [g0],
+      currentGroupId: "default",
+      records: {},
+      selectedDate: null,   // ⭐ 추가
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
     return init;
   } catch {
     const g0: Group = { id: "default", name: "우리반", students: [] };
     const init: StoreShape = {
-  groups: [g0],
-  currentGroupId: "default",
-  records: {},
-  selectedDate: null,   // ⭐ 추가
-};
+      groups: [g0],
+      currentGroupId: "default",
+      records: {},
+      selectedDate: null,   // ⭐ 추가
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(init));
     return init;
   }
@@ -536,8 +538,8 @@ function saveStore(s: StoreShape) {
 export default function App() {
 
   const [academySchedule, setAcademySchedule] = useState<Record<string, { start: string; end: string }[]>>({});
-  
-  
+
+
   const [attendanceList, setAttendanceList] = useState<any[]>([]);
   const [inputTimes, setInputTimes] = useState<Record<string, string>>({});
 
@@ -550,71 +552,71 @@ export default function App() {
     const data = snap.data();
     return Array.isArray(data.logs) ? data.logs : [];
   }
- function getToday() {
-  return new Date().toLocaleDateString("ko-KR")
-    .replace(/\./g, "-")
-    .replace(/-\s*/g, "-")
-    .slice(0, 10);
-}
-
-
-// ✅ 학생용 등원 처리 (오늘 날짜 기준, records/날짜/학생ID 구조)
-// =============================
-
-async function handleCheckIn(studentId: string, inputTime: string) {
-
-  const date = new Date().toISOString().slice(0, 10);
-  const ref = doc(db, "records", date);   // ⭐ 문서: 날짜 하나만
-
-  const snap = await getDoc(ref);
-  const data = snap.exists() ? (snap.data() as any) : {};
-
-  const prev = data[studentId] || {};
-
-  if (prev.time) {
-    alert("이미 등원 처리된 학생입니다.");
-    return;
+  function getToday() {
+    return new Date().toLocaleDateString("ko-KR")
+      .replace(/\./g, "-")
+      .replace(/-\s*/g, "-")
+      .slice(0, 10);
   }
 
-  await setDoc(ref, {
-  [`${studentId}.time`]: inputTime,
-  [`${studentId}.outTime`]: null,
-}, { merge: true });
 
-}
+  // ✅ 학생용 등원 처리 (오늘 날짜 기준, records/날짜/학생ID 구조)
+  // =============================
 
-// =============================
-// ✅ 학생 하원
-// =============================
-async function handleCheckOut(studentId: string, inputTime: string) {
-  const date = new Date().toISOString().slice(0, 10);
-  const ref = doc(db, "records", date);
+  async function handleCheckIn(studentId: string, inputTime: string) {
 
-  const snap = await getDoc(ref);
+    const date = new Date().toISOString().slice(0, 10);
+    const ref = doc(db, "records", date);   // ⭐ 문서: 날짜 하나만
 
-  if (!snap.exists()) {
-    alert("등원 기록이 없습니다.");
-    return;
+    const snap = await getDoc(ref);
+    const data = snap.exists() ? (snap.data() as any) : {};
+
+    const prev = data[studentId] || {};
+
+    if (prev.time) {
+      alert("이미 등원 처리된 학생입니다.");
+      return;
+    }
+
+    await setDoc(ref, {
+      [`${studentId}.time`]: inputTime,
+      [`${studentId}.outTime`]: null,
+    }, { merge: true });
+
   }
 
-  const data = snap.data() as any;
-  const prev = data[studentId];
+  // =============================
+  // ✅ 학생 하원
+  // =============================
+  async function handleCheckOut(studentId: string, inputTime: string) {
+    const date = new Date().toISOString().slice(0, 10);
+    const ref = doc(db, "records", date);
 
-  if (!prev || !prev.time) {
-    alert("등원 기록이 없습니다.");
-    return;
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      alert("등원 기록이 없습니다.");
+      return;
+    }
+
+    const data = snap.data() as any;
+    const prev = data[studentId];
+
+    if (!prev || !prev.time) {
+      alert("등원 기록이 없습니다.");
+      return;
+    }
+
+    if (prev.outTime) {
+      alert("이미 하원 처리된 학생입니다.");
+      return;
+    }
+
+    await setDoc(ref, {
+      [`${studentId}.outTime`]: inputTime,
+    }, { merge: true });
+
   }
-
-  if (prev.outTime) {
-    alert("이미 하원 처리된 학생입니다.");
-    return;
-  }
-
-  await setDoc(ref, {
-  [`${studentId}.outTime`]: inputTime,
-}, { merge: true });
-
-}
 
   async function saveStudentToFS(groupId: string, s: any) {
     try {
@@ -624,100 +626,100 @@ async function handleCheckOut(studentId: string, inputTime: string) {
       );
 
       await setDoc(
-  doc(db, "students", s.id),
-  {
-    id: s.id,
-    name: s.name || "",
-    grade: s.grade || "",
-    school: s.school || "",
-    studentPhone: s.studentPhone || "",
-    parentPhone: s.parentPhone || "",
-    entryDate: s.entryDate ?? null,   // ⭐ 여기 추가
-    groupId: groupId || "default",
-    removed: false,
-    createdAt: serverTimestamp(),
-  },
-  { merge: true }
-);
+        doc(db, "students", s.id),
+        {
+          id: s.id,
+          name: s.name || "",
+          grade: s.grade || "",
+          school: s.school || "",
+          studentPhone: s.studentPhone || "",
+          parentPhone: s.parentPhone || "",
+          entryDate: s.entryDate ?? null,   // ⭐ 여기 추가
+          groupId: groupId || "default",
+          removed: false,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
     } catch (e) {
 
     }
   }
-const dropdownRef = useRef<HTMLDivElement | null>(null);
-useEffect(() => {
-  const handleClickOutside = (e: MouseEvent) => {
-    if (
-      dropdownRef.current &&
-      !dropdownRef.current.contains(e.target as Node)
-    ) {
-      setStatusPickerFor(null);
-    }
-  };
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setStatusPickerFor(null);
+      }
+    };
 
-  document.addEventListener("mousedown", handleClickOutside);
-  return () => {
-    document.removeEventListener("mousedown", handleClickOutside);
-  };
-}, []);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
   const timeBox: React.CSSProperties = {
-  width: 70,
-  textAlign: "center",
-  fontSize: 14,
-  padding: "4px 6px",
-  border: "1px solid #d1d5db",      // 연회색 테두리
-  borderRadius: 8,                   // 둥근 모서리
-  background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.05)", // 아주 은은한 그림자
-  boxSizing: "border-box",
-};
+    width: 70,
+    textAlign: "center",
+    fontSize: 14,
+    padding: "4px 6px",
+    border: "1px solid #d1d5db",      // 연회색 테두리
+    borderRadius: 8,                   // 둥근 모서리
+    background: "#ffffff",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.05)", // 아주 은은한 그림자
+    boxSizing: "border-box",
+  };
 
   // DayCell 기본 구조 정의
-const defaultDayCell: DayCell = {
-  status: "P",
-  time: undefined,
-  outTime: undefined,
-  academyIn: undefined,
-  academyOut: undefined,
+  const defaultDayCell: DayCell = {
+    status: "P",
+    time: undefined,
+    outTime: undefined,
+    academyIn: undefined,
+    academyOut: undefined,
 
 
-  // 🔥 기본 메모류
-  comment: "",
-  studyNote: "",
-  memo: "",
+    // 🔥 기본 메모류
+    comment: "",
+    studyNote: "",
+    memo: "",
 
-  // 🔥 기본 시간/패널티 값
-  restroomCount: 0,
-  restroomMin: 0,
-  mealMin: 0,
-  commuteMin: 0,   // ← outingMin은 없음! commuteMin이 맞음
-  shortBreakCount: 0,
-  shortBreakMin: 0,
+    // 🔥 기본 시간/패널티 값
+    restroomCount: 0,
+    restroomMin: 0,
+    mealMin: 0,
+    commuteMin: 0,   // ← outingMin은 없음! commuteMin이 맞음
+    shortBreakCount: 0,
+    shortBreakMin: 0,
 
-  // 🔥 과제/수행
-  tasks: [],
-  hwDone: false,
+    // 🔥 과제/수행
+    tasks: [],
+    hwDone: false,
 
-  // 🔥 패널티
-  sleepPenaltyCount: 0,
-  latePenaltyCount: 0,
-  latepenaltyCount: 0, // legacy
+    // 🔥 패널티
+    sleepPenaltyCount: 0,
+    latePenaltyCount: 0,
+    latepenaltyCount: 0, // legacy
 
-  // 스케줄
-  scheduleAppliedDate: "",
-};
-const [allStudents, setAllStudents] = useState<any[]>([]);
-useEffect(() => {
-  const unsub = onSnapshot(collection(db, "students"), snap => {
-    const list = snap.docs.map(d => ({
-      id: d.id,
-      ...d.data()
-    }));
-    setAllStudents(list);
-  });
+    // 스케줄
+    scheduleAppliedDate: "",
+  };
+  const [allStudents, setAllStudents] = useState<any[]>([]);
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "students"), snap => {
+      const list = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setAllStudents(list);
+    });
 
-  return unsub;
-}, []);
+    return unsub;
+  }, []);
   // 새 과제 생성(아이디가 이미 있으면 upsert로 동작)
   async function upsertAssignmentFS(a: AssignmentFS) {
     const payload = sanitize({ ...a, createdAt: a.createdAt ?? serverTimestamp(), updatedAt: serverTimestamp() });
@@ -749,41 +751,24 @@ useEffect(() => {
   const sanitize = (obj: any) =>
     Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== undefined && v !== ""));
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
 
-    const KEY = "access_until_v2"; // 저장키(12시간 유지)
-    const until = Number(localStorage.getItem(KEY) || 0);
-    if (Number.isFinite(until) && until > Date.now()) return; // 유효기간 남으면 통과
-
-    const pass = window.prompt("🔒 비밀번호를 입력하세요:") ?? ""; // null 방지
-    if (pass.trim() === "77555") {
-      const EXPIRE_MS = 12 * 60 * 60 * 1000;
-      localStorage.setItem(KEY, String(Date.now() + EXPIRE_MS));
-      return; // 통과
-    }
-
-    // ❌ 틀리거나 빈 입력이면: 리다이렉트하지 말고 경고만
-    window.alert("비밀번호가 올바르지 않습니다. 새로고침 후 다시 시도하세요.");
-    // 원하면 여기서 아무 것도 안 하고, 사용자가 새로고침해서 다시 시도하게 둡니다.
-  }, []);
 
 
 
   const [store, setStore] = useState<StoreShape>(() => loadStore());
-  
+
   // ✅ 스토어 기본 그룹 아이디 보장 (모든 기기 통일)
   useEffect(() => {
-  if (!store.currentGroupId || store.currentGroupId !== "default") {
-    setStore((prev) => ({
-      ...prev,
-      currentGroupId: "default",
-      groups: [
-        { id: "default", name: "우리반", students: [] }
-      ],
-    }));
-  }
-}, []);
+    if (!store.currentGroupId || store.currentGroupId !== "default") {
+      setStore((prev) => ({
+        ...prev,
+        currentGroupId: "default",
+        groups: [
+          { id: "default", name: "우리반", students: [] }
+        ],
+      }));
+    }
+  }, []);
 
 
   // ✅ Firestore 실시간 학생 반영 (완전 안정 버전)
@@ -823,9 +808,9 @@ useEffect(() => {
           // ✅ 그룹별 학생 매칭
           const groups = baseGroups.map((g) => ({
             ...g,
-           students: list.filter(
-  (s) => (s.groupId || "default") === g.id
-),
+            students: list.filter(
+              (s) => (s.groupId || "default") === g.id
+            ),
           }));
 
           const currentGroupId = prev.currentGroupId ?? groups[0].id;
@@ -848,19 +833,19 @@ useEffect(() => {
 
   // 학생 추가 함수 (공유용)
   const addStudent = async () => {
-   const student: Student = {
-  id: uid(),
-  name: (newStu.name || "").trim(),
-  grade: (newStu.grade || "").trim(),
-  school: (newStu.school || "").trim(),
-  studentPhone: (newStu.studentPhone || "").trim(),
-  parentPhone: (newStu.parentPhone || "").trim(),
-  groupId: store.currentGroupId || "default",
-  removed: false,
+    const student: Student = {
+      id: uid(),
+      name: (newStu.name || "").trim(),
+      grade: (newStu.grade || "").trim(),
+      school: (newStu.school || "").trim(),
+      studentPhone: (newStu.studentPhone || "").trim(),
+      parentPhone: (newStu.parentPhone || "").trim(),
+      groupId: store.currentGroupId || "default",
+      removed: false,
 
-  hall: (newStu as any).hall || "",                 // ✅ 추가
-  seatNo: (newStu as any).seatNo ?? null,           // ✅ 추가
-};
+      hall: (newStu as any).hall || "",                 // ✅ 추가
+      seatNo: (newStu as any).seatNo ?? null,           // ✅ 추가
+    };
 
     try {
       const groupId = store.currentGroupId || "default"; // ✅ 미리 변수 저장
@@ -871,16 +856,16 @@ useEffect(() => {
       }));
 
       await setDoc(
-  doc(db, "students", student.id),
-  {
-    ...student,
-    seatNo: student.seatNo ?? null,
-    entryDate: student.entryDate ?? null,   // ⭐ 여기 추가
-    groupId: store.currentGroupId || "default",
-    createdAt: serverTimestamp(),
-  },
-  { merge: true }
-);
+        doc(db, "students", student.id),
+        {
+          ...student,
+          seatNo: student.seatNo ?? null,
+          entryDate: student.entryDate ?? null,   // ⭐ 여기 추가
+          groupId: store.currentGroupId || "default",
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
       alert(`${student.name} 학생이 등록되었습니다.`);
 
       // 3️⃣ 입력칸 초기화
@@ -910,9 +895,9 @@ useEffect(() => {
       const d0 = { ...(records[ds] || {}) };
 
       let cell: DayCell = {
-  ...(d0[sid] ?? {}),
-  status: d0[sid]?.status ?? "P",
-};
+        ...(d0[sid] ?? {}),
+        status: d0[sid]?.status ?? "P",
+      };
 
       // 현재 그룹에서 학생 찾기
       const groupId = prev.currentGroupId ?? prev.groups[0]?.id;
@@ -1071,94 +1056,94 @@ useEffect(() => {
   }, [currentGroup?.id, today]);
 
 
-// 🟦 출결(records) 실시간 구독
-useEffect(() => {
-  if (!date) return;
+  // 🟦 출결(records) 실시간 구독
+  useEffect(() => {
+    if (!date) return;
 
-  const ref = doc(db, "records", date);
+    const ref = doc(db, "records", date);
 
-  const unsub = onSnapshot(ref, (snap) => {
-    const data = snap.data() || {};
+    const unsub = onSnapshot(ref, (snap) => {
+      const data = snap.data() || {};
 
-    setStore((prev) => ({
-      ...prev,
-      records: {
-        ...prev.records,
-        [date]: data,
-      },
-    }));
+      setStore((prev) => ({
+        ...prev,
+        records: {
+          ...prev.records,
+          [date]: data,
+        },
+      }));
 
-    // 🔥🔥🔥 중요: 출결 바뀌면 스케줄 재적용 (순공, 박스 즉시 갱신됨)
-    Object.keys(data).forEach((sid) => {
-      applyPersonalScheduleForDate(sid, date);
+      // 🔥🔥🔥 중요: 출결 바뀌면 스케줄 재적용 (순공, 박스 즉시 갱신됨)
+      Object.keys(data).forEach((sid) => {
+        applyPersonalScheduleForDate(sid, date);
+      });
     });
-  });
 
-  return () => unsub();
-}, [date, store.groups]);
+    return () => unsub();
+  }, [date, store.groups]);
 
 
 
   // ✅ 현재 그룹 학생 목록
-const students = useMemo(() => {
-  const list = currentGroup?.students ? currentGroup.students : [];
+  const students = useMemo(() => {
+    const list = currentGroup?.students ? currentGroup.students : [];
 
-  return list
-    .filter((s) => showRemoved ? true : !s.removed)
-    .sort((a, b) => {
-      const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
-      const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
-      if (g1 !== g2) return g2 - g1;
-      return (a.name || "").localeCompare(b.name || "", "ko");
-    });
-}, [currentGroup, showRemoved]);
+    return list
+      .filter((s) => showRemoved ? true : !s.removed)
+      .sort((a, b) => {
+        const g1 = parseInt(a.grade?.replace(/[^0-9]/g, "") || "0");
+        const g2 = parseInt(b.grade?.replace(/[^0-9]/g, "") || "0");
+        if (g1 !== g2) return g2 - g1;
+        return (a.name || "").localeCompare(b.name || "", "ko");
+      });
+  }, [currentGroup, showRemoved]);
   // =====================================
   // 🔥 Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조)
-// ✅ 1) (추가) students/currentGroup 상태 찍는 용도 — 독립 useEffect
-useEffect(() => {
-}, [students, currentGroup, showRemoved]);
+  // ✅ 1) (추가) students/currentGroup 상태 찍는 용도 — 독립 useEffect
+  useEffect(() => {
+  }, [students, currentGroup, showRemoved]);
 
-// ✅ 2) Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조) — 기존 useEffect 유지
-useEffect(() => {
-  if (!students.length) return;
+  // ✅ 2) Firestore → 오늘 등/하원 시간 불러오기 (records/날짜/학생ID 구조) — 기존 useEffect 유지
+  useEffect(() => {
+    if (!students.length) return;
 
-  const loadRecords = async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const ref = doc(db, "records", today);
-    const snap = await getDoc(ref);
+    const loadRecords = async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const ref = doc(db, "records", today);
+      const snap = await getDoc(ref);
 
-    if (!snap.exists()) {
-      // 오늘 등원한 학생이 아무도 없으면 전체를 빈 값으로 세팅
-      const emptyInMap: Record<string, string | null> = {};
-      const emptyOutMap: Record<string, string | null> = {};
+      if (!snap.exists()) {
+        // 오늘 등원한 학생이 아무도 없으면 전체를 빈 값으로 세팅
+        const emptyInMap: Record<string, string | null> = {};
+        const emptyOutMap: Record<string, string | null> = {};
+
+        students.forEach((st: any) => {
+          emptyInMap[st.id] = null;
+          emptyOutMap[st.id] = null;
+        });
+
+        setTodayIn(emptyInMap);
+        setTodayOut(emptyOutMap);
+        return;
+      }
+
+      const data = snap.data() as any;
+
+      const inMap: Record<string, string | null> = {};
+      const outMap: Record<string, string | null> = {};
 
       students.forEach((st: any) => {
-        emptyInMap[st.id] = null;
-        emptyOutMap[st.id] = null;
+        const rec = data?.[st.id];
+        inMap[st.id] = rec?.inTime || null;
+        outMap[st.id] = rec?.outTime || null;
       });
 
-      setTodayIn(emptyInMap);
-      setTodayOut(emptyOutMap);
-      return;
-    }
+      setTodayIn(inMap);
+      setTodayOut(outMap);
+    };
 
-    const data = snap.data() as any;
-
-    const inMap: Record<string, string | null> = {};
-    const outMap: Record<string, string | null> = {};
-
-    students.forEach((st: any) => {
-      const rec = data?.[st.id];
-      inMap[st.id] = rec?.inTime || null;
-      outMap[st.id] = rec?.outTime || null;
-    });
-
-    setTodayIn(inMap);
-    setTodayOut(outMap);
-  };
-
-  loadRecords();
-}, [students]);
+    loadRecords();
+  }, [students]);
 
 
 
@@ -1204,316 +1189,316 @@ useEffect(() => {
 
 
   /** ===== 출결/시간 ===== */
-const setStatus = (sid: string, st: StatusKey) => {
-  updateDayCell(date, sid, (cell0) => {
-    const next: DayCell = { ...cell0, status: st };
+  const setStatus = (sid: string, st: StatusKey) => {
+    updateDayCell(date, sid, (cell0) => {
+      const next: DayCell = { ...cell0, status: st };
 
-    if ((st === "P" || st === "L") && !next.time) {
-      next.time = nowHM();
-    }
-    if (st === "A") {
-      next.time = undefined;
-      next.outTime = undefined;
-    }
+      if ((st === "P" || st === "L") && !next.time) {
+        next.time = nowHM();
+      }
+      if (st === "A") {
+        next.time = undefined;
+        next.outTime = undefined;
+      }
 
-    return next;
-  });
-};
+      return next;
+    });
+  };
 
 
 
- const setOutTime = (sid: string, out: string) => {
-  updateDayCell(date, sid, (base) => {
-    return { ...base, outTime: out || undefined };
-  });
-};
-const setOutTimeNow = (sid: string) => setOutTime(sid, nowHM());
+  const setOutTime = (sid: string, out: string) => {
+    updateDayCell(date, sid, (base) => {
+      return { ...base, outTime: out || undefined };
+    });
+  };
+  const setOutTimeNow = (sid: string) => setOutTime(sid, nowHM());
 
 
   /** ===== 과목 토글/시간 ===== */
   const toggleSubject = (sid: string, sub: AcademyType) => {
-  updateDayCell(date, sid, (base) => {
-    const enabled = new Set(base.enabledSubjects || []);
-    if (enabled.has(sub)) enabled.delete(sub);
-    else enabled.add(sub);
+    updateDayCell(date, sid, (base) => {
+      const enabled = new Set(base.enabledSubjects || []);
+      if (enabled.has(sub)) enabled.delete(sub);
+      else enabled.add(sub);
 
-    return { ...base, enabledSubjects: Array.from(enabled) };
-  });
-};
+      return { ...base, enabledSubjects: Array.from(enabled) };
+    });
+  };
 
- const setAcademyTime = (sid: string, subject: AcademyType, which: "from" | "to", v: string) => {
-  updateDayCell(date, sid, (base) => {
-    const abs: Partial<Record<AcademyType, SubjectEntry>> = {
-      ...(base.academyBySubject || {})
-    };
+  const setAcademyTime = (sid: string, subject: AcademyType, which: "from" | "to", v: string) => {
+    updateDayCell(date, sid, (base) => {
+      const abs: Partial<Record<AcademyType, SubjectEntry>> = {
+        ...(base.academyBySubject || {})
+      };
 
-    const cur: SubjectEntry = { ...(abs[subject] || {}) };
-    cur[which] = v || undefined;
+      const cur: SubjectEntry = { ...(abs[subject] || {}) };
+      cur[which] = v || undefined;
 
-    abs[subject] = cur;
+      abs[subject] = cur;
 
-    return { ...base, academyBySubject: abs };
-  });
-};
+      return { ...base, academyBySubject: abs };
+    });
+  };
 
 
 
   // ⛏️ 과목 시간 X 버튼: 시간이 있으면 초기화, 이미 비었으면 토글 해제
   const smartClearOrDisable = (sid: string, subject: AcademyType) => {
-  updateDayCell(date, sid, (base) => {
-    const abs: Partial<Record<AcademyType, SubjectEntry>> = {
-      ...(base.academyBySubject || {})
-    };
-
-    const cur: SubjectEntry = abs[subject] || {};
-    const hasTime = !!(cur.from || cur.to);
-
-    if (hasTime) {
-      abs[subject] = { ...cur, from: undefined, to: undefined };
-      return { ...base, academyBySubject: abs };
-    } else {
-      const enabled = new Set(base.enabledSubjects || []);
-      enabled.delete(subject);
-      abs[subject] = { ...cur, from: undefined, to: undefined };
-      return {
-        ...base,
-        enabledSubjects: Array.from(enabled),
-        academyBySubject: abs,
+    updateDayCell(date, sid, (base) => {
+      const abs: Partial<Record<AcademyType, SubjectEntry>> = {
+        ...(base.academyBySubject || {})
       };
-    }
-  });
-};
+
+      const cur: SubjectEntry = abs[subject] || {};
+      const hasTime = !!(cur.from || cur.to);
+
+      if (hasTime) {
+        abs[subject] = { ...cur, from: undefined, to: undefined };
+        return { ...base, academyBySubject: abs };
+      } else {
+        const enabled = new Set(base.enabledSubjects || []);
+        enabled.delete(subject);
+        abs[subject] = { ...cur, from: undefined, to: undefined };
+        return {
+          ...base,
+          enabledSubjects: Array.from(enabled),
+          academyBySubject: abs,
+        };
+      }
+    });
+  };
 
 
   const carryOverIncompleteTasks = (sid: string, fromDate: string) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const from = { ...(records[fromDate] || {}) };
-    const cellFrom: DayCell = { ...(from[sid] ?? { status: "P" }) };
+    setStore(prev => {
+      const records = { ...prev.records };
+      const from = { ...(records[fromDate] || {}) };
+      const cellFrom: DayCell = { ...(from[sid] ?? { status: "P" }) };
 
-    const remain = (cellFrom.tasks || []).filter(t => !t.done);
-    if (remain.length === 0) return prev;
+      const remain = (cellFrom.tasks || []).filter(t => !t.done);
+      if (remain.length === 0) return prev;
 
-    const toDate = nextDateStr(fromDate);
-    const toDay = { ...(records[toDate] || {}) };
-    const cellTo: DayCell = { ...(toDay[sid] ?? { status: "P" }) };
+      const toDate = nextDateStr(fromDate);
+      const toDay = { ...(records[toDate] || {}) };
+      const cellTo: DayCell = { ...(toDay[sid] ?? { status: "P" }) };
 
-    const existed = cellTo.tasks || [];
-    const next: DayCell = {
-      ...cellTo,
-      tasks: [...existed, ...remain.map(t => ({ ...t, done: false }))],
-    };
+      const existed = cellTo.tasks || [];
+      const next: DayCell = {
+        ...cellTo,
+        tasks: [...existed, ...remain.map(t => ({ ...t, done: false }))],
+      };
 
-    toDay[sid] = next;
-    records[toDate] = toDay;
+      toDay[sid] = next;
+      records[toDate] = toDay;
 
-    saveRecordToFS(toDate, sid, next);
+      saveRecordToFS(toDate, sid, next);
 
-    return { ...prev, records };
-  });
-  alert("⏭️ 미완료 과제를 내일로 이월했습니다.");
-};
+      return { ...prev, records };
+    });
+    alert("⏭️ 미완료 과제를 내일로 이월했습니다.");
+  };
 
   const addTask = (sid: string, ds: string, title: string) => {
-  const t = title.trim();
-  if (!t) return;
-  setStore(prev => {
-    const records = { ...prev.records };
-    const dayRec = { ...(records[ds] || {}) };
-    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
-    const tasks = [...(cell.tasks || []), { id: uid(), title: t }];
-    const next: DayCell = { ...cell, tasks };
+    const t = title.trim();
+    if (!t) return;
+    setStore(prev => {
+      const records = { ...prev.records };
+      const dayRec = { ...(records[ds] || {}) };
+      const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+      const tasks = [...(cell.tasks || []), { id: uid(), title: t }];
+      const next: DayCell = { ...cell, tasks };
 
-    dayRec[sid] = next;
-    records[ds] = dayRec;
+      dayRec[sid] = next;
+      records[ds] = dayRec;
 
-    saveRecordToFS(ds, sid, next);
+      saveRecordToFS(ds, sid, next);
 
-    return { ...prev, records };
-  });
-};
+      return { ...prev, records };
+    });
+  };
 
 
- const toggleTask = (sid: string, ds: string, taskId: string) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const dayRec = { ...(records[ds] || {}) };
-    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+  const toggleTask = (sid: string, ds: string, taskId: string) => {
+    setStore(prev => {
+      const records = { ...prev.records };
+      const dayRec = { ...(records[ds] || {}) };
+      const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
 
-    const tasks = (cell.tasks || []).map(t =>
-      t.id === taskId ? { ...t, done: !t.done } : t
-    );
+      const tasks = (cell.tasks || []).map(t =>
+        t.id === taskId ? { ...t, done: !t.done } : t
+      );
 
-    const next: DayCell = { ...cell, tasks };
-    dayRec[sid] = next;
-    records[ds] = dayRec;
+      const next: DayCell = { ...cell, tasks };
+      dayRec[sid] = next;
+      records[ds] = dayRec;
 
-    saveRecordToFS(ds, sid, next);
+      saveRecordToFS(ds, sid, next);
 
-    return { ...prev, records };
-  });
-};
+      return { ...prev, records };
+    });
+  };
 
- const removeTask = (sid: string, ds: string, taskId: string) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const dayRec = { ...(records[ds] || {}) };
-    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+  const removeTask = (sid: string, ds: string, taskId: string) => {
+    setStore(prev => {
+      const records = { ...prev.records };
+      const dayRec = { ...(records[ds] || {}) };
+      const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
 
-    const tasks = (cell.tasks || []).filter(t => t.id !== taskId);
-    const next: DayCell = { ...cell, tasks };
+      const tasks = (cell.tasks || []).filter(t => t.id !== taskId);
+      const next: DayCell = { ...cell, tasks };
 
-    dayRec[sid] = next;
-    records[ds] = dayRec;
+      dayRec[sid] = next;
+      records[ds] = dayRec;
 
-    saveRecordToFS(ds, sid, next);
+      saveRecordToFS(ds, sid, next);
 
-    return { ...prev, records };
-  });
-};
+      return { ...prev, records };
+    });
+  };
 
- const setTaskNote = (sid: string, ds: string, taskId: string, note: string) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const dayRec = { ...(records[ds] || {}) };
-    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
+  const setTaskNote = (sid: string, ds: string, taskId: string, note: string) => {
+    setStore(prev => {
+      const records = { ...prev.records };
+      const dayRec = { ...(records[ds] || {}) };
+      const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" }) };
 
-    const tasks = (cell.tasks || []).map(t =>
-      t.id === taskId ? { ...t, note: note || undefined } : t
-    );
+      const tasks = (cell.tasks || []).map(t =>
+        t.id === taskId ? { ...t, note: note || undefined } : t
+      );
 
-    const next: DayCell = { ...cell, tasks };
+      const next: DayCell = { ...cell, tasks };
 
-    dayRec[sid] = next;
-    records[ds] = dayRec;
+      dayRec[sid] = next;
+      records[ds] = dayRec;
 
-    saveRecordToFS(ds, sid, next);
+      saveRecordToFS(ds, sid, next);
 
-    return { ...prev, records };
-  });
-};
+      return { ...prev, records };
+    });
+  };
 
   const addTaskByFilter = (title: string, grade: string, school: string) => {
     const t = title.trim();
     if (!t) return;
 
     setStore(prev => {
-  const records = { ...prev.records };
-  const dayRec = { ...(records[date] || {}) };
+      const records = { ...prev.records };
+      const dayRec = { ...(records[date] || {}) };
 
-  const targetStudents = students.filter(st => {
-    let match = true;
-    if (grade && st.grade !== grade) match = false;
-    if (school && st.school !== school) match = false;
-    return match;
-  });
+      const targetStudents = students.filter(st => {
+        let match = true;
+        if (grade && st.grade !== grade) match = false;
+        if (school && st.school !== school) match = false;
+        return match;
+      });
 
-  if (targetStudents.length === 0) {
-    setTimeout(() => alert(`과제를 추가할 대상 학생이 없습니다. (조건: ${grade || '전체 학년'}, ${school || '전체 학교'})`), 0);
-    return prev;
-  }
+      if (targetStudents.length === 0) {
+        setTimeout(() => alert(`과제를 추가할 대상 학생이 없습니다. (조건: ${grade || '전체 학년'}, ${school || '전체 학교'})`), 0);
+        return prev;
+      }
 
-  targetStudents.forEach(st => {
-    const cell: DayCell = { ...(dayRec[st.id] ?? { status: "P" }) };
+      targetStudents.forEach(st => {
+        const cell: DayCell = { ...(dayRec[st.id] ?? { status: "P" }) };
 
-    const existingTitles = new Set((cell.tasks || []).map(task => task.title.trim().toLowerCase()));
-    if (!existingTitles.has(t.toLowerCase())) {
-      const tasks = [...(cell.tasks || []), { id: uid(), title: t }];
-      const next: DayCell = { ...cell, tasks };
+        const existingTitles = new Set((cell.tasks || []).map(task => task.title.trim().toLowerCase()));
+        if (!existingTitles.has(t.toLowerCase())) {
+          const tasks = [...(cell.tasks || []), { id: uid(), title: t }];
+          const next: DayCell = { ...cell, tasks };
 
-      dayRec[st.id] = next;
+          dayRec[st.id] = next;
 
-      // 🔥 Firestore 저장
-      saveRecordToFS(date, st.id, next);
-    }
-  });
+          // 🔥 Firestore 저장
+          saveRecordToFS(date, st.id, next);
+        }
+      });
 
-  records[date] = dayRec;
+      records[date] = dayRec;
 
-  setTimeout(() => alert(`✅ ${title} 과제를 ${grade || '전체 학년'} / ${school || '전체 학교'} ${targetStudents.length}명에게 추가했습니다.`), 0);
+      setTimeout(() => alert(`✅ ${title} 과제를 ${grade || '전체 학년'} / ${school || '전체 학교'} ${targetStudents.length}명에게 추가했습니다.`), 0);
 
-  return { ...prev, records };
-});
+      return { ...prev, records };
+    });
     setBulkTitle(""); // 과제 추가 후 입력창 초기화
   };
   // ----------------------------------------
 
 
   /** ===== 화장실/식사 (한 칸에 묶기) ===== */
- const setRestroomCount = (sid: string, count: number) => {
-  const c = Math.max(0, Math.min(5, Math.floor(count)));
-  updateDayCell(date, sid, (cell) => {
-    const next: DayCell = {
-      ...cell,
-      restroomCount: c,
-      restroomMin: c * 7,
-    };
-    return next;
-  });
-};
+  const setRestroomCount = (sid: string, count: number) => {
+    const c = Math.max(0, Math.min(5, Math.floor(count)));
+    updateDayCell(date, sid, (cell) => {
+      const next: DayCell = {
+        ...cell,
+        restroomCount: c,
+        restroomMin: c * 7,
+      };
+      return next;
+    });
+  };
   // 누를수록 0→1→…→5에서 멈추는 증가 버튼용
   const incRestroom = (sid: string) => {
-  updateDayCell(date, sid, (cell) => {
-    const curr = cell.restroomCount || 0;
-    const nextCount = Math.min(5, curr + 1);
-    return {
-      ...cell,
-      restroomCount: nextCount,
-      restroomMin: nextCount * 7,
-    };
-  });
-};
+    updateDayCell(date, sid, (cell) => {
+      const curr = cell.restroomCount || 0;
+      const nextCount = Math.min(5, curr + 1);
+      return {
+        ...cell,
+        restroomCount: nextCount,
+        restroomMin: nextCount * 7,
+      };
+    });
+  };
   /** ===== 수면 패널티 ===== */
- const addSleepPenalty = (sid: string, delta = 1) => {
-  updateDayCell(date, sid, (cell) => {
-    const curr = cell.sleepPenaltyCount || 0;
-    return {
+  const addSleepPenalty = (sid: string, delta = 1) => {
+    updateDayCell(date, sid, (cell) => {
+      const curr = cell.sleepPenaltyCount || 0;
+      return {
+        ...cell,
+        sleepPenaltyCount: curr + Math.max(1, delta),
+      };
+    });
+  };
+
+
+  const addMealMinutes = (sid: string, minutes: number) => {
+    const mm = Math.max(0, Math.floor(minutes) || 0);
+    if (!mm) return;
+
+    updateDayCell(date, sid, (cell) => {
+      const curr = cell.mealMin || 0;
+      return {
+        ...cell,
+        mealMin: curr + mm,
+      };
+    });
+  };
+
+  const subtractMealMinutes = (sid: string, minutes: number) => {
+    const mm = Math.max(0, Math.floor(minutes) || 0);
+    if (!mm) return;
+
+    updateDayCell(date, sid, (cell) => {
+      const curr = cell.mealMin || 0;
+      return {
+        ...cell,
+        mealMin: Math.max(0, curr - mm),
+      };
+    });
+  };
+
+  const resetMeal = (sid: string) => {
+    updateDayCell(date, sid, (cell) => ({
       ...cell,
-      sleepPenaltyCount: curr + Math.max(1, delta),
-    };
-  });
-};
-
-
-const addMealMinutes = (sid: string, minutes: number) => {
-  const mm = Math.max(0, Math.floor(minutes) || 0);
-  if (!mm) return;
-
-  updateDayCell(date, sid, (cell) => {
-    const curr = cell.mealMin || 0;
-    return {
-      ...cell,
-      mealMin: curr + mm,
-    };
-  });
-};
-
-const subtractMealMinutes = (sid: string, minutes: number) => {
-  const mm = Math.max(0, Math.floor(minutes) || 0);
-  if (!mm) return;
-
-  updateDayCell(date, sid, (cell) => {
-    const curr = cell.mealMin || 0;
-    return {
-      ...cell,
-      mealMin: Math.max(0, curr - mm),
-    };
-  });
-};
-
-const resetMeal = (sid: string) => {
-  updateDayCell(date, sid, (cell) => ({
-    ...cell,
-    mealMin: 0,
-  }));
-};
+      mealMin: 0,
+    }));
+  };
 
   const setMemo = (sid: string, v: string) => {
-  updateDayCell(date, sid, (cell) => ({
-    ...cell,
-    memo: v || undefined,
-  }));
-};
+    updateDayCell(date, sid, (cell) => ({
+      ...cell,
+      memo: v || undefined,
+    }));
+  };
 
   /** ===== 일일 리포트 (My Daily용) ===== */
   const printDailyReport = (sid: string) => {
@@ -1558,101 +1543,101 @@ const resetMeal = (sid: string) => {
 
 
   /** ===== 집계 유틸 ===== */
- const subjectCommuteMin = (c?: DayCell) => {
-  if (!c) return 0;
+  const subjectCommuteMin = (c?: DayCell) => {
+    if (!c) return 0;
 
-  // 새로운 저장 구조 기준
-  const subjects =
-    (c as any).personalSchedule?.current ||
-    c.academyBySubject ||
-    {};
+    // 새로운 저장 구조 기준
+    const subjects =
+      (c as any).personalSchedule?.current ||
+      c.academyBySubject ||
+      {};
 
-  const studySubjects = Object.entries(subjects).filter(
-    ([sub]) => sub !== "학교" // 학교 시간 제외
-  );
+    const studySubjects = Object.entries(subjects).filter(
+      ([sub]) => sub !== "학교" // 학교 시간 제외
+    );
 
-  let total = 0;
+    let total = 0;
 
-  studySubjects.forEach(([_, data]: any) => {
-    const slots = data?.slots || [];
-    slots.forEach((s: any) => {
-      if (!s.from || !s.to) return;
-      const [fh, fm] = s.from.split(":").map(Number);
-      const [th, tm] = s.to.split(":").map(Number);
-      total += th * 60 + tm - (fh * 60 + fm);
+    studySubjects.forEach(([_, data]: any) => {
+      const slots = data?.slots || [];
+      slots.forEach((s: any) => {
+        if (!s.from || !s.to) return;
+        const [fh, fm] = s.from.split(":").map(Number);
+        const [th, tm] = s.to.split(":").map(Number);
+        total += th * 60 + tm - (fh * 60 + fm);
+      });
     });
-  });
 
-  return total;
-};
-const commuteTotalMin = (c?: DayCell) => {
-  if (!c) return 0;
+    return total;
+  };
+  const commuteTotalMin = (c?: DayCell) => {
+    if (!c) return 0;
 
-  const subjects =
-    (c as any).personalSchedule?.current ||
-    c.academyBySubject ||
-    {};
+    const subjects =
+      (c as any).personalSchedule?.current ||
+      c.academyBySubject ||
+      {};
 
-  const filtered = Object.entries(subjects).filter(
-    ([sub]) => sub !== "학교"
-  );
+    const filtered = Object.entries(subjects).filter(
+      ([sub]) => sub !== "학교"
+    );
 
-  let total = 0;
+    let total = 0;
 
-  filtered.forEach(([_, data]: any) => {
-    const slots = data?.slots || [];
-    slots.forEach((s: any) => {
-      if (!s.from || !s.to) return;
-      const [fh, fm] = s.from.split(":").map(Number);
-      const [th, tm] = s.to.split(":").map(Number);
-      total += th * 60 + tm - (fh * 60 + fm);
+    filtered.forEach(([_, data]: any) => {
+      const slots = data?.slots || [];
+      slots.forEach((s: any) => {
+        if (!s.from || !s.to) return;
+        const [fh, fm] = s.from.split(":").map(Number);
+        const [th, tm] = s.to.split(":").map(Number);
+        total += th * 60 + tm - (fh * 60 + fm);
+      });
     });
-  });
 
-  // legacy 학원 from~to
-  const legacy = spanMin(c.academyFrom, c.academyTo);
+    // legacy 학원 from~to
+    const legacy = spanMin(c.academyFrom, c.academyTo);
 
-  // 🔥 이동시간(commuteMin) + 화장실(restroomMin) + 식사(mealMin)
-  return total + legacy + (c.commuteMin || 0) + (c.restroomMin || 0) + (c.mealMin || 0);
-};
+    // 🔥 이동시간(commuteMin) + 화장실(restroomMin) + 식사(mealMin)
+    return total + legacy + (c.commuteMin || 0) + (c.restroomMin || 0) + (c.mealMin || 0);
+  };
 
   /** 순공(하원 후 기준) 계산: 등원~하원 사이 - 외출시간 */
   /** 순공(하원 후 기준) 계산: 등원 이후 공강 시간만 */
-const netStudyMin = (c?: DayCell) => {
-  if (!c?.time) return 0; // 등원 전이면 0
+  const netStudyMin = (c?: DayCell) => {
+    if (!c?.time) return 0; // 등원 전이면 0
 
-  // 등원~하원
-  const start = hmToMin(c.time);
-  const end = c.outTime ? hmToMin(c.outTime) : hmToMin(nowHM());
-  const gross = Math.max(0, end - start);
+    // 등원~하원
+    const start = hmToMin(c.time);
+    const end = c.outTime ? hmToMin(c.outTime) : hmToMin(nowHM());
+    const gross = Math.max(0, end - start);
 
-  // 🔥 등원 이후 학원 수업 시간
-  let academyAfterIn = 0;
+    // 🔥 등원 이후 학원 수업 시간
+    let academyAfterIn = 0;
 
-  Object.values(c.academyBySubject || {}).forEach((data: any) => {
-    (data.slots || []).forEach((s: any) => {
-      const slotStart = hmToMin(s.from);
-      const slotEnd = hmToMin(s.to);
+    Object.values(c.academyBySubject || {}).forEach((data: any) => {
+      (data.slots || []).forEach((s: any) => {
+        const slotStart = hmToMin(s.from);
+        const slotEnd = hmToMin(s.to);
 
-      // 등원 전에 끝난 수업은 제외
-      if (slotEnd <= start) return;
+        // 등원 전에 끝난 수업은 제외
+        if (slotEnd <= start) return;
 
-      // 등원 이후 겹치는 시간만
-      const overlap = Math.max(
-        0,
-        Math.min(end, slotEnd) - Math.max(start, slotStart)
-      );
+        // 등원 이후 겹치는 시간만
+        const overlap = Math.max(
+          0,
+          Math.min(end, slotEnd) - Math.max(start, slotStart)
+        );
 
-      academyAfterIn += overlap;
+        academyAfterIn += overlap;
+      });
     });
-  });
 
-  // 외출
-  const outing = commuteTotalMin(c);
+    // 외출
+    const outing = commuteTotalMin(c);
 
-  // 순공 = 전체 - (등원이후 수업 + 외출)
-  return Math.max(0, gross - academyAfterIn - outing);
-};
+    // 순공 = 전체 - (등원이후 수업 + 외출)
+    return Math.max(0, gross - academyAfterIn - outing);
+  };
 
   // 🔹 3. 현재 시각 계산
   const nowTotalMinutes = () => {
@@ -1700,107 +1685,107 @@ const netStudyMin = (c?: DayCell) => {
 
   /** 진행 중 순공(분) 계산: 하원 전이면 현재시각을 to로 보고 계산 */
   /** 진행중 순공 (하원 전이면 현재시각 기준) */
-const netStudyMinLive = (c?: DayCell) => {
-  if (!c?.time) return 0;
+  const netStudyMinLive = (c?: DayCell) => {
+    if (!c?.time) return 0;
 
-  const start = hmToMin(c.time);
-  const end = nowTotalMinutes();
-  const gross = Math.max(0, end - start);
+    const start = hmToMin(c.time);
+    const end = nowTotalMinutes();
+    const gross = Math.max(0, end - start);
 
-  let academyAfterIn = 0;
+    let academyAfterIn = 0;
 
-  Object.values(c.academyBySubject || {}).forEach((data: any) => {
-    (data.slots || []).forEach((s: any) => {
-      const slotStart = hmToMin(s.from);
-      const slotEnd = hmToMin(s.to);
+    Object.values(c.academyBySubject || {}).forEach((data: any) => {
+      (data.slots || []).forEach((s: any) => {
+        const slotStart = hmToMin(s.from);
+        const slotEnd = hmToMin(s.to);
 
-      if (slotEnd <= start) return;
+        if (slotEnd <= start) return;
 
-      const overlap = Math.max(
-        0,
-        Math.min(end, slotEnd) - Math.max(start, slotStart)
-      );
+        const overlap = Math.max(
+          0,
+          Math.min(end, slotEnd) - Math.max(start, slotStart)
+        );
 
-      academyAfterIn += overlap;
+        academyAfterIn += overlap;
+      });
     });
-  });
 
-  const outing = commuteTotalMin(c);
+    const outing = commuteTotalMin(c);
 
-  return Math.max(0, gross - academyAfterIn - outing);
-};
+    return Math.max(0, gross - academyAfterIn - outing);
+  };
 
   // ==========================
-// 🔥 Firestore 저장 함수 추가
-// ==========================
-const saveRecordToFS = async (date: string, sid: string, cell: DayCell) => {
-  try {
-    // 🔥 문서 경로: records/<date>
-    const ref = doc(db, "records", date);
+  // 🔥 Firestore 저장 함수 추가
+  // ==========================
+  const saveRecordToFS = async (date: string, sid: string, cell: DayCell) => {
+    try {
+      // 🔥 문서 경로: records/<date>
+      const ref = doc(db, "records", date);
 
-    // 🔥 undefined 제거
-    const safeCell: any = { ...cell };
-    Object.keys(safeCell).forEach((k) => {
-      if (safeCell[k] === undefined) {
-        safeCell[k] = deleteField();
-      }
+      // 🔥 undefined 제거
+      const safeCell: any = { ...cell };
+      Object.keys(safeCell).forEach((k) => {
+        if (safeCell[k] === undefined) {
+          safeCell[k] = deleteField();
+        }
+      });
+
+      // 🔥 Firestore에 저장
+      await setDoc(
+        ref,
+        {
+          [sid]: safeCell, // 날짜 문서 안에 학생 ID 필드
+        },
+        { merge: true }
+      );
+
+
+      // =====================================
+      // 🔥🔥🔥 제일 중요한 부분: 메인 화면 즉시 업데이트!
+      // =====================================
+      setTodayIn((prev) => ({
+        ...prev,
+        [sid]: safeCell.inTime || safeCell.time || null,
+      }));
+
+      setTodayOut((prev) => ({
+        ...prev,
+        [sid]: safeCell.outTime || null,
+      }));
+      // =====================================
+
+    } catch (err) {
+    }
+  };
+
+  // DayCell 공통 업데이트 + Firestore 동시 저장 헬퍼
+  const updateDayCell = (
+    ds: string,
+    sid: string,
+    updater: (base: DayCell) => DayCell
+  ) => {
+
+    setStore(prev => {
+      const records = { ...prev.records };
+      const dayRec = { ...(records[ds] || {}) };
+
+      const base: DayCell = {
+        ...defaultDayCell,
+        ...(dayRec[sid] || {})
+      };
+
+      const next = updater(base);
+
+      dayRec[sid] = next;
+      records[ds] = dayRec;
+
+      // 🔥 Firestore에도 동일하게 저장
+      saveRecordToFS(ds, sid, next);
+
+      return { ...prev, records };
     });
-
-    // 🔥 Firestore에 저장
-    await setDoc(
-      ref,
-      {
-        [sid]: safeCell, // 날짜 문서 안에 학생 ID 필드
-      },
-      { merge: true }
-    );
-
-
-    // =====================================
-    // 🔥🔥🔥 제일 중요한 부분: 메인 화면 즉시 업데이트!
-    // =====================================
-    setTodayIn((prev) => ({
-      ...prev,
-      [sid]: safeCell.inTime || safeCell.time || null,
-    }));
-
-    setTodayOut((prev) => ({
-      ...prev,
-      [sid]: safeCell.outTime || null,
-    }));
-    // =====================================
-
-  } catch (err) {
-  }
-};
-
-// DayCell 공통 업데이트 + Firestore 동시 저장 헬퍼
-const updateDayCell = (
-  ds: string,
-  sid: string,
-  updater: (base: DayCell) => DayCell
-) => {
-
-  setStore(prev => {
-    const records = { ...prev.records };
-    const dayRec = { ...(records[ds] || {}) };
-
-    const base: DayCell = {
-      ...defaultDayCell,
-      ...(dayRec[sid] || {})
-    };
-
-    const next = updater(base);
-
-    dayRec[sid] = next;
-    records[ds] = dayRec;
-
-    // 🔥 Firestore에도 동일하게 저장
-    saveRecordToFS(ds, sid, next);
-
-    return { ...prev, records };
-  });
-};
+  };
 
   // ===================== 🧩 updateStudent 함수 =====================
   // ✅ 기존 updateStudent 함수 아래쪽 교체
@@ -1879,12 +1864,12 @@ const updateDayCell = (
     }
   };
 
-const restoreStudent = async (sid: string) => {
-  try {
-    await setDoc(doc(db, "students", sid), { removed: false }, { merge: true });
-  } catch (e) {
-  }
-};
+  const restoreStudent = async (sid: string) => {
+    try {
+      await setDoc(doc(db, "students", sid), { removed: false }, { merge: true });
+    } catch (e) {
+    }
+  };
 
   const reloadStudents = async () => {
     const groupId = store.currentGroupId || "default";
@@ -1948,27 +1933,27 @@ const restoreStudent = async (sid: string) => {
   };
 
   const setAll = (st: StatusKey) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const d0 = { ...(records[date] || {}) };
+    setStore(prev => {
+      const records = { ...prev.records };
+      const d0 = { ...(records[date] || {}) };
 
-    students.forEach(s => {
-      const base: DayCell = { ...(d0[s.id] ?? { status: st }) };
-      const cell: DayCell = { ...base, status: st };
+      students.forEach(s => {
+        const base: DayCell = { ...(d0[s.id] ?? { status: st }) };
+        const cell: DayCell = { ...base, status: st };
 
-      if ((st === "P" || st === "L") && !cell.time) cell.time = nowHM();
-      if (st === "A") { cell.time = undefined; cell.outTime = undefined; }
+        if ((st === "P" || st === "L") && !cell.time) cell.time = nowHM();
+        if (st === "A") { cell.time = undefined; cell.outTime = undefined; }
 
-      d0[s.id] = cell;
+        d0[s.id] = cell;
 
-      // 🔥 각 학생별 Firestore 저장
-      saveRecordToFS(date, s.id, cell);
+        // 🔥 각 학생별 Firestore 저장
+        saveRecordToFS(date, s.id, cell);
+      });
+
+      records[date] = d0;
+      return { ...prev, records };
     });
-
-    records[date] = d0;
-    return { ...prev, records };
-  });
-};
+  };
 
 
 
@@ -2116,10 +2101,12 @@ const restoreStudent = async (sid: string) => {
   const selectedStudent = students.find(s => s.id === selectedStudentId) ?? null;
 
   return (
+    <>
+          <DevWatermark userLabel="teacher01" />
 
     <div className="app-main-container" style={{ minHeight: "100vh", background: "#f5f7fb", color: "#111", padding: 20 }}>
       {/* 전역 스타일: time 숫자 잘림 방지 */}
-     <style>{`
+      <style>{`
   /* 숫자만 보이게: 오전/오후 없애기 */
   input[type="time"]::-webkit-datetime-edit-ampm-field {
     display: none;
@@ -2152,68 +2139,68 @@ const restoreStudent = async (sid: string) => {
 
           <div>
             <img style={{ height: 40, objectFit: "contain" }} />
-           {/* 헤더 */}
-<div
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    alignItems: "center",
-    flexWrap: "wrap",
-  }}
->
-  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-    <img style={{ height: 40, objectFit: "contain" }} />
+            {/* 헤더 */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <img style={{ height: 40, objectFit: "contain" }} />
 
-    {/* ✅ 타이틀 + 슬로건 (위 스타일 적용) */}
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-      {/* 로고라인 */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span
-          style={{
-            fontSize: 35,
-            fontWeight: 900,
-            letterSpacing: 2,
-            color: "#8B1E1E",
-          }}
-        >
-          OPTIMUM
-        </span>
+                {/* ✅ 타이틀 + 슬로건 (위 스타일 적용) */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                  {/* 로고라인 */}
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    <span
+                      style={{
+                        fontSize: 35,
+                        fontWeight: 900,
+                        letterSpacing: 2,
+                        color: "#8B1E1E",
+                      }}
+                    >
+                      OPTIMUM
+                    </span>
 
-        <span
-          style={{
-            fontSize: 35,
-            fontWeight: 900,
-            letterSpacing: 2,
-            color: "#1d3d86",
-          }}
-        >
-          EDUCORE
-        </span>
-         <span
-        style={{
-          marginTop: 18,
-          color: "#B8962E",
-          fontSize: 15,
-          fontStyle: "normal",
-          fontWeight: 700,
-          lineHeight: 1.2,
-          letterSpacing: 0.4,
-        }}
-      >
-        Design the Routine, Own the Result
-      </span>
-      </div>
-     
-    </div>
-  </div>
+                    <span
+                      style={{
+                        fontSize: 35,
+                        fontWeight: 900,
+                        letterSpacing: 2,
+                        color: "#1d3d86",
+                      }}
+                    >
+                      EDUCORE
+                    </span>
+                    <span
+                      style={{
+                        marginTop: 18,
+                        color: "#B8962E",
+                        fontSize: 15,
+                        fontStyle: "normal",
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                        letterSpacing: 0.4,
+                      }}
+                    >
+                      Design the Routine, Own the Result
+                    </span>
+                  </div>
 
-  {/* 오른쪽 영역(버튼/필터/기타) 있으면 여기 그대로 두면 됨 */}
-</div>
+                </div>
+              </div>
+
+              {/* 오른쪽 영역(버튼/필터/기타) 있으면 여기 그대로 두면 됨 */}
+            </div>
           </div>
 
 
-    {/* 깔끔한 날짜+시계 위젯 */}
+          {/* 깔끔한 날짜+시계 위젯 */}
 
           <div style={{
 
@@ -2438,143 +2425,143 @@ const restoreStudent = async (sid: string) => {
 
 
 
-{/* 학생 추가 */}
-<div style={{ marginTop: 16 }}>
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      padding: "8px 10px",
-      background: "#f9fafb",
-      border: "1px solid #e5e7eb",
-      borderRadius: 10,
-      boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-      flexWrap: "nowrap",     // ✅ 무조건 한 줄
-    }}
-  >
-    {/* 입력들 */}
-    <input
-        style={{ ...inp, height: 30, width: 120, fontSize: 12, padding: "0 6px" }}
-      placeholder="이름"
-      value={newStu.name || ""}
-      onChange={(e) => setNewStu(s => ({ ...s, name: e.target.value }))}
-    />
+        {/* 학생 추가 */}
+        <div style={{ marginTop: 16 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 10px",
+              background: "#f9fafb",
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+              flexWrap: "nowrap",     // ✅ 무조건 한 줄
+            }}
+          >
+            {/* 입력들 */}
+            <input
+              style={{ ...inp, height: 30, width: 120, fontSize: 12, padding: "0 6px" }}
+              placeholder="이름"
+              value={newStu.name || ""}
+              onChange={(e) => setNewStu(s => ({ ...s, name: e.target.value }))}
+            />
 
-    <select
-      style={{ ...inp, height: 30, width: 80, fontSize: 12, padding: "0 6px" }}
-      value={newStu.grade || ""}
-      onChange={(e) => setNewStu(s => ({ ...s, grade: e.target.value }))}
-    >
-      <option value="">학년</option>
-      <option value="중1">중1</option>
-      <option value="중2">중2</option>
-      <option value="중3">중3</option>
-      <option value="고1">고1</option>
-      <option value="고2">고2</option>
-      <option value="고3">고3</option>
-    </select>
+            <select
+              style={{ ...inp, height: 30, width: 80, fontSize: 12, padding: "0 6px" }}
+              value={newStu.grade || ""}
+              onChange={(e) => setNewStu(s => ({ ...s, grade: e.target.value }))}
+            >
+              <option value="">학년</option>
+              <option value="중1">중1</option>
+              <option value="중2">중2</option>
+              <option value="중3">중3</option>
+              <option value="고1">고1</option>
+              <option value="고2">고2</option>
+              <option value="고3">고3</option>
+            </select>
 
-    <input
-      style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
-      placeholder="학교"
-      value={newStu.school || ""}
-      onChange={(e) => setNewStu(s => ({ ...s, school: e.target.value }))}
-    />
+            <input
+              style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
+              placeholder="학교"
+              value={newStu.school || ""}
+              onChange={(e) => setNewStu(s => ({ ...s, school: e.target.value }))}
+            />
 
-    <input
-      style={{ ...inp, height: 30, width: 120, fontSize: 12 }}
-      placeholder="학생연락처"
-      value={newStu.studentPhone || ""}
-      onChange={(e) => setNewStu(s => ({ ...s, studentPhone: e.target.value }))}
-    />
+            <input
+              style={{ ...inp, height: 30, width: 120, fontSize: 12 }}
+              placeholder="학생연락처"
+              value={newStu.studentPhone || ""}
+              onChange={(e) => setNewStu(s => ({ ...s, studentPhone: e.target.value }))}
+            />
 
-    <input
-     style={{ ...inp, height: 30, width: 120, fontSize: 12 }}
-      placeholder="부모님연락처"
-      value={newStu.parentPhone || ""}
-      onChange={(e) => setNewStu(s => ({ ...s, parentPhone: e.target.value }))}
-    />
+            <input
+              style={{ ...inp, height: 30, width: 120, fontSize: 12 }}
+              placeholder="부모님연락처"
+              value={newStu.parentPhone || ""}
+              onChange={(e) => setNewStu(s => ({ ...s, parentPhone: e.target.value }))}
+            />
 
-    <select
-      style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
-      value={(newStu as any).hall || ""}
-      onChange={(e) => {
-        const value = e.target.value;
-        setNewStu(s => ({
-          ...s,
-          hall: value === "중등관" || value === "고등관" ? value : undefined,
-        }));
-      }}
-    >
-      <option value="">관</option>
-      <option value="중등관">중등관</option>
-      <option value="고등관">고등관</option>
-    </select>
+            <select
+              style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
+              value={(newStu as any).hall || ""}
+              onChange={(e) => {
+                const value = e.target.value;
+                setNewStu(s => ({
+                  ...s,
+                  hall: value === "중등관" || value === "고등관" ? value : undefined,
+                }));
+              }}
+            >
+              <option value="">관</option>
+              <option value="중등관">중등관</option>
+              <option value="고등관">고등관</option>
+            </select>
 
-    <input
-      type="number"
-    style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
-      placeholder="좌석"
-      value={(newStu as any).seatNo ?? ""}
-      onChange={(e) =>
-        setNewStu(s => ({
-          ...s,
-          seatNo: e.target.value === "" ? null : Number(e.target.value),
-        }))
-      }
-    />
+            <input
+              type="number"
+              style={{ ...inp, height: 30, width: 90, fontSize: 12, padding: "0 6px" }}
+              placeholder="좌석"
+              value={(newStu as any).seatNo ?? ""}
+              onChange={(e) =>
+                setNewStu(s => ({
+                  ...s,
+                  seatNo: e.target.value === "" ? null : Number(e.target.value),
+                }))
+              }
+            />
 
-    <input
-      type="date"
-      value={newStu.entryDate || ""}
-      onChange={(e) => setNewStu((prev) => ({ ...prev, entryDate: e.target.value }))}
-      style={{ ...inp, height: 30, width: 120, fontSize: 11 }}
-    />
+            <input
+              type="date"
+              value={newStu.entryDate || ""}
+              onChange={(e) => setNewStu((prev) => ({ ...prev, entryDate: e.target.value }))}
+              style={{ ...inp, height: 30, width: 120, fontSize: 11 }}
+            />
 
-    <button
-      style={{
-        ...btnD,
-        height: 30,
-       width: 70,
-        fontSize: 12,
-        borderRadius: 8,
-      }}
-      onClick={addStudent}
-    >
-      추가
-    </button>
+            <button
+              style={{
+                ...btnD,
+                height: 30,
+                width: 70,
+                fontSize: 12,
+                borderRadius: 8,
+              }}
+              onClick={addStudent}
+            >
+              추가
+            </button>
 
-    <button
-      style={{
-        ...btnD,
-        height: 30,
-      width: 70,
-        fontSize: 12,
-        borderRadius: 8,
-      }}
-      onClick={reloadStudents}
-    >
-      고침
-    </button>
+            <button
+              style={{
+                ...btnD,
+                height: 30,
+                width: 70,
+                fontSize: 12,
+                borderRadius: 8,
+              }}
+              onClick={reloadStudents}
+            >
+              고침
+            </button>
 
-    <button
-      style={{
-        ...btnD,
-        height: 30,
-       width: 70,
-        fontSize: 11,
-        borderRadius: 8,
-      }}
-      onClick={() => setShowRemoved(!showRemoved)}
-    >
-      {showRemoved ? "해제" : "숨김"}
-    </button>
-  </div>
+            <button
+              style={{
+                ...btnD,
+                height: 30,
+                width: 70,
+                fontSize: 11,
+                borderRadius: 8,
+              }}
+              onClick={() => setShowRemoved(!showRemoved)}
+            >
+              {showRemoved ? "해제" : "숨김"}
+            </button>
+          </div>
 
 
 
-       
+
 
           <div style={{
             padding: "20px",
@@ -2733,162 +2720,162 @@ const restoreStudent = async (sid: string) => {
                           <td style={{ padding: 10, textAlign: "center" }}>{s.grade || "-"}</td>
                           <td style={{ padding: 10, textAlign: "center" }}>{s.school || "-"}</td>
 
-<td style={{ padding: 10, minWidth: 220 }}>
+                          <td style={{ padding: 10, minWidth: 220 }}>
 
-  {/* 🔹 1줄차 : 에듀 등원 / 학원 등원 */}
-  <div
-    style={{
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr auto auto",
-      gap: 6,
-      marginBottom: 8,
-      alignItems: "center",
-    }}
-  >
-    {/* 에듀 등원 */}
-    <input
-      type="text"
-      value={cell.time ?? ""}
-      onChange={(e) => {
-  let v = e.target.value.replace(/\D/g, "");
+                            {/* 🔹 1줄차 : 에듀 등원 / 학원 등원 */}
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "1fr 1fr auto auto",
+                                gap: 6,
+                                marginBottom: 8,
+                                alignItems: "center",
+                              }}
+                            >
+                              {/* 에듀 등원 */}
+                              <input
+                                type="text"
+                                value={cell.time ?? ""}
+                                onChange={(e) => {
+                                  let v = e.target.value.replace(/\D/g, "");
 
-  if (v.length <= 2) {
-    // 1~2자리: 시(hour)만 입력 중
-    updateDayCell(date, s.id, (b) => ({ ...b, time: v }));
-    return;
-  }
+                                  if (v.length <= 2) {
+                                    // 1~2자리: 시(hour)만 입력 중
+                                    updateDayCell(date, s.id, (b) => ({ ...b, time: v }));
+                                    return;
+                                  }
 
-  if (v.length === 3) {
-    // 153 → 15:3
-    updateDayCell(date, s.id, (b) => ({ ...b, time: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
-    return;
-  }
+                                  if (v.length === 3) {
+                                    // 153 → 15:3
+                                    updateDayCell(date, s.id, (b) => ({ ...b, time: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
+                                    return;
+                                  }
 
-  // 4자리 이상 → 15:30 고정
-  v = v.slice(0, 4);
-  updateDayCell(date, s.id, (b) => ({ ...b, time: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
-}}
-      placeholder="00:00"
-      style={timeBox}
-    />
-    <button
-      style={btnXS}
-      onClick={() =>
-        updateDayCell(date, s.id, (b) => ({ ...b, time: undefined }))
-      }
-    >
-      ×
-    </button>
+                                  // 4자리 이상 → 15:30 고정
+                                  v = v.slice(0, 4);
+                                  updateDayCell(date, s.id, (b) => ({ ...b, time: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
+                                }}
+                                placeholder="00:00"
+                                style={timeBox}
+                              />
+                              <button
+                                style={btnXS}
+                                onClick={() =>
+                                  updateDayCell(date, s.id, (b) => ({ ...b, time: undefined }))
+                                }
+                              >
+                                ×
+                              </button>
 
-    {/* 학원 등원 */}
-<input
-  type="text"
-  value={cell.academyIn ?? ""}
-  onChange={(e) => {
-    let v = e.target.value.replace(/\D/g, "");
+                              {/* 학원 등원 */}
+                              <input
+                                type="text"
+                                value={cell.academyIn ?? ""}
+                                onChange={(e) => {
+                                  let v = e.target.value.replace(/\D/g, "");
 
-    if (v.length <= 2) {
-      updateDayCell(date, s.id, (b) => ({ ...b, academyIn: v }));
-      return;
-    }
+                                  if (v.length <= 2) {
+                                    updateDayCell(date, s.id, (b) => ({ ...b, academyIn: v }));
+                                    return;
+                                  }
 
-    if (v.length === 3) {
-      updateDayCell(date, s.id, (b) => ({ ...b, academyIn: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
-      return;
-    }
+                                  if (v.length === 3) {
+                                    updateDayCell(date, s.id, (b) => ({ ...b, academyIn: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
+                                    return;
+                                  }
 
-    // 4자리 이상 → 15:30 고정
-    v = v.slice(0, 4);
-    updateDayCell(date, s.id, (b) => ({ ...b, academyIn: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
-  }}
-  placeholder="00:00"
-  style={timeBox}
-/>
-<button
-  style={btnXS}
-  onClick={() =>
-    updateDayCell(date, s.id, (b) => ({ ...b, academyIn: undefined }))
-  }
->
-  ×
-</button>
-  </div>
+                                  // 4자리 이상 → 15:30 고정
+                                  v = v.slice(0, 4);
+                                  updateDayCell(date, s.id, (b) => ({ ...b, academyIn: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
+                                }}
+                                placeholder="00:00"
+                                style={timeBox}
+                              />
+                              <button
+                                style={btnXS}
+                                onClick={() =>
+                                  updateDayCell(date, s.id, (b) => ({ ...b, academyIn: undefined }))
+                                }
+                              >
+                                ×
+                              </button>
+                            </div>
 
-  {/* 🔹 2줄차 : 에듀 하원 / 학원 하원 */}
-  <div
-    style={{
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr auto auto",
-      gap: 6,
-      alignItems: "center",
-    }}
-  >
-    {/* 에듀 하원 */}
-<input
-  type="text"
-  value={cell.outTime ?? ""}
-  onChange={(e) => {
-    let v = e.target.value.replace(/\D/g, "");
+                            {/* 🔹 2줄차 : 에듀 하원 / 학원 하원 */}
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "1fr 1fr auto auto",
+                                gap: 6,
+                                alignItems: "center",
+                              }}
+                            >
+                              {/* 에듀 하원 */}
+                              <input
+                                type="text"
+                                value={cell.outTime ?? ""}
+                                onChange={(e) => {
+                                  let v = e.target.value.replace(/\D/g, "");
 
-    if (v.length <= 2) {
-      setOutTime(s.id, v);
-      return;
-    }
+                                  if (v.length <= 2) {
+                                    setOutTime(s.id, v);
+                                    return;
+                                  }
 
-    if (v.length === 3) {
-      setOutTime(s.id, `${v.slice(0, 2)}:${v.slice(2, 3)}`);
-      return;
-    }
+                                  if (v.length === 3) {
+                                    setOutTime(s.id, `${v.slice(0, 2)}:${v.slice(2, 3)}`);
+                                    return;
+                                  }
 
-    // 4자리 이상 → 15:30 형식 고정
-    v = v.slice(0, 4);
-    setOutTime(s.id, `${v.slice(0, 2)}:${v.slice(2, 4)}`);
-  }}
-  placeholder="00:00"
-  style={timeBox}
-/>
-<button
-  style={btnXS}
-  onClick={() =>
-    updateDayCell(date, s.id, (b) => ({ ...b, outTime: undefined }))
-  }
->
-  ×
-</button>
+                                  // 4자리 이상 → 15:30 형식 고정
+                                  v = v.slice(0, 4);
+                                  setOutTime(s.id, `${v.slice(0, 2)}:${v.slice(2, 4)}`);
+                                }}
+                                placeholder="00:00"
+                                style={timeBox}
+                              />
+                              <button
+                                style={btnXS}
+                                onClick={() =>
+                                  updateDayCell(date, s.id, (b) => ({ ...b, outTime: undefined }))
+                                }
+                              >
+                                ×
+                              </button>
 
-    {/* 학원 하원 */}
-<input
-  type="text"
-  value={cell.academyOut ?? ""}
-  onChange={(e) => {
-    let v = e.target.value.replace(/\D/g, "");
+                              {/* 학원 하원 */}
+                              <input
+                                type="text"
+                                value={cell.academyOut ?? ""}
+                                onChange={(e) => {
+                                  let v = e.target.value.replace(/\D/g, "");
 
-    if (v.length <= 2) {
-      updateDayCell(date, s.id, (b) => ({ ...b, academyOut: v }));
-      return;
-    }
+                                  if (v.length <= 2) {
+                                    updateDayCell(date, s.id, (b) => ({ ...b, academyOut: v }));
+                                    return;
+                                  }
 
-    if (v.length === 3) {
-      updateDayCell(date, s.id, (b) => ({ ...b, academyOut: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
-      return;
-    }
+                                  if (v.length === 3) {
+                                    updateDayCell(date, s.id, (b) => ({ ...b, academyOut: `${v.slice(0, 2)}:${v.slice(2, 3)}` }));
+                                    return;
+                                  }
 
-    v = v.slice(0, 4);
-    updateDayCell(date, s.id, (b) => ({ ...b, academyOut: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
-  }}
-  placeholder="00:00"
-  style={timeBox}
-/>
-<button
-  style={btnXS}
-  onClick={() =>
-    updateDayCell(date, s.id, (b) => ({ ...b, academyOut: undefined }))
-  }
->
-  ×
-</button>
-  </div>
-</td>
+                                  v = v.slice(0, 4);
+                                  updateDayCell(date, s.id, (b) => ({ ...b, academyOut: `${v.slice(0, 2)}:${v.slice(2, 4)}` }));
+                                }}
+                                placeholder="00:00"
+                                style={timeBox}
+                              />
+                              <button
+                                style={btnXS}
+                                onClick={() =>
+                                  updateDayCell(date, s.id, (b) => ({ ...b, academyOut: undefined }))
+                                }
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </td>
 
                           {/* 상태 팝업 */}
                           <td style={{ padding: 10, position: "relative" }}>n
@@ -2899,40 +2886,40 @@ const restoreStudent = async (sid: string) => {
                                 paddingLeft: 20,            // ←← 오른쪽으로 밀기!
                               }}
                             >
-                            
 
-                             {(() => {
-  const statusStyle = style.status[cell.status] || style.status["L"];
-  const statusLabel = STATUS[cell.status]?.label || STATUS["L"].label;
 
-  return (
-    <button
-      style={{
-        padding: "4px 10px",
-        borderRadius: 10,
-        fontSize: 13,
-        fontWeight: 700,
-        height: 32,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: statusStyle.background,
-        color: statusStyle.color,
-        border: `1px solid ${statusStyle.color}`,
-        cursor: "pointer",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-      }}
-      onClick={() =>
-        setStatusPickerFor((prev) => (prev === s.id ? null : s.id))
-      }
-    >
-      {statusLabel}
-    </button>
-  );
-})()}
+                              {(() => {
+                                const statusStyle = style.status[cell.status] || style.status["L"];
+                                const statusLabel = STATUS[cell.status]?.label || STATUS["L"].label;
+
+                                return (
+                                  <button
+                                    style={{
+                                      padding: "4px 10px",
+                                      borderRadius: 10,
+                                      fontSize: 13,
+                                      fontWeight: 700,
+                                      height: 32,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      background: statusStyle.background,
+                                      color: statusStyle.color,
+                                      border: `1px solid ${statusStyle.color}`,
+                                      cursor: "pointer",
+                                      boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+                                    }}
+                                    onClick={() =>
+                                      setStatusPickerFor((prev) => (prev === s.id ? null : s.id))
+                                    }
+                                  >
+                                    {statusLabel}
+                                  </button>
+                                );
+                              })()}
                             </div>
-                           {statusPickerFor === s.id && (
-  <div ref={dropdownRef} style={statusMenuStyle}>
+                            {statusPickerFor === s.id && (
+                              <div ref={dropdownRef} style={statusMenuStyle}>
                                 {(["P", "L", "A", "E"] as StatusKey[]).map(k => (
                                   <div
                                     key={k}
@@ -2983,23 +2970,23 @@ const restoreStudent = async (sid: string) => {
                             <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
                               {/* 수정 */}
                               <button
-  style={btn}
-  onClick={() => {
-    setSelectedStudentId(null);   // ✅ 캘린더 닫기
-    setFocusStatus(null);
-    setEditStudent(s.id);         // ✅ 에딧 열기
-  }}
->
-  시간표
-</button>
-                               {/* 학부모 리포트 */}
-    <button
-      style={btn}
-      onClick={() => window.open(`/parent-report/${s.id}`, "_blank")}
->
-  학부모
-</button>
-                              
+                                style={btn}
+                                onClick={() => {
+                                  setSelectedStudentId(null);   // ✅ 캘린더 닫기
+                                  setFocusStatus(null);
+                                  setEditStudent(s.id);         // ✅ 에딧 열기
+                                }}
+                              >
+                                시간표
+                              </button>
+                              {/* 학부모 리포트 */}
+                              <button
+                                style={btn}
+                                onClick={() => window.open(`/parent-report/${s.id}`, "_blank")}
+                              >
+                                학부모
+                              </button>
+
                               {/* 숨김 / 복원 */}
                               {!s.removed ? (
                                 <button
@@ -3010,33 +2997,33 @@ const restoreStudent = async (sid: string) => {
                                     }
                                   }}
                                 >
-                                숨기다
+                                  숨기다
                                 </button>
                               ) : (
-                               <button
-  style={{ ...btn, background: "#16a34a", color: "#fff", border: "1px solid #16a34a" }}
-  onClick={async () => {
-    // 1) 화면 즉시 반영(로컬)
-    setStore(prev => {
-      const groups = prev.groups.map(g =>
-        g.id === currentGroup.id
-          ? {
-              ...g,
-              students: g.students.map(x =>
-                x.id === s.id ? { ...x, removed: false } : x
-              ),
-            }
-          : g
-      );
-      return { ...prev, groups };
-    });
+                                <button
+                                  style={{ ...btn, background: "#16a34a", color: "#fff", border: "1px solid #16a34a" }}
+                                  onClick={async () => {
+                                    // 1) 화면 즉시 반영(로컬)
+                                    setStore(prev => {
+                                      const groups = prev.groups.map(g =>
+                                        g.id === currentGroup.id
+                                          ? {
+                                            ...g,
+                                            students: g.students.map(x =>
+                                              x.id === s.id ? { ...x, removed: false } : x
+                                            ),
+                                          }
+                                          : g
+                                      );
+                                      return { ...prev, groups };
+                                    });
 
-    // 2) 새로고침해도 유지(파이어스토어)
-    await restoreStudent(s.id);
-  }}
->
-  복원
-</button>
+                                    // 2) 새로고침해도 유지(파이어스토어)
+                                    await restoreStudent(s.id);
+                                  }}
+                                >
+                                  복원
+                                </button>
                               )}
 
                               {/* 영구삭제 (작은 회색 버튼) */}
@@ -3286,26 +3273,26 @@ const restoreStudent = async (sid: string) => {
                                           if (!sub || !from || !to) return alert("과목과 시간을 모두 입력하세요.");
 
                                           setStore((prev) => {
-  const records = { ...prev.records };
-  const d0 = { ...(records[date] || {}) };
-  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+                                            const records = { ...prev.records };
+                                            const d0 = { ...(records[date] || {}) };
+                                            const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
 
-  cell.overrideAcademyTimes = cell.overrideAcademyTimes || {};
-  cell.overrideAcademyTimes[sub] = {
-    subject: sub,
-    from,
-    to,
-    date,
-  };
+                                            cell.overrideAcademyTimes = cell.overrideAcademyTimes || {};
+                                            cell.overrideAcademyTimes[sub] = {
+                                              subject: sub,
+                                              from,
+                                              to,
+                                              date,
+                                            };
 
-  d0[s.id] = cell;
-  records[date] = d0;
+                                            d0[s.id] = cell;
+                                            records[date] = d0;
 
-  // 🔥 Firestore 동기 저장
-  saveRecordToFS(date, s.id, cell);
+                                            // 🔥 Firestore 동기 저장
+                                            saveRecordToFS(date, s.id, cell);
 
-  return { ...prev, records };
-});
+                                            return { ...prev, records };
+                                          });
 
                                           (document.getElementById("supplement-subject") as HTMLSelectElement).value = "";
                                           (document.getElementById("supplement-from") as HTMLInputElement).value = "";
@@ -3358,18 +3345,18 @@ const restoreStudent = async (sid: string) => {
                                               title="삭제"
                                               onClick={() => {
                                                 if (!confirm(`${t.subject} (${t.date}) 보충시간을 삭제할까요?`)) return;
-                                               setStore((prev) => {
-  const records = { ...prev.records };
-  const d0 = { ...(records[date] || {}) };
-  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-  if (cell.overrideAcademyTimes) delete cell.overrideAcademyTimes[key];
-  d0[s.id] = cell;
-  records[date] = d0;
+                                                setStore((prev) => {
+                                                  const records = { ...prev.records };
+                                                  const d0 = { ...(records[date] || {}) };
+                                                  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+                                                  if (cell.overrideAcademyTimes) delete cell.overrideAcademyTimes[key];
+                                                  d0[s.id] = cell;
+                                                  records[date] = d0;
 
-  saveRecordToFS(date, s.id, cell);
+                                                  saveRecordToFS(date, s.id, cell);
 
-  return { ...prev, records };
-});
+                                                  return { ...prev, records };
+                                                });
                                               }}
                                               onMouseOver={(e) => (e.currentTarget.style.background = "#fecaca")}
                                               onMouseOut={(e) => (e.currentTarget.style.background = "#fee2e2")}
@@ -3451,19 +3438,19 @@ const restoreStudent = async (sid: string) => {
                                               const curr = cell.commuteMin || 0;
                                               const next = curr + 30;
                                               setStore(prev => {
-  const records = { ...prev.records };
-  const d0 = { ...(records[date] || {}) };
-  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-  const curr = (cell as any).commuteMin || 0;
-  const next: DayCell = { ...cell, commuteMin: curr + 30 };
+                                                const records = { ...prev.records };
+                                                const d0 = { ...(records[date] || {}) };
+                                                const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+                                                const curr = (cell as any).commuteMin || 0;
+                                                const next: DayCell = { ...cell, commuteMin: curr + 30 };
 
-  d0[s.id] = next;
-  records[date] = d0;
+                                                d0[s.id] = next;
+                                                records[date] = d0;
 
-  saveRecordToFS(date, s.id, next);
+                                                saveRecordToFS(date, s.id, next);
 
-  return { ...prev, records };
-});
+                                                return { ...prev, records };
+                                              });
                                             }}
                                           >
                                             +30분
@@ -3476,19 +3463,19 @@ const restoreStudent = async (sid: string) => {
                                               const curr = cell.commuteMin || 0;
                                               const next = curr + 60;
                                               setStore(prev => {
-  const records = { ...prev.records };
-  const d0 = { ...(records[date] || {}) };
-  const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
-  const curr = (cell as any).commuteMin || 0;
-  const next: DayCell = { ...cell, commuteMin: curr + 60 };
+                                                const records = { ...prev.records };
+                                                const d0 = { ...(records[date] || {}) };
+                                                const cell: DayCell = { ...(d0[s.id] ?? { status: "P" }) };
+                                                const curr = (cell as any).commuteMin || 0;
+                                                const next: DayCell = { ...cell, commuteMin: curr + 60 };
 
-  d0[s.id] = next;
-  records[date] = d0;
+                                                d0[s.id] = next;
+                                                records[date] = d0;
 
-  saveRecordToFS(date, s.id, next);
+                                                saveRecordToFS(date, s.id, next);
 
-  return { ...prev, records };
-});
+                                                return { ...prev, records };
+                                              });
                                             }}
                                           >
                                             +60분
@@ -3674,29 +3661,29 @@ const restoreStudent = async (sid: string) => {
                                           {cell.sleepPenaltyCount || 0}회
                                         </span>
 
-                                       <button
-  style={{
-    ...btn,
-    gridColumn: "4 / 5",
-    width: 28,
-    height: 28,
-    padding: 0,
-    display: "grid",
-    placeItems: "center",
-    background: "#FFF",
-    border: "3px solid #FAC5A5",
-    color: "#B91C1C",
-    fontWeight: 800,
-  }}
-  onClick={() => {
-    updateDayCell(date, s.id, (cell) => {
-      const curr = cell.sleepPenaltyCount || 0;
-      return { ...cell, sleepPenaltyCount: curr + 1 };
-    });
-  }}
->
-  +
-</button>
+                                        <button
+                                          style={{
+                                            ...btn,
+                                            gridColumn: "4 / 5",
+                                            width: 28,
+                                            height: 28,
+                                            padding: 0,
+                                            display: "grid",
+                                            placeItems: "center",
+                                            background: "#FFF",
+                                            border: "3px solid #FAC5A5",
+                                            color: "#B91C1C",
+                                            fontWeight: 800,
+                                          }}
+                                          onClick={() => {
+                                            updateDayCell(date, s.id, (cell) => {
+                                              const curr = cell.sleepPenaltyCount || 0;
+                                              return { ...cell, sleepPenaltyCount: curr + 1 };
+                                            });
+                                          }}
+                                        >
+                                          +
+                                        </button>
                                       </div>
 
                                       {/* ⏰ Late Penalty */}
@@ -3726,28 +3713,28 @@ const restoreStudent = async (sid: string) => {
                                         </span>
 
                                         <button
-  style={{
-    ...btn,
-    gridColumn: "2 / 3",
-    width: 28,
-    height: 28,
-    padding: 0,
-    display: "grid",
-    placeItems: "center",
-    background: "#FFF",
-    border: "3px solid #C7BFF5",
-    color: "#6B21A8",
-    fontWeight: 800,
-  }}
-  onClick={() => {
-    updateDayCell(date, s.id, (cell) => {
-      const current = cell.latePenaltyCount || 0;
-      return { ...cell, latePenaltyCount: Math.max(0, current - 1) };
-    });
-  }}
->
-  −
-</button>
+                                          style={{
+                                            ...btn,
+                                            gridColumn: "2 / 3",
+                                            width: 28,
+                                            height: 28,
+                                            padding: 0,
+                                            display: "grid",
+                                            placeItems: "center",
+                                            background: "#FFF",
+                                            border: "3px solid #C7BFF5",
+                                            color: "#6B21A8",
+                                            fontWeight: 800,
+                                          }}
+                                          onClick={() => {
+                                            updateDayCell(date, s.id, (cell) => {
+                                              const current = cell.latePenaltyCount || 0;
+                                              return { ...cell, latePenaltyCount: Math.max(0, current - 1) };
+                                            });
+                                          }}
+                                        >
+                                          −
+                                        </button>
 
                                         <span
                                           style={{
@@ -3762,29 +3749,29 @@ const restoreStudent = async (sid: string) => {
                                           {(cell as any).latePenaltyCount || 0}회
                                         </span>
 
-                                       <button
-  style={{
-    ...btn,
-    gridColumn: "4 / 5",
-    width: 28,
-    height: 28,
-    padding: 0,
-    display: "grid",
-    placeItems: "center",
-    background: "#FFF",
-    border: "3px solid #C7BFF5",
-    color: "#6B21A8",
-    fontWeight: 800,
-  }}
-  onClick={() => {
-    updateDayCell(date, s.id, (cell) => {
-      const current = cell.latePenaltyCount || 0;
-      return { ...cell, latePenaltyCount: current + 1 };
-    });
-  }}
->
-  +
-</button>
+                                        <button
+                                          style={{
+                                            ...btn,
+                                            gridColumn: "4 / 5",
+                                            width: 28,
+                                            height: 28,
+                                            padding: 0,
+                                            display: "grid",
+                                            placeItems: "center",
+                                            background: "#FFF",
+                                            border: "3px solid #C7BFF5",
+                                            color: "#6B21A8",
+                                            fontWeight: 800,
+                                          }}
+                                          onClick={() => {
+                                            updateDayCell(date, s.id, (cell) => {
+                                              const current = cell.latePenaltyCount || 0;
+                                              return { ...cell, latePenaltyCount: current + 1 };
+                                            });
+                                          }}
+                                        >
+                                          +
+                                        </button>
                                       </div>
                                     </div>
 
@@ -3929,12 +3916,12 @@ const restoreStudent = async (sid: string) => {
                                       placeholder="오늘 태도/집중/컨디션 등 코멘트를 작성하세요."
                                       value={day[s.id]?.comment || ""}
                                       onChange={(e) => {
-  const val = e.target.value;
-  updateDayCell(date, s.id, (cell) => ({
-    ...cell,
-    comment: val || undefined,
-  }));
-}}
+                                        const val = e.target.value;
+                                        updateDayCell(date, s.id, (cell) => ({
+                                          ...cell,
+                                          comment: val || undefined,
+                                        }));
+                                      }}
                                       style={{
                                         border: "1px solid #dde1ea", borderRadius: 6, padding: "6px 8px",
                                         resize: "vertical", fontSize: 12, minHeight: 60, background: "#fff", width: "100%"
@@ -3953,13 +3940,13 @@ const restoreStudent = async (sid: string) => {
                                     <textarea
                                       placeholder="오늘 수행한 학습(과목/범위/페이지 등)을 기록하세요."
                                       value={day[s.id]?.studyNote || ""}
-                                     onChange={(e) => {
-  const val = e.target.value;
-  updateDayCell(date, s.id, (cell) => ({
-    ...cell,
-    studyNote: val || undefined,
-  }));
-}}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        updateDayCell(date, s.id, (cell) => ({
+                                          ...cell,
+                                          studyNote: val || undefined,
+                                        }));
+                                      }}
                                       style={{
                                         border: "1px solid #dde1ea", borderRadius: 6, padding: "6px 8px",
                                         resize: "vertical", fontSize: 12, minHeight: 80, background: "#fff", width: "100%"
@@ -4143,64 +4130,64 @@ const restoreStudent = async (sid: string) => {
           onClose={() => { setSelectedStudentId(null); setFocusStatus(null); }}
 
           // 상태 변경
-        onSetStatus={(sid, ds, st) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const dayRec = { ...(records[ds] || {}) };
-    const base: DayCell = { ...(dayRec[sid] ?? { status: st }), status: st };
+          onSetStatus={(sid, ds, st) => {
+            setStore(prev => {
+              const records = { ...prev.records };
+              const dayRec = { ...(records[ds] || {}) };
+              const base: DayCell = { ...(dayRec[sid] ?? { status: st }), status: st };
 
-    if ((st === "P" || st === "L") && !base.time) base.time = nowHM();
-    if (st === "A") { base.time = undefined; base.outTime = undefined; }
+              if ((st === "P" || st === "L") && !base.time) base.time = nowHM();
+              if (st === "A") { base.time = undefined; base.outTime = undefined; }
 
-    const next: DayCell = base;
+              const next: DayCell = base;
 
-    dayRec[sid] = next;
-    records[ds] = dayRec;
+              dayRec[sid] = next;
+              records[ds] = dayRec;
 
-    saveRecordToFS(ds, sid, next);
+              saveRecordToFS(ds, sid, next);
 
-    return { ...prev, records };
-  });
-}}
+              return { ...prev, records };
+            });
+          }}
 
           // 기존 memo 필드 저장(유지)
-         onSetMemo={(sid, ds, memo) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const dayRec = { ...(records[ds] || {}) };
-    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" as StatusKey }) };
-    const next: DayCell = { ...cell, memo: memo || undefined };
+          onSetMemo={(sid, ds, memo) => {
+            setStore(prev => {
+              const records = { ...prev.records };
+              const dayRec = { ...(records[ds] || {}) };
+              const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" as StatusKey }) };
+              const next: DayCell = { ...cell, memo: memo || undefined };
 
-    dayRec[sid] = next;
-    records[ds] = dayRec;
+              dayRec[sid] = next;
+              records[ds] = dayRec;
 
-    saveRecordToFS(ds, sid, next);
+              saveRecordToFS(ds, sid, next);
 
-    return { ...prev, records };
-  });
-}}
+              return { ...prev, records };
+            });
+          }}
 
           // 새 코멘트/학습 저장 (comment, studyNote)
-         onSaveNotes={(sid, ds, patch) => {
-  setStore(prev => {
-    const records = { ...prev.records };
-    const dayRec = { ...(records[ds] || {}) };
-    const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" as StatusKey }) };
+          onSaveNotes={(sid, ds, patch) => {
+            setStore(prev => {
+              const records = { ...prev.records };
+              const dayRec = { ...(records[ds] || {}) };
+              const cell: DayCell = { ...(dayRec[sid] ?? { status: "P" as StatusKey }) };
 
-    const next: DayCell = {
-      ...cell,
-      comment: patch.comment !== undefined ? (patch.comment || undefined) : cell.comment,
-      studyNote: patch.studyNote !== undefined ? (patch.studyNote || undefined) : cell.studyNote,
-    };
+              const next: DayCell = {
+                ...cell,
+                comment: patch.comment !== undefined ? (patch.comment || undefined) : cell.comment,
+                studyNote: patch.studyNote !== undefined ? (patch.studyNote || undefined) : cell.studyNote,
+              };
 
-    dayRec[sid] = next;
-    records[ds] = dayRec;
+              dayRec[sid] = next;
+              records[ds] = dayRec;
 
-    saveRecordToFS(ds, sid, next);
+              saveRecordToFS(ds, sid, next);
 
-    return { ...prev, records };
-  });
-}}
+              return { ...prev, records };
+            });
+          }}
 
           focusStatus={focusStatus}   // ← 이 줄 추가
         />
@@ -4219,7 +4206,7 @@ const restoreStudent = async (sid: string) => {
         );
       })()}
     </div>
-
+</>
   );
 }
 
@@ -4230,7 +4217,7 @@ export const calcNetStudyMin = (record: any) => {
   if (!inTime) return 0;
 
   const diff = Math.max(0, (outTime.getTime() - inTime.getTime()) / 60000); // 분 단위 계산
-const outing = record.commuteMin || 0;
+  const outing = record.commuteMin || 0;
   const rest = record.restroomMin || 0;
   return Math.max(0, diff - outing - rest);
 };
@@ -4365,7 +4352,7 @@ function StudentCalendarModal({
     fontWeight: 700,
   };
 
-  
+
 
   // 첫 주 앞 공백 필드
   const first = new Date(r.start);
@@ -4543,18 +4530,18 @@ function StudentCalendarModal({
                     const isSun = dow === 0;
                     const isSat = dow === 6;
                     const isHol = isHoliday(ds);
-                   // 🔥 옛날 필드(commentToday, studyContent)까지 한번에 정리해서 쓰기
-const raw = records[ds]?.[student.id] as any;
-const c: DayCell | undefined = raw
-  ? {
-      ...raw,
-      comment: raw.comment ?? raw.commentToday ?? "",
-      studyNote: raw.studyNote ?? raw.studyContent ?? "",
-    }
-  : undefined;
+                    // 🔥 옛날 필드(commentToday, studyContent)까지 한번에 정리해서 쓰기
+                    const raw = records[ds]?.[student.id] as any;
+                    const c: DayCell | undefined = raw
+                      ? {
+                        ...raw,
+                        comment: raw.comment ?? raw.commentToday ?? "",
+                        studyNote: raw.studyNote ?? raw.studyContent ?? "",
+                      }
+                      : undefined;
 
 
-                    
+
 
                     // 상태 다시 읽기
                     const status: StatusKey | null = c?.status ?? null;
@@ -4565,7 +4552,7 @@ const c: DayCell | undefined = raw
                     const isLate = status === "L";
                     const isAbs = status === "A";
                     const isEarly = status === "E";
-                    
+
 
                     // 캘린더 셀 배경색 (상태가 우선, 그다음 휴일/주말)
                     // 상태에 따른 배경색 (토·일·공휴일은 흰색 유지)
@@ -4668,7 +4655,7 @@ const c: DayCell | undefined = raw
                                 );
                               }
 
-                               // 📌 미래 날짜
+                              // 📌 미래 날짜
                               if (isFuture) {
                                 return (
                                   <>

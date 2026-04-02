@@ -1231,7 +1231,23 @@ function getTaskProgress(dayPlan: any) {
   };
 
   const countOne = (task: any, bucket: "teacher" | "student" = "student") => {
-    if (!isTaskLike(task)) return;
+  if (!isTaskLike(task)) return;
+
+  // 🔥 서브타스크가 있으면 서브 기준 계산
+  if (Array.isArray(task?.subtasks) && task.subtasks.length > 0) {
+
+    const total = task.subtasks.length;
+    const done = task.subtasks.filter((s: any) => s.done).length;
+
+    if (bucket === "teacher") {
+      teacherTotal += total;
+      teacherDone += done;
+    } else {
+      studentTotal += total;
+      studentDone += done;
+    }
+
+  } else {
 
     if (bucket === "teacher") {
       teacherTotal += 1;
@@ -1240,7 +1256,9 @@ function getTaskProgress(dayPlan: any) {
       studentTotal += 1;
       if (task?.done === true) studentDone += 1;
     }
-  };
+
+  }
+};
 
   // 1) subjects 구조
   if (dayPlan.subjects && typeof dayPlan.subjects === "object") {

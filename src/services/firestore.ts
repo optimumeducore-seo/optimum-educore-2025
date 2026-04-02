@@ -208,9 +208,11 @@ export interface Book {
   name: string;
   publisher?: string;
   subject: BookSubject;
+  gradeGroup?: "중1" | "중2" | "중3" | "";
 
-  videoPlatform?: string;   // 인강 플랫폼
-  videoSeries?: string;     // 기본 강좌명
+  videoPlatform?: string;
+  videoSeries?: string;
+  taskPreset?: string;
 
   episodes: BookEpisode[];
   chapters?: BookChapter[];
@@ -324,10 +326,14 @@ export const saveBook = async (book: Omit<Book, "id"> & { id?: string }) => {
   name: book.name,
   publisher: (book as any).publisher || "",
   subject: book.subject,
-
+  gradeGroup: (book as any).gradeGroup || "",
   videoPlatform: (book as any).videoPlatform || "",
   videoSeries: (book as any).videoSeries || "",
-
+  taskPreset:
+    (book as any).taskPreset ||
+    (book.subject === "hist1" || book.subject === "hist2"
+      ? "soc"
+      : book.subject),
   episodes: episodes || [],
   chapters,
   createdAt: (book as any).createdAt || serverTimestamp(),
@@ -343,13 +349,21 @@ const safeData = deepRemoveUndefined(data);
 export const loadBook = async (bookId: string): Promise<Book | null> => {
   const snap = await getDoc(doc(db, "books", bookId));
   if (!snap.exists()) return null;
-  return snap.data() as Book;
+
+  return {
+    ...(snap.data() as Book),
+    id: snap.id,
+  };
 };
 
 // 전체 교재 목록 불러오기
 export const loadBooks = async (): Promise<Book[]> => {
   const snap = await getDocs(collection(db, "books"));
-  return snap.docs.map((d) => d.data() as Book);
+
+  return snap.docs.map((d) => ({
+    ...(d.data() as Book),
+    id: d.id,
+  }));
 };
 
 /* ---------------- 학생별 교재 진도 ---------------- */
@@ -400,6 +414,10 @@ export const autoAssignNextEpisode = async (params: {
   if (idx >= book.episodes.length) return;
 
   const ep = book.episodes[idx];
+  console.log("배정 교재", book.name);
+  console.log("preset", (book as any).taskPreset);
+  console.log("ep", ep);
+  console.log("hasVideo", !!ep.videoMin, ep.videoMin);
 
 // 제목 마지막 소단원만 뽑기
 const rawTitle = ep.title || "";
@@ -468,32 +486,154 @@ const taskItem: any = {
   bookId: book.id,
   assignedEpisodeIndex: idx,
 };
+const preset = (book as any).taskPreset || "";
+const hasVideo = !!ep.videoMin;
+const p1 = ep.startPage ?? "";
+const p2 = ep.endPage ?? p1;
+const pageLabel = p1 !== p2 ? `${p1}~${p2}쪽` : `${p1}쪽`;
 
-  // 문제집
-  if (ep.startPage || ep.endPage) {
-    const p1 = ep.startPage ?? "";
-    const p2 = ep.endPage ?? p1;
-    const subPageText = p1 !== p2 ? `${p1}~${p2}쪽` : `${p1}쪽`;
+const minText = ep.videoMin && ep.videoMin > 0
+  ? ` (${ep.videoMin}분)`
+  : "";
 
-    taskItem.subtasks.push({
-      text: `문제집: ${subPageText}`,
-      done: false,
-    });
-  }
+const shortVideoTitle = ep.videoTitle
+  ? ep.videoTitle
+      .split("-")[0]
+      .replace(/\./g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  : lastTitle.replace(/\s+/g, " ").trim();
 
-  // 인강
-  if (ep.videoTitle) {
-    const minText = ep.videoMin ? ` (${ep.videoMin}분)` : "";
-    taskItem.subtasks.push({
-      text: `인강: ${ep.videoTitle}${minText}`,
-      done: false,
-    });
-  }
+const videoLabel = `인강: ${shortVideoTitle}${minText}`;
 
-  // 노트 정리: 사회/역사만
-if (book.subject === "soc" || book.subject === "hist1" || book.subject === "hist2") {
+// 수학 / 영어
+if (preset === "math" || preset === "eng") {
   taskItem.subtasks.push({
-    text: "노트 정리(핵심 내용 정리)",
+    text: "숙제",
+    done: false,
+  });
+}
+
+// 과학
+else if (preset === "sci") {
+  if (hasVideo) {
+    taskItem.subtasks.push({
+      text: videoLabel,
+      done: false,
+    });
+  }
+
+  taskItem.subtasks.push({
+    text: hasPages ? `문제집: ${pageLabel}` : "문제집",
+    done: false,
+  });
+
+  
+  taskItem.subtasks.push({
+    text: "오답",
+    done: false,
+  });
+}
+
+// 사회 / 역사
+else if (preset === "soc") {
+  if (hasVideo) {
+    taskItem.subtasks.push({
+      text: videoLabel,
+      done: false,
+    });
+  }
+
+  taskItem.subtasks.push({
+    text: hasPages ? `문제집: ${pageLabel}` : "문제집",
+    done: false,
+  });
+
+    taskItem.subtasks.push({
+    text: "노트정리",
+    done: false,
+  });
+
+  taskItem.subtasks.push({
+    text: "오답",
+    done: false,
+  });
+}
+
+// 국어 내신형
+else if (preset === "kor_school") {
+  taskItem.subtasks.push({
+    text: hasPages ? `문제집: ${pageLabel}` : "문제집",
+    done: false,
+  });
+
+  taskItem.subtasks.push({
+    text: "노트정리",
+    done: false,
+  });
+
+  taskItem.subtasks.push({
+    text: "오답",
+    done: false,
+  });
+}
+
+// 국어 인강형
+else if (preset === "kor_video") {
+  if (hasVideo) {
+    taskItem.subtasks.push({
+      text: videoLabel,
+      done: false,
+    });
+  }
+
+  taskItem.subtasks.push({
+    text: hasPages ? `문제집: ${pageLabel}` : "문제집",
+    done: false,
+  });
+
+  taskItem.subtasks.push({
+    text: "오답",
+    done: false,
+  });
+}
+
+// 인강 없는 교재
+else if (preset === "no_video") {
+  taskItem.subtasks.push({
+    text: hasPages ? `문제집: ${pageLabel}` : "문제집",
+    done: false,
+  });
+
+  taskItem.subtasks.push({
+    text: "오답",
+    done: false,
+  });
+}
+
+// 기본 fallback
+else {
+  if (hasPages) {
+    taskItem.subtasks.push({
+      text: `문제집: ${pageLabel}`,
+      done: false,
+    });
+  } else {
+    taskItem.subtasks.push({
+      text: "문제집",
+      done: false,
+    });
+  }
+
+  if (hasVideo) {
+    taskItem.subtasks.push({
+      text: videoLabel,
+      done: false,
+    });
+  }
+
+  taskItem.subtasks.push({
+    text: "오답",
     done: false,
   });
 }

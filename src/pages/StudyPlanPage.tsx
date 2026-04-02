@@ -3,6 +3,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate, useLocation, } from "react-router-dom";
 import {
   collection,
+  addDoc,
   doc,
   getDoc,
   getDocs,
@@ -11,11 +12,15 @@ import {
   Timestamp,
   arrayUnion,
   updateDoc,
+  where,
+  query,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { deleteDoc } from "firebase/firestore";
 import { uploadProof } from "../services/storage";
 import { getStorage, ref, deleteObject } from "firebase/storage";
+import { getNextBookSection } from "../utils/getNextBookSection";
+import { mapBookSectionToTask } from "../utils/bookTaskMapper";
 import StudyTimelineModal from "../components/StudyTimelineModal";
 import "./StudyPlanPage.css";
 
@@ -24,16 +29,51 @@ import "./StudyPlanPage.css";
 /* 타입 / 상수 정의 */
 /* ------------------------------------------------------------------ */
 
-type TaskItem = {
-  text?: string;      // 수동 과제용
-  title?: string;     // 자동 메인 과제 제목
+type TaskMode = "task" | "lecture" | "book" | "lecture+book";
+type TaskSourceType = "manual" | "book" | "exam";
+
+type TaskSubItem = {
+  text: string;
   done: boolean;
-  carriedOver?: boolean;   // ✅ 이 줄 추가
+};
+
+type TaskItem = {
+  id?: string;
+  url?: string;
+
+  text?: string;
+  title?: string;
+  done?: boolean;
+  deleted?: boolean;
+
+  carriedOver?: boolean;
   carriedFrom?: string;
-  subtasks?: {
-    text: string;
-    done: boolean;
-  }[];
+
+  subtasks?: TaskSubItem[];
+
+  sourceType?: TaskSourceType;
+  subject?: string;
+
+  taskMode?: TaskMode;
+
+  lectureTitle?: string;
+  lectureDone?: boolean;
+
+  bookTitle?: string;
+  bookDone?: boolean;
+
+  pageStart?: number;
+  pageEnd?: number;
+
+  bigUnit?: string;
+  smallUnit?: string;
+
+  estimatedMin?: number;
+  priority?: number;
+  locked?: boolean;
+
+  bookId?: string;
+  sectionId?: string;
 };
 
 type SubjectPlan = {
@@ -425,7 +465,9 @@ export default function StudyPlanPage() {
   }, [student?.academySubjects]);
 
   const [plans, setPlans] = useState<Record<string, DayPlan>>({});
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(
+  new Date().toISOString().slice(0, 10)
+);
 
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth());
@@ -436,7 +478,13 @@ export default function StudyPlanPage() {
   const [studentInput, setStudentInput] = useState("");
   const [memo, setMemo] = useState("");
   const [done, setDone] = useState(false);
-
+  const [myExplanations, setMyExplanations] = useState<any[]>([]);
+const [showExplainPopup, setShowExplainPopup] = useState(false);
+const handleCloseExplainPopup = () => {
+  const seenKey = `explain_seen_${id}_${selectedDate}`;
+  localStorage.setItem(seenKey, "true");
+  setShowExplainPopup(false);
+};
   const [proofImages, setProofImages] = useState<string[]>([]);
   const [proofMemo, setProofMemo] = useState("");
 
@@ -462,6 +510,8 @@ export default function StudyPlanPage() {
 
   const [openEnergyWeek, setOpenEnergyWeek] = useState(false);
   const [openEnergyMonth, setOpenEnergyMonth] = useState(false);
+
+
 
   useEffect(() => {
     const load = async () => {
@@ -705,6 +755,39 @@ export default function StudyPlanPage() {
     loadProgress();
   }, [id, selectedExamId]);
 
+useEffect(() => {
+  if (!id || !selectedDate) return;
+
+  const loadExplanations = async () => {
+    const q = query(
+      collection(db, "explanations"),
+      where("studentId", "==", id),
+      where("date", "==", selectedDate)
+    );
+
+    const snap = await getDocs(q);
+
+    const rows = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    })) as any[];
+
+    setMyExplanations(rows);
+
+    const reservedOnes = rows.filter((e) => e.status === "reserved");
+
+    const seenKey = `explain_seen_${id}_${selectedDate}`;
+
+    if (reservedOnes.length > 0 && !localStorage.getItem(seenKey)) {
+      setShowExplainPopup(true);
+    } else {
+      setShowExplainPopup(false);
+    }
+  };
+
+  loadExplanations();
+}, [id, selectedDate]);
+
   // ✅ 오늘 날짜의 "선생님 과제" 요약 (과목별로 한 번에 보기용)
   const todayTeacherSummary = React.useMemo(() => {
     if (!selectedDate) return [];
@@ -750,7 +833,6 @@ export default function StudyPlanPage() {
       acc[subKey] = (acc[subKey] || 0) + 10;
     });
 
-    console.log("subjectSummary 👉", acc);
 
     return acc;
   }, [dayTimelineBlocks]);
@@ -773,7 +855,6 @@ export default function StudyPlanPage() {
 
     return rows;
   }, [subjectSummary]);
-  console.log("subjectSummary 👉", subjectSummary);
 
   const weeklySummary = useMemo(() => {
     if (!selectedDate) return {};
@@ -887,6 +968,8 @@ export default function StudyPlanPage() {
 
     await setDoc(ref, payload, { merge: true });
   };
+
+
   const saveGoal = async (subjectKey: string, value: number) => {
     if (!id || !selectedExamId) return;
 
@@ -1030,6 +1113,23 @@ export default function StudyPlanPage() {
       };
     });
   };
+
+  const calcTaskProgress = (tasks: any[] = []) => {
+  let done = 0;
+  let total = 0;
+
+  tasks.forEach((task: any) => {
+    if (Array.isArray(task?.subtasks) && task.subtasks.length > 0) {
+      total += task.subtasks.length;
+      done += task.subtasks.filter((s: any) => s.done).length;
+    } else {
+      total += 1;
+      if (task?.done) done += 1;
+    }
+  });
+
+  return { done, total };
+};
 
   /* ------------------------------ */
   /* 🔁 안 한 과제 다음날로 미루기 */
@@ -1382,6 +1482,35 @@ export default function StudyPlanPage() {
     return testList.some(t => ds >= t.start && ds <= t.end);
   };
 
+  const handleAddExplanation = async () => {
+  try {
+    if (!id) {
+      alert("학생 정보가 없습니다.");
+      return;
+    }
+
+    const memo = prompt("설명 요청 내용을 입력하세요.", "설명 필요");
+    if (!memo || !memo.trim()) return;
+
+    const durationInput = prompt("예상 설명 시간을 입력하세요. (10 / 15 / 20)", "15");
+    const duration = Number(durationInput || 15);
+
+   await addDoc(collection(db, "explanations"), {
+  studentId: id,
+  studentName: student?.name || "이름없음",
+  memo: memo.trim(),
+  duration: Number.isFinite(duration) ? duration : 15,
+  status: "waiting",
+  createdAt: serverTimestamp(),
+  date: new Date().toISOString().slice(0, 10),
+});
+
+    alert("🧠 설명 요청이 대기목록에 추가되었습니다.");
+  } catch (error) {
+    console.error("설명 요청 저장 실패:", error);
+    alert("설명 요청 저장 중 오류가 발생했습니다.");
+  }
+};
   /* ------------------------------------------------------------------ */
   /* 📅 공부합계 */
   /* ------------------------------------------------------------------ */
@@ -1545,11 +1674,14 @@ export default function StudyPlanPage() {
                 const tTasks = sub.teacherTasks ?? [];
                 const sPlans = sub.studentPlans ?? [];
 
-                teacherDone += tTasks.filter((t: any) => t?.done).length;
-                teacherTotal += tTasks.length;
+               const teacherProgress = calcTaskProgress(tTasks);
+const studentProgress = calcTaskProgress(sPlans);
 
-                studentDone += sPlans.filter((t: any) => t?.done).length;
-                studentTotal += sPlans.length;
+teacherDone += teacherProgress.done;
+teacherTotal += teacherProgress.total;
+
+studentDone += studentProgress.done;
+studentTotal += studentProgress.total;
               });
             }
 
@@ -1576,7 +1708,7 @@ export default function StudyPlanPage() {
                 className={`sp-day-box ${isToday ? "is-today" : ""} ${bgClass}`}
                 key={ds}
                 onClick={() => {
-                  console.log("날짜 클릭:", ds);
+                 
                   handleSelectDate(ds);
                   setTimelineDate(ds);
                   setShowTimelineModal(true);
@@ -1799,58 +1931,160 @@ export default function StudyPlanPage() {
                   color: "#1F2937",
                 }}
               >
-                {todayTeacherSummary.map((subj) => (
-                  <div
-                    key={subj.key}
-                    style={{
-                      padding: "6px 8px",
-                      borderRadius: 8,
-                      background: "#FFFFFF",
-                      border: "1px dashed #BFDBFE",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 12,
-                        marginBottom: 3,
-                        color: "#1E3A8A",
-                      }}
-                    >
-                      {subj.label}
-                    </div>
-                    <div
-                      style={{
-                        whiteSpace: "pre-line",
-                        fontSize: 11,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {subj.tasks.map((task: any, i: number) => (
-                        <label
-                          key={i}
-                          style={{
-                            display: "flex",
-                            gap: 6,
-                            marginBottom: 4,
-                            fontSize: 12,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={task.done}
-                            onChange={() => toggleTask("teacherTasks", i)}
-                          />
-                          <span>{task.title || task.text}</span>
-                        </label>
-                      ))}
+                {todayTeacherSummary.map((subj: any, subjIdx: number) => (
+  <div key={subj.subjectKey || subjIdx}>
+    {subj.subjectKey && (
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#64748B", marginBottom: 4 }}>
+        {subj.subjectLabel || subj.subjectKey}
+      </div>
+    )}
 
-                    </div>
-                  </div>
-                ))}
+    {subj.tasks.map((task: any, i: number) => (
+      <div
+        key={task.id || `${subj.subjectKey || "common"}-${i}`}
+        style={{
+          marginBottom: 8,
+          padding: "6px 4px",
+          borderRadius: 8,
+          background: "#FFFFFF",
+        }}
+      >
+        <label
+          style={{
+            display: "flex",
+            gap: 6,
+            marginBottom: 4,
+            fontSize: 12,
+            alignItems: "center",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={!!task.done}
+            onChange={() => toggleTask("teacherTasks", i)}
+          />
+          <span style={{ fontWeight: 700 }}>
+            {task.title || task.text}
+          </span>
+        </label>
+
+        {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
+          <div
+            style={{
+              marginLeft: 22,
+              marginTop: 4,
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            {task.subtasks.map((sub: any, j: number) => (
+              <label
+                key={j}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 11,
+                  color: "#475569",
+                }}
+              >
+                <input
+  type="checkbox"
+  checked={!!sub.done}
+  onChange={() => toggleSubtask(i, j)}
+/>
+                <span
+                  style={{
+                    textDecoration: sub.done ? "line-through" : "none",
+                  }}
+                >
+                  {sub.text}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+))}
+
+
+
               </div>
+              
             </div>
+
           )}
+             {/* 📝 선생님 코멘트 - 복구 및 디자인 개선 */}
+          <div
+            style={{
+              marginTop: 20,
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+            }}
+          >
+         <div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between", // ⭐ 핵심
+    marginBottom: 10,
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+      fontSize: 14,
+      fontWeight: 900,
+      color: "#c52d90",
+    }}
+  >
+    [💬 선생님 코멘트]
+  </div>
+
+  <button
+    onClick={handleAddExplanation}
+    style={{
+      background: "#dfd5f1",
+      color: "#40198a",
+      border: "none",
+      borderRadius: 8,
+      padding: "6px 10px",
+      fontSize: 11,
+      fontWeight: 800,
+      cursor: "pointer",
+    }}
+  >
+    🧠 설명/문답요청
+  </button>
+</div>
+
+            <div
+              style={{
+                fontSize: 14,
+                lineHeight: 1.6,
+                color: teacherCommentText ? "#283bcd" : "#94A3B8",
+fontWeight: teacherCommentText ? 700 : 500,
+background: teacherCommentText ? "#F8FAFF" : "#FFFFFF",
+border: teacherCommentText ? "1px solid #C7D2FE" : "1px solid #F1F5F9",
+                minHeight: "40px", // 기존 높이 유지
+                whiteSpace: "pre-wrap",
+                padding: "12px",       
+                borderRadius: "10px",
+              }}
+            >
+              {/* 변수명이 정확한지 확인: teacherCommentText */}
+              {teacherCommentText && teacherCommentText.trim() !== ""
+                ? teacherCommentText
+                : "오늘 선생님 피드백이 없습니다."}
+            </div>
+          </div>
           {/* 과목 탭 (5개씩 두 줄) */}
           {/* 
           <div
@@ -2164,51 +2398,8 @@ export default function StudyPlanPage() {
             />
           )}
             */}
-          {/* 📝 선생님 코멘트 - 깔끔한 피드백 카드 스타일 */}
-          {/* 📝 선생님 코멘트 - 복구 및 디자인 개선 */}
-          <div
-            style={{
-              marginTop: 20,
-              padding: "16px",
-              borderRadius: "14px",
-              background: "#F8FAFC",
-              border: "1px solid #E2E8F0",
-            }}
-          >
-           <div
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    fontSize: 14,
-    fontWeight: 900,
-    color: "#c52d90",
-    marginBottom: 10,
-  }}
->
-  [💬 선생님 코멘트]
-</div>
 
-            <div
-              style={{
-                fontSize: 14,
-                lineHeight: 1.6,
-                color: teacherCommentText ? "#283bcd" : "#94A3B8",
-fontWeight: teacherCommentText ? 700 : 500,
-background: teacherCommentText ? "#F8FAFF" : "#FFFFFF",
-border: teacherCommentText ? "1px solid #C7D2FE" : "1px solid #F1F5F9",
-                minHeight: "40px", // 기존 높이 유지
-                whiteSpace: "pre-wrap",
-                padding: "12px",       
-                borderRadius: "10px",
-              }}
-            >
-              {/* 변수명이 정확한지 확인: teacherCommentText */}
-              {teacherCommentText && teacherCommentText.trim() !== ""
-                ? teacherCommentText
-                : "오늘 선생님 피드백이 없습니다."}
-            </div>
-          </div>
+       
           
  {/* 🔥 몰입 에너지 통합 박스 */}
           {selectedDate && (focusRows.length > 0 || weeklyRows.length > 0 || monthlyRows.length > 0) && (
@@ -2315,8 +2506,118 @@ border: teacherCommentText ? "1px solid #C7D2FE" : "1px solid #F1F5F9",
 
       </div>
 
-   
+   {showExplainPopup &&
+  myExplanations.filter((e: any) => e.status === "reserved").length > 0 && (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(420px, 100%)",
+          background: "#FFFFFF",
+          borderRadius: 20,
+          padding: 20,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 18,
+            fontWeight: 900,
+            color: "#0F172A",
+            marginBottom: 8,
+          }}
+        >
+          🧠 설명 일정 안내
+        </div>
 
+        <div
+          style={{
+            fontSize: 13,
+            color: "#64748B",
+            marginBottom: 14,
+          }}
+        >
+          선생님과 만날 시간이 잡혀 있어요.
+        </div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          {myExplanations
+            .filter((e: any) => e.status === "reserved")
+            .map((e: any) => (
+              <div
+                key={e.id}
+                style={{
+                  background: "#EEF2FF",
+                  border: "1px solid #C7D2FE",
+                  borderRadius: 14,
+                  padding: 14,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 900,
+                    color: "#1E3A8A",
+                  }}
+                >
+                  {e.reservedStart} ~ {e.reservedEnd}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: "#334155",
+                    marginTop: 6,
+                  }}
+                >
+                  {e.teacherName || "선생님"} 선생님
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#475569",
+                    marginTop: 4,
+                  }}
+                >
+                  {e.memo}
+                </div>
+              </div>
+            ))}
+        </div>
+
+        <button
+          onClick={handleCloseExplainPopup}
+          style={{
+            marginTop: 16,
+            width: "100%",
+            border: "none",
+            background: "#2563EB",
+            color: "#FFFFFF",
+            borderRadius: 12,
+            padding: "10px 12px",
+            fontSize: 13,
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          확인
+        </button>
+      </div>
+    </div>
+  )}
       {/* ---------------- 시험기간 모달 ---------------- */}
       {showTestModal && (
         <div
@@ -2896,6 +3197,7 @@ function ProofSection({
     </div>
   );
 }
+
 
 
 /* ------------------------------------------------------------------ */

@@ -21,6 +21,7 @@ import type {
   StudentBookProgress,
 } from "../services/firestore";
 import { useNavigate } from "react-router-dom";
+import DevWatermark from "../components/DevWatermark";
 
 type Student = {
   id: string;
@@ -29,6 +30,7 @@ type Student = {
   school?: string;
   hidden?: boolean;
 };
+
 
 const SUBJECT_LABEL: Record<BookSubject, string> = {
   kor: "국어",
@@ -44,6 +46,7 @@ const SUBJECT_LABEL: Record<BookSubject, string> = {
 };
 
 
+
 export default function AutoBookAssignPage() {
     const navigate = useNavigate();
   const [students, setStudents] = useState<Student[]>([]);
@@ -52,6 +55,7 @@ export default function AutoBookAssignPage() {
   const [selectedGrade, setSelectedGrade] = useState<string>("");
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<string>("");
+  const [bookKeyword, setBookKeyword] = useState("");
   const [assignDate, setAssignDate] = useState(
     new Date().toISOString().slice(0, 10)
   );
@@ -108,6 +112,8 @@ for (const s of students) {
   load();
 }, [students, selectedBookId]);
 
+
+
 useEffect(() => {
   const loadSelectedStudentBooks = async () => {
     if (!focusStudentId) {
@@ -137,6 +143,79 @@ useEffect(() => {
 
   loadSelectedStudentBooks();
 }, [focusStudentId, loading]);
+
+
+const groupedFilteredBooks = useMemo(() => {
+  const keyword = bookKeyword.trim().toLowerCase();
+
+  const subjectOrder: BookSubject[] = [
+    "kor",
+    "math",
+    "eng",
+    "sci",
+    "soc",
+    "hist1",
+    "hist2",
+    "tech",
+    "hanja",
+    "jp",
+  ];
+
+  const filtered = books.filter((b) => {
+    const subjectText = SUBJECT_LABEL[b.subject] || "";
+    const publisherText = ((b as any).publisher || "").toLowerCase();
+    const gradeText = ((b as any).gradeGroup || "").trim();
+
+    const target = `${b.name} ${subjectText} ${publisherText} ${gradeText}`.toLowerCase();
+
+    const matchesKeyword = !keyword || target.includes(keyword);
+
+    const matchesGrade =
+      !selectedGrade || // 전체 학년이면 다 보임
+      gradeText === "" || // 학년 미설정 기존 교재도 보임
+      gradeText === selectedGrade; // 선택 학년 교재도 보임
+
+    return matchesKeyword && matchesGrade;
+  });
+
+  const grouped: Record<string, Book[]> = {};
+
+  subjectOrder.forEach((subj) => {
+    const arr = filtered
+      .filter((b) => b.subject === subj)
+      .sort((a, b) => {
+        const gradeA = ((a as any).gradeGroup || "").trim();
+        const gradeB = ((b as any).gradeGroup || "").trim();
+
+        // 같은 과목 안에서는 학년 없는 책 먼저, 그 다음 중1/중2/중3
+        if (gradeA !== gradeB) {
+          if (gradeA === "") return -1;
+          if (gradeB === "") return 1;
+          return gradeA.localeCompare(gradeB, "ko");
+        }
+
+        return a.name.localeCompare(b.name, "ko");
+      });
+
+    if (arr.length > 0) {
+      grouped[subj] = arr;
+    }
+  });
+
+  return grouped;
+}, [books, bookKeyword, selectedGrade]);
+
+useEffect(() => {
+  if (!selectedBookId) return;
+
+  const allVisibleBooks = Object.values(groupedFilteredBooks).flat();
+  const stillVisible = allVisibleBooks.some((b) => b.id === selectedBookId);
+
+  if (!stillVisible) {
+    setSelectedBookId("");
+  }
+}, [groupedFilteredBooks, selectedBookId]);
+
 
   const selectedBook = books.find((b) => b.id === selectedBookId) || null;
 
@@ -304,6 +383,9 @@ const selectedStudentNames = filteredStudents
   .map((s) => s.name);
 
  return (
+  <>
+    {/* 🛡️ 보안 워터마크 레이어 (최상단 배치) */}
+    <DevWatermark userLabel="Optimum_Admin" />
   <div
     style={{
       maxWidth: 1200,
@@ -408,28 +490,59 @@ const selectedStudentNames = filteredStudents
         {/* 교재 선택 */}
         <div style={{ flex: "1 1 300px" }}>
           <label style={{ fontSize: 13, fontWeight: 700, color: "#94A3B8", display: "block", marginBottom: 10, paddingLeft: 4 }}>배정할 교재</label>
-          <select
-            value={selectedBookId}
-            onChange={(e) => setSelectedBookId(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "12px 16px",
-              borderRadius: 12,
-              border: "2px solid #3B82F6",
-              fontSize: 15,
-              background: "#F0F9FF",
-              color: "#1E40AF",
-              fontWeight: 700,
-              outline: "none",
-            }}
-          >
-            <option value="">과제용 교재를 선택해 주세요</option>
-            {books.map((b) => (
-              <option key={b.id} value={b.id}>
-                [{SUBJECT_LABEL[b.subject]}] {b.name}
-              </option>
-            ))}
-          </select>
+         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+  <input
+    type="text"
+    value={bookKeyword}
+    onChange={(e) => setBookKeyword(e.target.value)}
+    placeholder="교재명 또는 과목 검색 (예: 오투, 과학)"
+    style={{
+      width: "100%",
+      padding: "12px 14px",
+      borderRadius: 12,
+      border: "1px solid #CBD5E1",
+      background: "#FFFFFF",
+      fontSize: 14,
+      fontWeight: 600,
+      outline: "none",
+      boxSizing: "border-box",
+    }}
+  />
+
+  <select
+    value={selectedBookId}
+    onChange={(e) => setSelectedBookId(e.target.value)}
+    size={10}
+    style={{
+      width: "100%",
+      padding: "12px 16px",
+      borderRadius: 12,
+      border: "2px solid #3B82F6",
+      fontSize: 15,
+      background: "#F0F9FF",
+      color: "#1E40AF",
+      fontWeight: 700,
+      outline: "none",
+      minHeight: 280,
+      boxSizing: "border-box",
+    }}
+  >
+    <option value="">과제용 교재를 선택해 주세요</option>
+
+    {Object.entries(groupedFilteredBooks).map(([subject, subjectBooks]) => (
+      <optgroup
+        key={subject}
+        label={` ${SUBJECT_LABEL[subject as BookSubject]}`}
+      >
+        {subjectBooks.map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
+          </option>
+        ))}
+      </optgroup>
+    ))}
+  </select>
+</div>
          {selectedBook && (
   <div
     style={{
@@ -669,7 +782,7 @@ const selectedStudentNames = filteredStudents
 <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
   <div
     style={{
-      background: "#FFFFFF", // 다크 블루에서 화이트로 변경
+      background: "#e7f3f8", // 다크 블루에서 화이트로 변경
       borderRadius: 24,
       padding: "28px",
       boxShadow: "0 10px 15px -3px rgba(0,0,0,0.04), 0 4px 6px -2px rgba(0,0,0,0.02)",
@@ -877,5 +990,6 @@ const selectedStudentNames = filteredStudents
 </div>
     </div>
   </div>
+  </>
 );
 }

@@ -160,3 +160,13 @@ html {
   /* (선택) 진행바 숨기기 */
   #print-area div[style*="height: 8px"] { display: none !important; }
 }
+.carry-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #FEF3C7;          /* Educore soft amber */
+  border: 1px solid #FCD34D;
+  color: #92400E;
+  font-weight: 700;
+  white-space: nowrap;
+}

@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
+import DevWatermark from "../components/DevWatermark";
 import {
   loadBooks,
   saveBook,
@@ -14,6 +14,7 @@ import type {
   BookSection,
   BookSubject,
 } from "../services/firestore";
+
 
 const SUBJECT_LABEL: Record<BookSubject, string> = {
   kor: "국어",
@@ -198,6 +199,7 @@ export default function BookManagePage() {
 
   const [publisher, setPublisher] = useState("");
   const [subject, setSubject] = useState<BookSubject>("kor");
+  const [gradeGroup, setGradeGroup] = useState<"중1" | "중2" | "중3" | "고1" |"">("");
   const [videoPlatform, setVideoPlatform] = useState("");
   const [videoSeries, setVideoSeries] = useState("");
   const [chapters, setChapters] = useState<BookChapter[]>([]);
@@ -217,23 +219,25 @@ export default function BookManagePage() {
 
   useEffect(() => {
     if (!selectedBookId) {
-      setName("");
-      setPublisher("");
-      setSubject("kor");
-      setVideoPlatform("");
-      setVideoSeries("");
-      setChapters([]);
-      return;
-    }
+  setName("");
+  setPublisher("");
+  setSubject("kor");
+  setGradeGroup("");
+  setVideoPlatform("");
+  setVideoSeries("");
+  setChapters([]);
+  return;
+}
 
     const b = books.find((x) => x.id === selectedBookId);
     if (!b) return;
 
     setName(b.name || "");
-    setPublisher((b as any).publisher || "");
-    setSubject(b.subject);
-    setVideoPlatform((b as any).videoPlatform || "");
-    setVideoSeries((b as any).videoSeries || "");
+setPublisher((b as any).publisher || "");
+setSubject(b.subject);
+setGradeGroup((b as any).gradeGroup || "");
+setVideoPlatform((b as any).videoPlatform || "");
+setVideoSeries((b as any).videoSeries || "");
 
     const migrated =
       b.chapters && b.chapters.length
@@ -244,15 +248,16 @@ export default function BookManagePage() {
   }, [selectedBookId, books]);
 
   const resetForm = () => {
-    setSelectedBookId(null);
-    setName("");
-    setPublisher("");
-    setSubject("kor");
-    setVideoPlatform("");
-    setVideoSeries("");
-    setChapters([]);
-    setBookSearch("");
-  };
+  setSelectedBookId(null);
+  setName("");
+  setPublisher("");
+  setSubject("kor");
+  setGradeGroup("");
+  setVideoPlatform("");
+  setVideoSeries("");
+  setChapters([]);
+  setBookSearch("");
+};
 
   const updateChapterTitle = (chapterId: string, title: string) => {
     setChapters((prev) =>
@@ -425,28 +430,95 @@ export default function BookManagePage() {
       }))
       .filter((ch) => ch.title || ch.units.length > 0);
 
-    await saveBook({
-      id: selectedBookId || undefined,
-      name: name.trim(),
-      publisher: publisher.trim(),
-      subject,
-      videoPlatform: videoPlatform.trim(),
-      videoSeries: videoSeries.trim(),
-      episodes: flattenChaptersToEpisodes(cleanedChapters),
-      chapters: cleanedChapters,
-    });
+      console.log("저장 직전 gradeGroup", gradeGroup);
+console.log("저장 직전 selectedBookId", selectedBookId);
 
-    alert("에듀코어 시스템에 저장되었습니다.");
-    await loadAllBooks();
+    await saveBook({
+  id: selectedBookId || undefined,
+  name: name.trim(),
+  publisher: publisher.trim(),
+  subject,
+  gradeGroup,
+  videoPlatform: videoPlatform.trim(),
+  videoSeries: videoSeries.trim(),
+  episodes: flattenChaptersToEpisodes(cleanedChapters),
+  chapters: cleanedChapters,
+});
+
+   alert("에듀코어 시스템에 저장되었습니다.");
+await loadAllBooks();
+
+if (selectedBookId) {
+  const saved = await loadBooks();
+  const current = saved.find((x) => x.id === selectedBookId);
+  if (current) {
+    setName(current.name || "");
+    setPublisher((current as any).publisher || "");
+    setSubject(current.subject);
+    setGradeGroup((current as any).gradeGroup || "");
+    setVideoPlatform((current as any).videoPlatform || "");
+    setVideoSeries((current as any).videoSeries || "");
+
+    const migrated =
+      current.chapters && current.chapters.length
+        ? current.chapters
+        : migrateEpisodesToChapters(current.episodes || []);
+
+    setChapters(migrated);
+  }
+}
   };
 
-  const filteredBooks = books.filter((b) =>
-    `${b.name} ${(b as any).publisher || ""}`
+ const subjectOrder: BookSubject[] = [
+  "kor",
+  "math",
+  "eng",
+  "sci",
+  "soc",
+  "hist1",
+  "hist2",
+  "tech",
+  "hanja",
+  "jp",
+];
+
+const groupedBooks = useMemo(() => {
+  const keyword = bookSearch.trim().toLowerCase();
+
+  const filtered = books.filter((b) =>
+    `${b.name} ${(b as any).publisher || ""} ${SUBJECT_LABEL[b.subject]}`
       .toLowerCase()
-      .includes(bookSearch.toLowerCase())
+      .includes(keyword)
   );
 
+  const grouped: Record<BookSubject, Book[]> = {} as Record<BookSubject, Book[]>;
+
+  subjectOrder.forEach((subjectKey) => {
+    const arr = filtered
+      .filter((b) => b.subject === subjectKey)
+      .sort((a, b) => {
+        const publisherA = ((a as any).publisher || "").toLowerCase();
+        const publisherB = ((b as any).publisher || "").toLowerCase();
+
+        if (publisherA !== publisherB) {
+          return publisherA.localeCompare(publisherB, "ko");
+        }
+
+        return a.name.localeCompare(b.name, "ko");
+      });
+
+    if (arr.length > 0) {
+      grouped[subjectKey] = arr;
+    }
+  });
+
+  return grouped;
+}, [books, bookSearch]);
+
   return (
+    <>
+    {/* 🛡️ 보안 워터마크 레이어 (최상단 배치) */}
+    <DevWatermark userLabel="Optimum_Admin" />
   <div
     style={{
       display: "flex",
@@ -506,29 +578,57 @@ export default function BookManagePage() {
 
   {/* 리스트 영역 (문제의 그 부분) */}
   <div style={{ flex: 1, overflowY: "auto", padding: "0 12px 16px" }}>
-    {filteredBooks.map((b) => {
-      const isActive = selectedBookId === b.id;
-      return (
+  {subjectOrder.map((subjectKey) => {
+    const subjectBooks = groupedBooks[subjectKey];
+    if (!subjectBooks || subjectBooks.length === 0) return null;
+
+    return (
+      <div key={subjectKey} style={{ marginBottom: 14 }}>
         <div
-          key={b.id}
-          onClick={() => setSelectedBookId(b.id)}
           style={{
-            padding: "12px 16px",
-            borderRadius: 8,
-            cursor: "pointer",
-            marginBottom: 4,
-            background: isActive ? "#3B82F6" : "transparent",
-            transition: "background 0.2s",
+            padding: "8px 10px",
+            fontSize: 12,
+            fontWeight: 800,
+            color: "#94A3B8",
+            letterSpacing: "0.3px",
           }}
         >
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{b.name}</div>
-          <div style={{ fontSize: 11, color: isActive ? "#DBEAFE" : "#94A3B8", marginTop: 4 }}>
-            {SUBJECT_LABEL[b.subject]} | {(b as any).publisher || "-"}
-          </div>
+          {SUBJECT_LABEL[subjectKey]}
         </div>
-      );
-    })}
-  </div>
+
+        {subjectBooks.map((b) => {
+          const isActive = selectedBookId === b.id;
+
+          return (
+            <div
+              key={b.id}
+              onClick={() => setSelectedBookId(b.id)}
+              style={{
+                padding: "12px 16px",
+                borderRadius: 8,
+                cursor: "pointer",
+                marginBottom: 4,
+                background: isActive ? "#3B82F6" : "transparent",
+                transition: "background 0.2s",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{b.name}</div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: isActive ? "#DBEAFE" : "#94A3B8",
+                  marginTop: 4,
+                }}
+              >
+                {(b as any).publisher || "-"}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  })}
+</div>
 
   {/* 하단 버튼 영역 */}
   <div style={{ padding: "16px", borderTop: "1px solid #334155" }}>
@@ -639,7 +739,7 @@ export default function BookManagePage() {
             ...cardStyle,
             padding: 28,
             display: "grid",
-            gridTemplateColumns: "2fr 1fr 1fr 1.2fr 1.2fr",
+            gridTemplateColumns: "2fr 1fr 1fr 1fr 1.2fr 1.2fr",
             gap: 16,
             alignItems: "end",
           }}
@@ -668,7 +768,24 @@ export default function BookManagePage() {
               ))}
             </select>
           </div>
-
+          
+          <div>
+  <label style={labelStyle}>학년</label>
+  <select
+    value={gradeGroup}
+    onChange={(e) =>
+      setGradeGroup(e.target.value as "중1" | "중2" | "중3" | "")
+    }
+    style={inputStyle}
+  >
+    <option value="">학년 없음</option>
+    <option value="중1">중1</option>
+    <option value="중2">중2</option>
+    <option value="중3">중3</option>
+    <option value="고1">고1</option>
+  </select>
+</div>
+           
           <div>
             <label style={labelStyle}>출판사</label>
             <input
@@ -997,5 +1114,6 @@ export default function BookManagePage() {
       </div>
     </main>
   </div>
+  </>
 );
 }
