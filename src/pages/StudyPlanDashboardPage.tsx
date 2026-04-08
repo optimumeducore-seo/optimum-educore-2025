@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -15,6 +16,7 @@ import {
   Timestamp,
   addDoc,
 } from "firebase/firestore";
+import { exportEducoreBackup, importEducoreBackup } from "../services/firestoreBackup";
 import OpsModal from "../components/admin/OpsModal";
 import { db } from "../firebase";
 import type { AssignmentRules, Weekday, BookSubject } from "../services/firestore";
@@ -52,7 +54,8 @@ type Student = {
 };
 
 type TaskMode = "task" | "lecture" | "book" | "lecture+book";
-type TaskSourceType = "manual" | "book" | "exam" | "remedial";
+type TaskType = "homework" | "print" | "supplement" | "exam" | "book";
+type TaskSourceType = "manual" | "distribution" | "book" | "exam" | "remedial";
 type RemedialType = "print" | "retry" | "similar" | "concept" | "blank" | "etc";
 
 type TaskSubItem = {
@@ -75,6 +78,15 @@ type TaskItem = {
   subtasks?: TaskSubItem[];
 
   sourceType?: TaskSourceType;
+
+  taskType?: TaskType;
+sourceId?: string;
+doneByStudent?: boolean;
+submittedAt?: any;
+checkedByTeacher?: boolean;
+checkedAt?: any;
+distributedDate?: string;
+kind?: "required" | "optional";
 
   subject?: string;
   remedialType?: RemedialType;
@@ -362,9 +374,40 @@ const normalizeTasks = (v: any): TaskItem[] => {
       done: !!x.done,
       carriedFrom: x.carriedFrom ?? "",
       deleted: x.deleted === true,
+
+      sourceType: x.sourceType,
+      taskType: x.taskType,
+      sourceId: x.sourceId,
+
+      doneByStudent: x.doneByStudent,
+      submittedAt: x.submittedAt,
+      checkedByTeacher: x.checkedByTeacher,
+      checkedAt: x.checkedAt,
+      distributedDate: x.distributedDate,
+      kind: x.kind,
+
+      subject: x.subject,
+      remedialType: x.remedialType,
+      taskMode: x.taskMode,
+
+      lectureTitle: x.lectureTitle,
+      lectureDone: x.lectureDone,
+      bookTitle: x.bookTitle,
+      bookDone: x.bookDone,
+
+      pageStart: x.pageStart,
+      pageEnd: x.pageEnd,
+      bigUnit: x.bigUnit,
+      smallUnit: x.smallUnit,
+
+      estimatedMin: x.estimatedMin,
+      priority: x.priority,
+      locked: x.locked,
+
+      bookId: x.bookId,
+      sectionId: x.sectionId,
     };
 
-    // ✅ subtasks는 있을 때만 넣는다 (undefined 절대 금지)
     if (Array.isArray(x.subtasks)) {
       base.subtasks = x.subtasks.map((s: any) => ({
         text: s.text ?? "",
@@ -1304,6 +1347,16 @@ const [filterType, setFilterType] = useState<"all" | "active" | "done">("all");
     subtasks?: { text: string; done: boolean }[];
     deleted?: boolean;
     carriedFrom?: string;
+    taskType?: TaskType;
+sourceType?: TaskSourceType;
+sourceId?: string;
+
+doneByStudent?: boolean;
+submittedAt?: any;
+checkedByTeacher?: boolean;
+checkedAt?: any;
+distributedDate?: string;
+kind?: "required" | "optional";
   };
 
   const taskByStudent = useMemo<Record<string, DashboardTask[]>>(() => {
@@ -1342,6 +1395,18 @@ const [filterType, setFilterType] = useState<"all" | "active" | "done">("all");
 
             text: task.text,
             title: task.title,
+
+            sourceType: task.sourceType,
+taskType: task.taskType,
+sourceId: task.sourceId,
+
+doneByStudent: task.doneByStudent,
+submittedAt: task.submittedAt,
+checkedByTeacher: task.checkedByTeacher,
+checkedAt: task.checkedAt,
+distributedDate: task.distributedDate,
+kind: task.kind,
+
             subtasks: Array.isArray(task.subtasks)
               ? task.subtasks.map((ss: any) => ({
                 text: ss.text,
@@ -1773,7 +1838,7 @@ useEffect(() => {
 
 
   // 🔥 선생님 과제 1개 삭제 + 자동 이월
-  const handleDeleteTeacherTask = async (
+    const handleDeleteTeacherTask = async (
     sid: string,
     date: string,
     subjectKey: string,
@@ -2193,8 +2258,12 @@ const handleAutoAssignAll = async () => {
         });
       });
 
-      const targetDate = new Date(selectedDate);
-      const today = targetDate.getDay();
+     console.log("selectedDate", selectedDate);
+
+const targetDate = new Date(selectedDate);
+const today = targetDate.getDay();
+
+console.log("요일 (0=일)", today);
 
       const todaySchedule = studentSchedule.filter(
         (s: any) => Number(s.day) === today
@@ -2959,61 +3028,79 @@ const groupMemosByDate = (list: any[]) => {
   const [memoModal, setMemoModal] = useState<{ show: boolean, studentId: string, studentName: string }>({
     show: false, studentId: '', studentName: ''
   });
-  const deleteMainTask = async (
-    sid: string,
-    date: string,
-    subjectKey: string,
-    taskUiId: string
-  ) => {
-    const ok = window.confirm("이 과제를 완전히 삭제할까요? (되돌릴 수 없음)");
-    if (!ok) return;
+ const deleteMainTask = async (
+  sid: string,
+  date: string,
+  subjectKey: string,
+  taskUiId: string
+) => {
+  const ok = window.confirm("이 과제를 완전히 삭제할까요? (되돌릴 수 없음)");
+  if (!ok) return;
 
-    try {
-      const ref = doc(db, "studyPlans", sid, "days", date);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return;
+  try {
+    const ref = doc(db, "studyPlans", sid, "days", date);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
 
-      const data = snap.data() as any;
-      const subj = data?.[subjectKey] || {};
-      const tasks: any[] = Array.isArray(subj.teacherTasks) ? subj.teacherTasks : [];
+    const data = snap.data() as any;
+    const subj = data?.[subjectKey] || {};
+    const tasks: any[] = Array.isArray(subj.teacherTasks) ? subj.teacherTasks : [];
 
-      // 삭제 대상 찾기
-      const targetTask = tasks.find((t: any) => (t.id ?? t._uiId) === taskUiId);
+    // 삭제 대상 찾기
+    const targetTask = tasks.find((t: any) => (t.id ?? t._uiId) === taskUiId);
 
-      if (!targetTask) {
-        alert("삭제 대상 과제를 찾을 수 없습니다.");
-        return;
-      }
-
-      // 자동교재 과제면 진도 복구
-      if (targetTask.sourceType === "autoBook" && targetTask.bookId) {
-        await saveStudentBookProgress(sid, {
-          bookId: targetTask.bookId,
-          lastEpisodeIndex: targetTask.assignedEpisodeIndex ?? 0,
-        });
-      }
-
-      // 실제 삭제
-      const nextTasks = tasks.filter((t: any) => (t.id ?? t._uiId) !== taskUiId);
-
-      await setDoc(
-        ref,
-        {
-          [subjectKey]: {
-            ...subj,
-            teacherTasks: nextTasks,
-            updatedAt: serverTimestamp(),
-          },
-        },
-        { merge: true }
-      );
-
-      alert("✅ 삭제 완료");
-      await loadDayPlans();
-    } catch (e) {
-      alert("삭제 실패");
+    if (!targetTask) {
+      alert("삭제 대상 과제를 찾을 수 없습니다.");
+      return;
     }
-  };
+
+    // 🔥 distribution 과제면 원본도 같이 삭제
+ console.log("삭제 targetTask =", targetTask);
+
+const distId =
+  targetTask.sourceId ||
+  targetTask.sourceID ||
+  targetTask.source_id;
+
+console.log("삭제 distId =", distId);
+if (!distId) {
+  console.error("❌ sourceId 없음 → 삭제 불가", targetTask);
+}
+
+    if (targetTask.sourceType === "distribution" && distId) {
+      await deleteDoc(doc(db, "printDistributions", distId));
+    }
+
+    // ⭐ 자동교재 과제면 진도 복구
+    if (targetTask.sourceType === "autoBook" && targetTask.bookId) {
+      await saveStudentBookProgress(sid, {
+        bookId: targetTask.bookId,
+        lastEpisodeIndex: targetTask.assignedEpisodeIndex ?? 0,
+      });
+    }
+
+    // 실제 삭제
+    const nextTasks = tasks.filter((t: any) => (t.id ?? t._uiId) !== taskUiId);
+
+    await setDoc(
+      ref,
+      {
+        [subjectKey]: {
+          ...subj,
+          teacherTasks: nextTasks,
+          updatedAt: serverTimestamp(),
+        },
+      },
+      { merge: true }
+    );
+
+    alert("✅ 삭제 완료");
+    await loadDayPlans();
+  } catch (e) {
+    console.error(e);
+    alert("삭제 실패");
+  }
+};
 
  const [memos, setMemos] = useState<any[]>([]);
 
@@ -3291,199 +3378,286 @@ const handleTeacherLogout = async () => {
           fontFamily: "Pretendard, -apple-system, BlinkMacSystemFont, system-ui",
         }}
       >
-        {/* 상단 헤더 */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "20px 24px",
-            background: "#FFFFFF",
-            borderRadius: "24px",
-            boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
-            marginBottom: "24px",
-            border: "1px solid #F1F5F9",
-            flexWrap: "wrap",
-            gap: 16
-          }}
-        >
-          {/* 왼쪽: 브랜드 및 타이틀 영역 */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {/* 로고 강조: 그라데이션 적용 */}
-              <div style={{
-                letterSpacing: "-0.5px",
-                fontSize: 30,
-                fontWeight: 900,
-                background: "linear-gradient(135deg, #8B1E1E 0%, #1d3d86 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-              }}>
-                OPTIMUM EDUCORE
-              </div>
-              <div style={{ width: 1, height: 14, background: "#E2E8F0" }} />
-              <div style={{ fontSize: 19, fontWeight: 800, color: "#1E293B" }}>
-                선생님
-              </div>
-            </div>
-            <div style={{ fontSize: 13, color: "#94A3B8", fontWeight: 500 }}>
-              실시간 출결 및 과제 진행도 통합 관리 시스템
-            </div>
-           
-          </div>
-          {/* 오른쪽: 액션 및 상태 영역 */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              flexWrap: "nowrap",
-            }}
-          >
-            {/* 날짜 선택 */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                background: "#F8FAFC",
-                padding: "8px 14px",
-                borderRadius: "14px",
-                border: "1px solid #E2E8F0",
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span style={{ fontSize: 12, color: "#64748B", fontWeight: 700 }}>Date</span>
-              <input
-                type="date"
-                value={dateStr}
-                onChange={(e) => setDateStr(e.target.value)}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: "#3B82F6",
-                  outline: "none",
-                  cursor: "pointer",
-                }}
-              />
-            </div>
+       {/* 상단 헤더 */}
+<div
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "20px 24px",
+    background: "#FFFFFF",
+    borderRadius: "24px",
+    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+    marginBottom: "24px",
+    border: "1px solid #F1F5F9",
+    flexWrap: "wrap",
+    gap: 16,
+  }}
+>
+{/* 왼쪽: 브랜드 및 타이틀 영역 */}
+<div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+    <div
+      style={{
+        letterSpacing: "-1.5px",
+        fontSize: 36,
+        fontWeight: 900,
+        background: "linear-gradient(135deg, #1d3d86 0%, #8B1E1E 100%)",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+        lineHeight: "1.1",
+      }}
+    >
+      OPTIMUM EDUCORE
+    </div>
+    <div style={{ width: 2, height: 20, background: "#E2E8F0" }} />
+    <div style={{ fontSize: 22, fontWeight: 800, color: "#1E293B" }}>
+      선생님
+    </div>
+  </div>
+  <div style={{ fontSize: 14, color: "#94A3B8", fontWeight: 600, marginLeft: 2 }}>
+    실시간 출결 및 과제 진행도 통합 관리 시스템
+  </div>
+</div>
 
-            {/* 운영 버튼 */}
-            <OpsModal open={opsOpen} onClose={() => setOpsOpen(false)} />
-            <button
-              onClick={() => setOpsOpen(true)}
-              style={{
-                padding: "10px 18px",
-                borderRadius: "14px",
-                border: "none",
-                background: "#FDF4FF",
-                color: "#A21CAF",
-                fontSize: 13,
-                fontWeight: 800,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                transition: "all 0.2s",
-                whiteSpace: "nowrap",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#FAE8FF")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#FDF4FF")}
-            >
-              <span>⚙️</span> 좌석
-            </button>
-            <button
-              onClick={() => navigate("/auto-assign")}
-              style={{
-                padding: "10px 18px",
-                borderRadius: "14px",
-                border: "none",
-                background: "#f8e6ea",
-                color: "#651628",
-                fontSize: 13,
-                fontWeight: 800,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                transition: "all 0.2s",
-                whiteSpace: "nowrap",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#ffebf0")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#f3c6d0")}
-            >
-              <span>📋</span> 과제
-            </button>
-            <button
-              onClick={() => navigate("/exam-manage")}
-              style={{
-                padding: "10px 18px",
-                borderRadius: "14px",
-                border: "none",
-                background: "#EEF2FF",
-                color: "#121f66",
-                fontSize: 13,
-                fontWeight: 800,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                transition: "all 0.2s",
-                whiteSpace: "nowrap",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#E0E7FF")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#EEF2FF")}
-            >
-              <span>📝</span> 시험
-            </button>
+{/* 오른쪽: 액션 및 상태 영역 */}
+<div
+  style={{
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 10,
+    flex: 1,
+    minWidth: 520,
+  }}
+>
+  {/* 1줄 */}
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
+      width: "100%",
+    }}
+  >
+    {/* 날짜 선택 */}
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        background: "#F8FAFC",
+        padding: "0 14px",
+        borderRadius: "12px",
+        border: "1px solid #E2E8F0",
+        whiteSpace: "nowrap",
+        height: 42,
+        boxSizing: "border-box",
+      }}
+    >
+      <span style={{ fontSize: 11, color: "#64748B", fontWeight: 800 }}>DATE</span>
+      <input
+        type="date"
+        value={dateStr}
+        onChange={(e) => setDateStr(e.target.value)}
+        style={{
+          border: "none",
+          background: "transparent",
+          fontSize: 13,
+          fontWeight: 800,
+          color: "#1d3d86",
+          outline: "none",
+          cursor: "pointer",
+        }}
+      />
+    </div>
 
-            {/* ✅ 상담현황 버튼은 학생수 박스 밖으로 */}
-            <button
-              onClick={() => setConsultSummaryOpen(true)}
-              style={{
-                padding: "10px 18px",
-                borderRadius: "14px",
-                border: "none",
-                background: "#ECFDF5",
-                color: "#065F46",
-                fontSize: 13,
-                fontWeight: 800,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                transition: "all 0.2s",
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span>💬</span> 상담
-            </button>
+    <OpsModal open={opsOpen} onClose={() => setOpsOpen(false)} />
 
-            {/* 학생수 */}
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={() => setShowStats((v) => !v)}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "14px",
-                  border: "1px solid #E2E8F0",
-                  background: showStats ? "#1d3d86" : "#fff",
-                  color: showStats ? "#fff" : "#1d3d86",
-                  fontSize: 13,
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <span>👥</span> {stats.total}명
-              </button>
-             
+    <button
+      onClick={() => setOpsOpen(true)}
+      style={{
+        height: 42,
+        padding: "0 16px",
+        borderRadius: "12px",
+        border: "1px solid #E9D5FF",
+        background: "#F5F3FF",
+        color: "#6B21A8",
+        fontSize: 13,
+        fontWeight: 800,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        transition: "0.2s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "#EDE9FE")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "#F5F3FF")}
+    >
+      <span>⚙️</span> 좌석
+    </button>
+
+    <button
+      onClick={() => navigate("/auto-assign")}
+      style={{
+        height: 42,
+        padding: "0 16px",
+        borderRadius: "12px",
+        border: "1px solid #FBCFE8",
+        background: "#FDF2F8",
+        color: "#9D174D",
+        fontSize: 13,
+        fontWeight: 800,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        transition: "0.2s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "#FCE7F3")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "#FDF2F8")}
+    >
+      <span>📋</span> 과제
+    </button>
+
+    <button
+      onClick={() => navigate("/exam-manage")}
+      style={{
+        height: 42,
+        padding: "0 16px",
+        borderRadius: "12px",
+        border: "1px solid #BFDBFE",
+        background: "#EFF6FF",
+        color: "#1E40AF",
+        fontSize: 13,
+        fontWeight: 800,
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        transition: "0.2s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "#DBEAFE")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "#EFF6FF")}
+    >
+      <span>📝</span> 시험
+    </button>
+  </div>
+
+  {/* 2줄 */}
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
+      width: "100%",
+    }}
+  >
+    <button
+  onClick={() => setConsultSummaryOpen(true)}
+  style={subButtonStyle}
+  onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
+  onMouseLeave={(e) => (e.currentTarget.style.background = "#FFFFFF")}
+>
+  <span>💬</span> 상담
+</button>
+
+<button
+  onClick={() => setShowStats((v) => !v)}
+  style={{
+    ...subButtonStyle,
+    background: showStats ? "#1d3d86" : "#FFFFFF",
+    color: showStats ? "#FFFFFF" : "#1d3d86",
+    border: "1px solid #E2E8F0",
+    fontWeight: 900,
+  }}
+>
+  <span>👥</span> {stats.total}명
+</button>
+
+   
+  <button
+  onClick={exportEducoreBackup}
+  style={{
+    height: 42,
+    padding: "0 16px",
+    borderRadius: "12px",
+    border: "1px solid #E2E8F0",
+    background: "#FFFFFF",
+    color: "#475569",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    transition: "0.2s",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+  }}
+  onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
+  onMouseLeave={(e) => (e.currentTarget.style.background = "#FFFFFF")}
+>
+  <span>🔒</span> 백업
+</button>
+
+ <div style={{ width: 1, height: 20, background: "#E2E8F0", margin: "0 4px" }} />
+
+    <div style={{ position: "relative" }}>
+  <label
+  style={{
+    height: 42,
+    padding: "0 16px",
+    borderRadius: "12px",
+    border: "1px solid #E2E8F0",
+    background: "#FFFFFF",
+    color: "#475569",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    transition: "0.2s",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
+    boxSizing: "border-box",
+  }}
+  onMouseEnter={(e) => (e.currentTarget.style.background = "#F8FAFC")}
+  onMouseLeave={(e) => (e.currentTarget.style.background = "#FFFFFF")}
+>
+  <span>♻️</span> 복구
+  <input
+    type="file"
+    accept=".json"
+    style={{ display: "none" }}
+    onChange={async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const ok = window.confirm(
+        "백업 파일로 복구할까요?\n기존 데이터 위에 덮어쓸 수 있습니다."
+      );
+      if (!ok) {
+        e.currentTarget.value = "";
+        return;
+      }
+
+      try {
+        await importEducoreBackup(file);
+        alert("복구 완료");
+      } catch (err) {
+        console.error(err);
+        alert("복구 실패");
+      } finally {
+        e.currentTarget.value = "";
+      }
+    }}
+  />
+</label>
+
 
               {showStats && (
                 <div
@@ -3527,6 +3701,7 @@ const handleTeacherLogout = async () => {
                 </div>
               )}
             </div>
+               </div>
           </div>
         </div>
 
@@ -3553,197 +3728,218 @@ const handleTeacherLogout = async () => {
   }}
 >
   {/* [박스 1] 상단 대시보드 : 시스템 상태 및 실시간 현황 */}
+<div
+  style={{
+    // 완전 블랙이 아닌, 깊이감 있는 다크 네이비 그라데이션
+    background: "linear-gradient(145deg, #1E293B 0%, #111827 100%)",
+    borderRadius: "24px",
+    padding: "20px",
+    // 푸른 빛이 감도는 부드러운 그림자로 답답함 해소
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.5), inset 0 1px 1px rgba(255,255,255,0.05)",
+    color: "#FFFFFF",
+    border: "1px solid rgba(255,255,255,0.05)",
+  }}
+>
+  {/* [1] 헤더: 시스템 상태 및 로그아웃 */}
   <div
     style={{
-      background: "linear-gradient(135deg, #1E293B 0%, #0F172A 100%)",
-      borderRadius: "24px",
-      padding: "20px",
-      boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
-      color: "#FFFFFF",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 20,
     }}
   >
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 20,
-      }}
-    >
-      <div>
-        <div
-          style={{
-            fontSize: "11px",
-            fontWeight: 700,
-            color: "#94A3B8",
-            letterSpacing: "1px",
-          }}
-        >
-          SYSTEM STATUS
-        </div>
-        <div style={{ fontSize: "16px", fontWeight: 900 }}>
-          OPTIMUM <span style={{ color: "#38BDF8" }}>EDUCORE</span>
-        </div>
-      </div>
-
-      <button
-        onClick={handleTeacherLogout}
+    <div>
+      <div
         style={{
-          padding: "6px 10px",
-          borderRadius: "8px",
-          border: "1px solid rgba(255,255,255,0.1)",
-          background: "rgba(255,255,255,0.05)",
-          color: "#94A3B8",
           fontSize: "10px",
           fontWeight: 700,
-          cursor: "pointer",
+          color: "#64748B",
+          letterSpacing: "1.2px",
+          marginBottom: 2,
         }}
       >
-        LOGOUT
-      </button>
+        SYSTEM STATUS
+      </div>
+      <div style={{ fontSize: "16px", fontWeight: 900 }}>
+        OPTIMUM <span style={{ color: "#38BDF8" }}>EDUCORE</span>
+      </div>
     </div>
 
-    {/* 숫자 카드 */}
-    <div
+    <button
+      onClick={handleTeacherLogout}
       style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: "10px",
-        marginBottom: 12,
+        padding: "6px 12px",
+        borderRadius: "8px",
+        border: "1px solid rgba(255,255,255,0.1)",
+        background: "rgba(255,255,255,0.05)",
+        color: "#94A3B8",
+        fontSize: "10px",
+        fontWeight: 700,
+        cursor: "pointer",
+        transition: "all 0.2s ease",
       }}
     >
-      <div
-        style={{
-          background: "rgba(56, 189, 248, 0.1)",
-          border: "1px solid rgba(56, 189, 248, 0.2)",
-          borderRadius: "16px",
-          padding: "12px",
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "10px",
-            color: "#38BDF8",
-            fontWeight: 800,
-            marginBottom: 4,
-          }}
-        >
-          RESERVED
-        </div>
-        <div style={{ fontSize: "18px", fontWeight: 900 }}>{reservedList.length}</div>
-      </div>
+      LOGOUT
+    </button>
+  </div>
 
-      <div
-        style={{
-          background: "rgba(244, 63, 94, 0.1)",
-          border: "1px solid rgba(244, 63, 94, 0.2)",
-          borderRadius: "16px",
-          padding: "12px",
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "10px",
-            color: "#F43F5E",
-            fontWeight: 800,
-            marginBottom: 4,
-          }}
-        >
-          WAITING
-        </div>
-        <div style={{ fontSize: "18px", fontWeight: 900 }}>{waitingList.length}</div>
+  {/* [2] 숫자 현황 카드: Glassmorphism 스타일 */}
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "12px",
+      marginBottom: 15,
+    }}
+  >
+    <div
+      style={{
+        background: "rgba(56, 189, 248, 0.1)",
+        border: "1px solid rgba(56, 189, 248, 0.2)",
+        borderRadius: "16px",
+        padding: "14px 10px",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: "10px", color: "#38BDF8", fontWeight: 800, marginBottom: 4 }}>RESERVED</div>
+      <div style={{ fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(56, 189, 248, 0.2)" }}>
+        {reservedList.length}
       </div>
     </div>
 
-    {/* 일정 보기 버튼 */}
-    <div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 8,
-    marginTop: 10,
-  }}
->
-  <button
-    onClick={() => setShowExplainModal(true)}
-    style={{
-      padding: "10px 0",
-      borderRadius: 10,
-      border: "none",
-      background: "#1E293B",
-      color: "#fff",
-      fontSize: 12,
-      fontWeight: 800,
-      cursor: "pointer",
-    }}
-  >
-    📋 설명일정
-  </button>
-
-<button
-  onClick={() => setShowMemoBoard(true)}
-  style={{
-    position: "relative",
-    border: hasUnread
-      ? "1px solid rgba(239,68,68,0.3)"
-      : "1px solid rgba(255,255,255,0.08)",
-    background: hasUnread
-      ? "rgba(239,68,68,0.08)"
-      : "rgba(255,255,255,0.05)",
-    backdropFilter: "blur(6px)",
-    borderRadius: 12,
-    padding: "10px 14px",
-    fontWeight: 800,
-    color: "#E2E8F0",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  }}
->
-  📝 운영메모
-
-  {/* 🔴/🟢 점 */}
-  <span
-    style={{
-      position: "absolute",
-      top: 6,
-      right: 6,
-      width: 10,
-      height: 10,
-      borderRadius: "50%",
-      background: hasUnread ? "#EF4444" : "#22C55E",
-    }}
-  />
-
-  {/* 🔥 숫자 뱃지 */}
-  {hasUnread && (
     <div
       style={{
-        position: "absolute",
-        top: -6,
-        right: -6,
-        minWidth: 18,
-        height: 18,
-        borderRadius: 999,
-        background: "#EF4444",
-        color: "#fff",
-        fontSize: 11,
-        fontWeight: 900,
+        background: "rgba(244, 63, 94, 0.1)",
+        border: "1px solid rgba(244, 63, 94, 0.2)",
+        borderRadius: "16px",
+        padding: "14px 10px",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: "10px", color: "#F43F5E", fontWeight: 800, marginBottom: 4 }}>WAITING</div>
+      <div style={{ fontSize: "22px", fontWeight: 900, textShadow: "0 0 10px rgba(244, 63, 94, 0.2)" }}>
+        {waitingList.length}
+      </div>
+    </div>
+  </div>
+
+  {/* [3] 하단 버튼 액션 영역 */}
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 10,
+    }}
+  >
+    {/* 설명일정 버튼 */}
+    <button
+      onClick={() => setShowExplainModal(true)}
+      style={{
+        height: 44,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "0 5px",
-        boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "#1E293B",
+        color: "#fff",
+        fontSize: "12px",
+        fontWeight: 800,
+        cursor: "pointer",
+        gap: "6px",
       }}
     >
-      {unreadCount > 9 ? "9+" : unreadCount}
-    </div>
-  )}
-</button>
-</div>
-  </div>
+      <span style={{ fontSize: "14px" }}>📋</span> 설명일정
+    </button>
 
+    {/* 운영메모 버튼: 알림 상태에 따른 유동적 디자인 */}
+    <button
+      onClick={() => setShowMemoBoard(true)}
+      style={{
+        height: 44,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+        border: hasUnread ? "1px solid rgba(244, 63, 94, 0.3)" : "1px solid rgba(255,255,255,0.08)",
+        background: hasUnread ? "rgba(244, 63, 94, 0.1)" : "rgba(255,255,255,0.05)",
+        backdropFilter: "blur(8px)",
+        borderRadius: 12,
+        fontWeight: 800,
+        color: "#E2E8F0",
+        fontSize: "12px",
+        cursor: "pointer",
+        gap: "6px",
+      }}
+    >
+      <span style={{ fontSize: "14px" }}>📝</span> 운영메모
+
+      {/* 우측 상단 상태 점: 네온 효과 추가 */}
+      <span
+        style={{
+          position: "absolute",
+          top: 7,
+          right: 7,
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: hasUnread ? "#F43F5E" : "#10B981",
+          boxShadow: `0 0 8px ${hasUnread ? "#F43F5E" : "#10B981"}`,
+        }}
+      />
+
+      {/* 읽지 않음 숫자 뱃지 */}
+      {hasUnread && (
+        <div
+          style={{
+            position: "absolute",
+            top: -8,
+            right: -8,
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            background: "#EF4444",
+            color: "#fff",
+            fontSize: "10px",
+            fontWeight: 900,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "0 5px",
+            boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
+            border: "2px solid #111827", // 배경과 분리되는 테두리
+          }}
+        >
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </div>
+      )}
+    </button>
+
+    {/* 프린트 배부 관리: 전폭 버튼 */}
+    <button
+      onClick={() => navigate("/print-distribution")}
+      style={{
+        height: 44,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gridColumn: "1 / span 2",
+        marginTop: 4,
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(208, 163, 163, 0.05)",
+        color: "#E2E8F0",
+        fontSize: "12px",
+        fontWeight: 800,
+        cursor: "pointer",
+        gap: "6px",
+      }}
+    >
+      <span style={{ fontSize: "14px" }}>🖨️</span> 프린트 배부 관리
+    </button>
+  </div>
+</div>
   {/* [박스 2] 하단 리스트 : 검색 및 내비게이션 */}
   <div
     style={{
@@ -5155,9 +5351,27 @@ return filteredRows.map((row) => {
                                                   display: "inline-block",
                                                 }}
                                               >
-                                                {carriedIn ? "🕒 " : ""}
-                                                {t.sourceType === "remedial" ? "🩹 " : ""}
-                                                {t.text || t.title}
+                                                <div
+  style={{
+    fontSize: 13,
+    fontWeight: 700,
+    color: carriedOut ? "#9CA3AF" : t.done ? "#9CA3AF" : "#111827",
+    textDecoration: carriedOut ? "line-through" : t.done ? "line-through" : "none",
+    background: t.sourceType === "remedial" && !t.done && !carriedOut ? "#FFF1F2" : "transparent",
+    padding: t.sourceType === "remedial" && !t.done && !carriedOut ? "2px 6px" : 0,
+    borderRadius: t.sourceType === "remedial" && !t.done && !carriedOut ? 6 : 0,
+    display: "inline-block",
+  }}
+>
+  {carriedIn ? "🕒 " : ""}
+  {t.taskType === "print" && (
+    <span style={{ color: "#1D4ED8", fontWeight: 900 }}>[프린트] </span>
+  )}
+  {(t.taskType === "supplement" || t.sourceType === "remedial") && (
+    <span style={{ color: "#B45309", fontWeight: 900 }}>[보강] </span>
+  )}
+  {t.text || t.title}
+</div>
                                               </div>
 
                                               {Array.isArray(t.subtasks) && t.subtasks.length > 0 && (
@@ -7410,18 +7624,28 @@ return filteredRows.map((row) => {
                               }}
                             >
                               {/* 왼쪽: 과제 제목 */}
-                              <b
-                                data-carried={isCarryOver ? "1" : "0"}
-                                style={{
-                                  color: isCarryOver ? "#B91C1C" : "#111827", // 🔴 확실한 빨강
-                                  fontWeight: isCarryOver ? 800 : 600,
-                                  background: isCarryOver ? "#FEE2E2" : "transparent",
-                                  padding: isCarryOver ? "2px 4px" : 0,
-                                  borderRadius: 4,
-                                }}
-                              >
-                                {task.title || task.text}
-                              </b>
+                             <b
+  data-carried={isCarryOver ? "1" : "0"}
+  style={{
+    color: isCarryOver ? "#B91C1C" : "#111827",
+    fontWeight: isCarryOver ? 800 : 600,
+    background: isCarryOver ? "#FEE2E2" : "transparent",
+    padding: isCarryOver ? "2px 4px" : 0,
+    borderRadius: 4,
+  }}
+>
+  {task.taskType === "print" && (
+    <span style={{ color: "#1D4ED8", fontWeight: 900, marginRight: 4 }}>
+      [프린트]
+    </span>
+  )}
+  {(task.taskType === "supplement" || task.sourceType === "remedial") && (
+    <span style={{ color: "#B45309", fontWeight: 900, marginRight: 4 }}>
+      [보강]
+    </span>
+  )}
+  {task.title || task.text}
+</b>
 
                               {/* 오른쪽: 배지/문구/버튼 한 덩어리 */}
                               <div
@@ -7671,4 +7895,20 @@ return filteredRows.map((row) => {
       color: "#111827",
       borderBottom: "1px solid #F3F4F6",
       whiteSpace: "nowrap",
+};
+const subButtonStyle = {
+  height: 42,
+  padding: "0 16px",
+  borderRadius: "12px",
+  border: "1px solid #E2E8F0",
+  background: "#FFFFFF",
+  color: "#475569",
+  fontSize: 13,
+  fontWeight: 800,
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  transition: "0.2s",
+  boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
 };

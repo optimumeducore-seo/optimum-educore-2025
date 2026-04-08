@@ -18,14 +18,32 @@ import {
 //  C: 과제 자동 주기(Assignment Cycle)
 // --------------------------------------
 
+export type TaskType = "homework" | "print" | "supplement" | "exam" | "book";
+export type TaskSourceType = "manual" | "distribution" | "book" | "exam" | "remedial";
+
 export interface TaskItem {
-  text: string;
+  id?: string;
+  text?: string;
+  title?: string;
   done: boolean;
   subtasks?: {
     text: string;
     done: boolean;
   }[];
+
+  taskType?: TaskType;
+  sourceType?: TaskSourceType;
+  sourceId?: string;
+  subject?: string;
+
+  doneByStudent?: boolean;
+  submittedAt?: any;
+  checkedByTeacher?: boolean;
+  checkedAt?: any;
+  distributedDate?: string;
+  kind?: "required" | "optional";
 }
+
 export interface SubTask {
   text: string;
   done: boolean;
@@ -208,7 +226,7 @@ export interface Book {
   name: string;
   publisher?: string;
   subject: BookSubject;
-  gradeGroup?: "중1" | "중2" | "중3" | "";
+  gradeGroup?: "중1" | "중2" | "중3" |"고1" | "";
 
   videoPlatform?: string;
   videoSeries?: string;

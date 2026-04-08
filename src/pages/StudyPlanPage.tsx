@@ -30,7 +30,8 @@ import "./StudyPlanPage.css";
 /* ------------------------------------------------------------------ */
 
 type TaskMode = "task" | "lecture" | "book" | "lecture+book";
-type TaskSourceType = "manual" | "book" | "exam";
+type TaskType = "homework" | "print" | "supplement" | "exam" | "book";
+type TaskSourceType = "manual" | "distribution" | "book" | "exam" | "remedial";
 
 type TaskSubItem = {
   text: string;
@@ -51,11 +52,23 @@ type TaskItem = {
 
   subtasks?: TaskSubItem[];
 
+  // 🔥 기존 유지
   sourceType?: TaskSourceType;
   subject?: string;
-
   taskMode?: TaskMode;
 
+  // 🔥 추가 (여기만 붙이면 됨)
+  taskType?: TaskType;
+  sourceId?: string;
+
+  doneByStudent?: boolean;
+  submittedAt?: any;
+  checkedByTeacher?: boolean;
+  checkedAt?: any;
+  distributedDate?: string;
+  kind?: "required" | "optional";
+
+  // 🔥 기존 유지
   lectureTitle?: string;
   lectureDone?: boolean;
 
@@ -254,11 +267,23 @@ const makeCleanSubject = (subj: any = {}) => {
   const teacher: TaskItem[] = rawTeacher
     .filter(Boolean) // ✅ undefined 제거
     .map((t: any) => {
-      const base: any = {
-        id: t.id || crypto.randomUUID(),
-        done: !!t.done,
-        carriedOver: !!t.carriedOver,
-      };
+     const base: any = {
+  id: t.id || crypto.randomUUID(),
+  done: !!t.done,
+  carriedOver: !!t.carriedOver,
+
+  sourceType: t.sourceType,
+  taskType: t.taskType,
+  sourceId: t.sourceId,
+  subject: t.subject,
+
+  doneByStudent: t.doneByStudent,
+  submittedAt: t.submittedAt,
+  checkedByTeacher: t.checkedByTeacher,
+  checkedAt: t.checkedAt,
+  distributedDate: t.distributedDate,
+  kind: t.kind,
+};
 
       if (t.carriedFrom) {
         base.carriedFrom = t.carriedFrom;
@@ -266,19 +291,19 @@ const makeCleanSubject = (subj: any = {}) => {
 
       // ✅ 레거시 자동과제 복구(진짜 자동인 경우만)
       if (t.id && t.title && !t.text && t.subtasks == null) {
-        return { ...base, title: t.title, subtasks: [] };
-      }
+  return { ...base, title: t.title, subtasks: [] };
+}
 
       // ✅ 자동과제
-      if (Array.isArray(t.subtasks)) {
-        return {
-          ...base,
-          title: t.title || t.text || "",
-          subtasks: t.subtasks
-            .filter(Boolean)
-            .map((s: any) => ({ text: s?.text || "", done: !!s?.done })),
-        };
-      }
+     if (Array.isArray(t.subtasks)) {
+  return {
+    ...base,
+    title: t.title || t.text || "",
+    subtasks: t.subtasks
+      .filter(Boolean)
+      .map((s: any) => ({ text: s?.text || "", done: !!s?.done })),
+  };
+}
 
       // ✅ 수동과제(이월 포함)
       return { ...base, text: t.text || t.title || "" };
@@ -920,55 +945,103 @@ useEffect(() => {
   /* ------------------------------------------------------------------ */
 
   const toggleTask = async (
-    field: "teacherTasks" | "studentPlans",
-    index: number
-  ) => {
-    if (!id || !selectedDate || !selectedSubject || readonly) return;
+  field: "teacherTasks" | "studentPlans",
+  index: number
+) => {
+  if (!id || !selectedDate || !selectedSubject || readonly) return;
 
-    // 1) 현재 상태에서 "업데이트 결과" 먼저 계산
-    const day = plans[selectedDate];
-    if (!day) return;
+  const day = plans[selectedDate];
+  if (!day) return;
 
-    const subj = day.subjects?.[selectedSubject];
-    if (!subj) return;
+  const subj = day.subjects?.[selectedSubject];
+  if (!subj) return;
 
-    const list = [...(subj[field] || [])];
-    if (!list[index]) return;
+  const list = [...(subj[field] || [])];
+  const currentTask = list[index];
+  if (!currentTask) return;
 
-    list[index] = { ...list[index], done: !list[index].done };
+  const nextDone = !currentTask.done;
 
-    const updatedSubject: SubjectPlan = {
-      ...subj,
-      [field]: list,
-    };
-
-    const updatedDay: DayPlan = {
-      ...day,
-      subjects: {
-        ...day.subjects,
-        [selectedSubject]: updatedSubject,
-      },
-    };
-
-    // 2) 화면은 즉시 반영 (await 없이)
-    setPlans((prev) => ({
-      ...prev,
-      [selectedDate]: updatedDay,
-    }));
-
-    // 3) Firestore 저장 (여기서 await OK)
-    const ref = doc(db, "studyPlans", id, "days", selectedDate);
-
-    const payload = stripUndefinedDeep(
-      cleanForFirestore({
-        date: selectedDate,
-        [selectedSubject]: updatedSubject,
-      })
-    );
-
-    await setDoc(ref, payload, { merge: true });
+  // 1) 기본 토글 반영
+  let nextTask: any = {
+    ...currentTask,
+    done: nextDone,
   };
 
+  // 2) distribution print면 제출 상태도 같이 반영
+  const isDistributionPrint =
+    field === "teacherTasks" &&
+    currentTask?.sourceType === "distribution" &&
+    currentTask?.taskType === "print" &&
+    !!currentTask?.sourceId;
+
+ if (isDistributionPrint) {
+  nextTask = {
+    ...nextTask,
+    doneByStudent: nextDone,
+    submittedAt: nextDone ? Timestamp.now() : null,
+  };
+
+  if (currentTask.sourceId) {
+    const distRef = doc(db, "printDistributions", currentTask.sourceId);
+
+    await updateDoc(distRef, {
+      submittedAt: nextDone ? serverTimestamp() : null,
+      submittedDate: nextDone
+        ? new Date().toLocaleDateString("ko-KR", {
+            month: "numeric",
+            day: "numeric",
+          })
+        : "",
+    });
+  }
+}
+  
+
+  list[index] = nextTask;
+
+  const updatedSubject: SubjectPlan = {
+    ...subj,
+    [field]: list,
+  };
+
+  const updatedDay: DayPlan = {
+    ...day,
+    subjects: {
+      ...day.subjects,
+      [selectedSubject]: updatedSubject,
+    },
+  };
+
+  // 3) 화면 즉시 반영
+  setPlans((prev) => ({
+    ...prev,
+    [selectedDate]: updatedDay,
+  }));
+
+  // 4) studyPlans 저장
+  const ref = doc(db, "studyPlans", id, "days", selectedDate);
+
+  const payload = stripUndefinedDeep(
+    cleanForFirestore({
+      date: selectedDate,
+      [selectedSubject]: updatedSubject,
+    })
+  );
+
+  await setDoc(ref, payload, { merge: true });
+
+  // 5) printDistributions 원본도 같이 저장
+  if (isDistributionPrint && currentTask.sourceId) {
+    const now = new Date();
+    const shortDate = `${now.getMonth() + 1}/${now.getDate()}`;
+
+    await updateDoc(doc(db, "printDistributions", currentTask.sourceId), {
+      submittedAt: nextDone ? serverTimestamp() : null,
+      submittedDate: nextDone ? shortDate : "",
+    });
+  }
+};
 
   const saveGoal = async (subjectKey: string, value: number) => {
     if (!id || !selectedExamId) return;
@@ -1964,8 +2037,18 @@ studentTotal += studentProgress.total;
             onChange={() => toggleTask("teacherTasks", i)}
           />
           <span style={{ fontWeight: 700 }}>
-            {task.title || task.text}
-          </span>
+  {task.taskType === "print" && (
+    <span style={{ color: "#1D4ED8", fontWeight: 900, marginRight: 4 }}>
+      [프린트]
+    </span>
+  )}
+  {(task.taskType === "supplement" || task.sourceType === "remedial") && (
+    <span style={{ color: "#B45309", fontWeight: 900, marginRight: 4 }}>
+      [보강]
+    </span>
+  )}
+  {task.title || task.text}
+</span>
         </label>
 
         {Array.isArray(task.subtasks) && task.subtasks.length > 0 && (
@@ -2506,118 +2589,87 @@ border: teacherCommentText ? "1px solid #C7D2FE" : "1px solid #F1F5F9",
 
       </div>
 
-   {showExplainPopup &&
-  myExplanations.filter((e: any) => e.status === "reserved").length > 0 && (
+   {showExplainPopup && myExplanations.filter(e => e.status === "reserved").length > 0 && (
+  <div
+    onClick={() => setShowExplainPopup(false)}
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(15, 23, 42, 0.45)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+      padding: 16,
+    }}
+  >
     <div
+      onClick={(e) => e.stopPropagation()}
       style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 9999,
-        padding: 16,
+        width: "min(420px, 100%)",
+        background: "#FFFFFF",
+        borderRadius: 20,
+        padding: 20,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
       }}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(420px, 100%)",
-          background: "#FFFFFF",
-          borderRadius: 20,
-          padding: 20,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 900,
-            color: "#0F172A",
-            marginBottom: 8,
-          }}
-        >
-          🧠 설명 일정 안내
-        </div>
-
-        <div
-          style={{
-            fontSize: 13,
-            color: "#64748B",
-            marginBottom: 14,
-          }}
-        >
-          선생님과 만날 시간이 잡혀 있어요.
-        </div>
-
-        <div style={{ display: "grid", gap: 10 }}>
-          {myExplanations
-            .filter((e: any) => e.status === "reserved")
-            .map((e: any) => (
-              <div
-                key={e.id}
-                style={{
-                  background: "#EEF2FF",
-                  border: "1px solid #C7D2FE",
-                  borderRadius: 14,
-                  padding: 14,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 900,
-                    color: "#1E3A8A",
-                  }}
-                >
-                  {e.reservedStart} ~ {e.reservedEnd}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 800,
-                    color: "#334155",
-                    marginTop: 6,
-                  }}
-                >
-                  {e.teacherName || "선생님"} 선생님
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#475569",
-                    marginTop: 4,
-                  }}
-                >
-                  {e.memo}
-                </div>
-              </div>
-            ))}
-        </div>
-
-        <button
-          onClick={handleCloseExplainPopup}
-          style={{
-            marginTop: 16,
-            width: "100%",
-            border: "none",
-            background: "#2563EB",
-            color: "#FFFFFF",
-            borderRadius: 12,
-            padding: "10px 12px",
-            fontSize: 13,
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
-          확인
-        </button>
+      <div style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", marginBottom: 8 }}>
+        🧠 설명 일정 안내
       </div>
+
+      <div style={{ fontSize: 13, color: "#64748B", marginBottom: 14 }}>
+        선생님과 만날 시간이 잡혀 있어요.
+      </div>
+
+      <div style={{ display: "grid", gap: 10 }}>
+        {myExplanations
+          .filter((e) => e.status === "reserved")
+          .map((e) => (
+            <div
+              key={e.id}
+              style={{
+                background: "#EEF2FF",
+                border: "1px solid #C7D2FE",
+                borderRadius: 14,
+                padding: 14,
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 900, color: "#1E3A8A" }}>
+                {e.reservedStart} ~ {e.reservedEnd}
+              </div>
+
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#334155", marginTop: 6 }}>
+                {e.teacherName || "선생님"} 선생님
+              </div>
+
+              <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>
+                {e.memo}
+              </div>
+            </div>
+          ))}
+      </div>
+
+   <button
+  onClick={handleCloseExplainPopup}
+  style={{
+    marginTop: 16,
+    width: "100%",
+    border: "none",
+    background: "#2563EB",
+    color: "#FFFFFF",
+    borderRadius: 12,
+    padding: "10px 12px",
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: "pointer",
+  }}
+>
+  확인
+</button>
     </div>
-  )}
+  </div>
+)}
+
       {/* ---------------- 시험기간 모달 ---------------- */}
       {showTestModal && (
         <div
@@ -2809,6 +2861,7 @@ border: teacherCommentText ? "1px solid #C7D2FE" : "1px solid #F1F5F9",
                     >
                       삭제
                     </button>
+                    
                   </div>
                 ))}
               </div>

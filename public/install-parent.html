@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EDUCORE 부모앱 설치</title>
 
+<meta name="theme-color" content="#111111">
+<meta name="application-name" content="EDUCORE PARENT">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PARENT">
+<meta name="mobile-web-app-capable" content="yes">
+
+<link rel="manifest" href="/manifest-parent.json">
+
+<link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">
+<link rel="shortcut icon" href="/icon-192.png">
+
 <style>
 body{
 margin:0;
@@ -45,41 +59,30 @@ color:#555;
 line-height:1.6;
 }
 </style>
-
 </head>
 
 <body>
-
 <div class="card">
-
-<div class="title">EDUCORE 부모앱</div>
-
-<div id="studentName" class="name">학생 확인 중...</div>
-
-<div class="guide">
-안드로이드 : Chrome 메뉴 → 홈 화면에 추가<br><br>
-아이폰 : Safari 공유 → 홈 화면에 추가<br><br>
-설치 후 앱을 열면 자녀 리포트로 바로 연결됩니다.
-</div>
-
+  <div class="title">EDUCORE 부모앱</div>
+  <div id="studentName" class="name">학생 확인 중...</div>
+  <div class="guide">
+    안드로이드 : Chrome 메뉴 → 홈 화면에 추가<br><br>
+    아이폰 : Safari 공유 → 홈 화면에 추가<br><br>
+    설치 후 앱을 열면 자녀 리포트로 바로 연결됩니다.
+  </div>
 </div>
 
 <script>
-
 const params = new URLSearchParams(window.location.search);
-
 const sid = params.get("sid");
 const name = params.get("name") || "학생";
 
-if(sid){
-localStorage.setItem("educore_parent_sid",sid);
+if (sid) {
+  localStorage.setItem("educore_parent_sid", sid);
 }
 
-document.getElementById("studentName").innerText = name+" 학부모앱";
-
-console.log("parent install loaded",sid,name);
-
+document.getElementById("studentName").innerText = name + " 학부모앱";
+console.log("parent install loaded", sid, name);
 </script>
-
 </body>
 </html>

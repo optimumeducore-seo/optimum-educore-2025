@@ -28,6 +28,8 @@ import TeacherLoginPage from "./pages/TeacherLoginPage";
 import PrivateRoute from "./components/PrivateRoute";
 import DevWatermark from "./components/DevWatermark";;
 import ExamChecklistPrintPage from "./pages/ExamChecklistPrintPage";
+import PrintDistributionPage from "./pages/PrintDistributionPage";
+import PrintDistributionPrintPage from "./pages/PrintDistributionPrintPage";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
@@ -49,6 +51,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 <Route path="/exam-checklist-print" element={<ExamChecklistPrintPage />} />
 <Route path="/study-plan/term-print/:studentId/:examId" element={<TermPrintPage />} />
 <Route path="/study-plan/portfolio-print/:id" element={<PortfolioPrintPage />} />
+<Route path="/print-distribution" element={<PrintDistributionPage />} />
+<Route path="/print-distribution-print" element={<PrintDistributionPrintPage />} />
 <Route
   path="/exam-manage"
   element={

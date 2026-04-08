@@ -601,7 +601,7 @@ const entryMonth = selected?.entryDate
 
   const goStudyPlan = () => {
   if (!selected) return alert("학생을 먼저 선택하세요.");
-  window.open(`/study-plan/${selected.id}`, "_blank");
+  navigate(`/study-plan/${selected.id}?from=student`);
 };
 
   // 🔥 학생용 checkIn: App 구조로 저장

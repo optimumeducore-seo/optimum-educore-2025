@@ -7,7 +7,8 @@ import {
   signInAnonymously,
   type User,
 } from "firebase/auth";
-import { getFirestore, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { getFirestore, doc, setDoc, serverTimestamp, } from "firebase/firestore";
+import { getStorage } from "firebase/storage"
 
 const firebaseConfig = {
   apiKey: "AIzaSyCgMyqtp4Vlg6YWvDbQfRtTkG5xrgUO9x0",
@@ -55,3 +56,5 @@ export async function loadStore() {
 export function saveStoreDebounced() {
   console.log("💾 saveStoreDebounced() called (test)");
 }
+
+export const storage = getStorage(app);
